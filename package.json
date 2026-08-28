@@ -1,0 +1,13 @@
+{
+  "name": "pr-radar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard local des PRs GitHub : celles que j'ai ouvertes et celles que je review",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

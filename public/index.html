@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Radar</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Cpath%20d='M16,16L16,4.5A11.5,11.5,0,0,1,25.96,10.25Z'%20fill='%23514ab8'%20opacity='.3'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='12.6'%20fill='none'%20stroke='%23514ab8'%20stroke-width='2.4'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='6.8'%20fill='none'%20stroke='%23514ab8'%20stroke-width='1.7'%20opacity='.38'/%3E%3Ccircle%20cx='20.6'%20cy='9.45'%20r='3.6'%20fill='%23514ab8'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f6fb;
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #e9e7fd 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #e2f2f7 0%, transparent 70%);
+    --surface: #ffffff;
+    --sunken: #f1f1f7;
+    --border: #e5e4f0;
+    --hairline: #eeedf6;
+    --text: #1d1e28;
+    --text-soft: #575a6b;
+    --text-faint: #8e91a6;
+
+    --indigo: #5a51d4;
+    --indigo-2: #8b5cf6;
+    --indigo-soft: #eeecfd;
+    --amber: #a8710a;
+    --amber-2: #d99a1e;
+    --amber-soft: #fdf3e0;
+    --emerald: #0f7f61;
+    --emerald-2: #2fb389;
+    --emerald-soft: #e4f5ef;
+    --rose: #c04440;
+    --rose-2: #e0716c;
+    --rose-soft: #fdedec;
+    --cyan: #0d7490;
+    --cyan-2: #2aa5c0;
+    --cyan-soft: #e2f2f7;
+
+    --link: #4f46c8;
+    --shadow-sm: 0 1px 2px rgba(29, 30, 40, .05);
+    --shadow-md: 0 6px 18px -6px rgba(60, 50, 140, .18), 0 2px 4px rgba(29, 30, 40, .04);
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #101219;
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #1e1b3d 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #102d38 0%, transparent 70%);
+    --surface: #191c26;
+    --sunken: #15171f;
+    --border: #292d3b;
+    --hairline: #222634;
+    --text: #e7e8f0;
+    --text-soft: #a4a8bd;
+    --text-faint: #757a92;
+
+    --indigo: #a29bf5;
+    --indigo-2: #c4b5fd;
+    --indigo-soft: #241f4d;
+    --amber: #e0b264;
+    --amber-2: #f0cd91;
+    --amber-soft: #33270e;
+    --emerald: #5fcda6;
+    --emerald-2: #8ee0c2;
+    --emerald-soft: #102b23;
+    --rose: #e79a95;
+    --rose-2: #f0b8b4;
+    --rose-soft: #341d1d;
+    --cyan: #63c6dd;
+    --cyan-2: #93dbeb;
+    --cyan-soft: #102b34;
+
+    --link: #a5a0f5;
+    --shadow-sm: none;
+    --shadow-md: 0 8px 22px -10px rgba(0, 0, 0, .6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+    padding: 16px 28px;
+    background-color: var(--bg);
+    background-image: var(--bg-accent);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: saturate(1.2);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 15.5px; font-weight: 680; letter-spacing: -.2px; }
+  .brand em { font-style: normal; font-weight: 450; color: var(--text-faint); font-size: 13px; letter-spacing: 0; }
+  .logo { width: 26px; height: 26px; flex: none; color: var(--indigo); }
+  .logo .sweep { fill: url(#sweepGrad); opacity: .8; transform-origin: 16px 16px; }
+  .logo .blip { fill: var(--indigo); }
+  @media (prefers-reduced-motion: no-preference) {
+    .logo .sweep { animation: spin 4.5s linear infinite; }
+    .logo .blip { animation: pulse 2.2s ease-in-out infinite; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; r: 3.4px; } 50% { opacity: .6; r: 2.8px; } }
+
+  .counters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .counter {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 11px 5px 9px; border-radius: 9px;
+    font-size: 12.5px; color: var(--text-soft);
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .counter b { font-size: 15px; font-weight: 680; font-variant-numeric: tabular-nums; }
+  .counter .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .counter.todo { background: var(--indigo-soft); border-color: transparent; color: var(--indigo); }
+  .counter.todo .dot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
+  .counter.pending { background: var(--amber-soft); border-color: transparent; color: var(--amber); }
+  .counter.pending .dot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
+  .counter.zero { background: var(--surface); border-color: var(--border); color: var(--text-faint); }
+  .counter.zero b { font-weight: 550; }
+  .counter.zero .dot { background: var(--border); }
+
+  .spacer { flex: 1 1 auto; }
+  .controls { display: flex; align-items: center; gap: 15px; font-size: 12.5px; color: var(--text-soft); }
+  label.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  label.toggle input { accent-color: var(--indigo); margin: 0; }
+  #stamp { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .stale { font-size: 12.5px; color: var(--text-faint); }
+
+  button {
+    font: inherit; font-size: 12.5px; font-weight: 520; cursor: pointer; color: var(--text-soft);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 9px; padding: 6px 12px; box-shadow: var(--shadow-sm);
+    transition: color .15s, border-color .15s, transform .15s;
+  }
+  button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
+  #theme { padding: 6px 10px; }
+  .seg { display: flex; gap: 3px; padding: 3px; }
+  .seg span {
+    padding: 3px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 620;
+    letter-spacing: .3px; color: var(--text-faint); transition: color .15s, background .15s;
+  }
+  .seg span.on { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); color: #fff; }
+  .seg:hover { border-color: var(--indigo); }
+  #refresh { color: #fff; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
+  #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
+
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 26px 28px 70px; align-items: start; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; gap: 26px; } }
+
+  .col-mine { --col: var(--indigo); --col-2: var(--indigo-2); }
+  .col-review { --col: var(--cyan); --col-2: var(--cyan-2); }
+
+  .column-title {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 13.5px; font-weight: 680; letter-spacing: -.1px; margin: 0 0 6px;
+    padding-bottom: 11px; border-bottom: 1px solid var(--border); position: relative;
+  }
+  .column-title::after {
+    content: ""; position: absolute; left: 0; bottom: -1px; width: 46px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--col), var(--col-2));
+  }
+  .column-title .bar { width: 4px; height: 15px; border-radius: 3px; background: linear-gradient(180deg, var(--col), var(--col-2)); }
+
+  .group-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase;
+    color: var(--text-faint); margin: 24px 0 10px;
+  }
+  .group-label:first-of-type { margin-top: 18px; }
+  .group-label .gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
+  .group-label.waiting .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
+  .group-label.idle .gdot { background: var(--border); }
+  .group-label.action { color: var(--indigo); }
+  .group-label.waiting { color: var(--amber); }
+  .group-label .gcount {
+    font-size: 10.5px; letter-spacing: 0; padding: 1px 6px; border-radius: 20px;
+    background: var(--hairline); color: var(--text-faint);
+  }
+  .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
+  .group-label.waiting .gcount { background: var(--amber-soft); color: var(--amber); }
+
+  .card {
+    position: relative; overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    box-shadow: var(--shadow-sm);
+    padding: 14px 16px 14px 18px;
+    margin-bottom: 10px;
+    transition: box-shadow .18s, transform .18s;
+  }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .card.action::before { background: linear-gradient(180deg, var(--indigo), var(--indigo-2)); }
+  .card.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
+  .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
+  .card.waiting { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
+  .card.idle { background: var(--sunken); border-color: transparent; box-shadow: none; padding-left: 16px; }
+  .card:not(.idle):hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+  .card-top { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+  .age {
+    flex: none; margin-left: auto; white-space: nowrap;
+    font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums;
+  }
+  .repo {
+    font-size: 11.5px; font-weight: 550; padding: 2px 7px; border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+    background: var(--hairline); color: var(--text-faint); white-space: nowrap;
+  }
+  .title { font-weight: 620; font-size: 14.5px; letter-spacing: -.15px; flex: 1 1 240px; }
+  .title:hover { color: var(--link); }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 9px; margin-top: 10px; font-size: 12px; color: var(--text-faint); align-items: center; }
+  .meta .sep { color: var(--border); }
+  .who { display: flex; align-items: center; gap: 5px; }
+  .avatar { width: 17px; height: 17px; border-radius: 50%; flex: none; background: var(--hairline); }
+
+  .pill {
+    padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
+    background: var(--hairline); color: var(--text-soft);
+  }
+  .pill.todo { background: var(--indigo-soft); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
+  .pill.pending { background: var(--amber-soft); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent); }
+  .pill.good { background: var(--emerald-soft); color: var(--emerald); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--emerald) 18%, transparent); }
+  .pill.alert { background: var(--rose-soft); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 18%, transparent); }
+
+  .reasons { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .reason { font-size: 12.5px; font-weight: 500; color: var(--text-soft); display: flex; gap: 8px; }
+  .reason::before { content: ""; flex: none; width: 3px; border-radius: 2px; background: currentColor; opacity: .4; }
+  .card.action .reason { color: var(--indigo); }
+  .card.waiting .reason { color: var(--amber); }
+
+  .expander {
+    font-size: 12px; font-weight: 520; color: var(--text-faint); cursor: pointer;
+    margin-top: 11px; display: inline-block;
+  }
+  .expander:hover { color: var(--link); }
+  .threads { margin-top: 11px; border-top: 1px solid var(--hairline); display: none; }
+  .card.open .threads { display: block; }
+  .thread { padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: 12.5px; }
+  .thread:last-child { border-bottom: 0; padding-bottom: 2px; }
+  .thread-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; color: var(--text-faint); font-size: 11.5px; }
+  .thread-author { color: var(--text); font-weight: 620; font-size: 12px; }
+  .thread-path {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+    color: var(--cyan); background: var(--cyan-soft); padding: 1px 6px; border-radius: 5px;
+  }
+  .thread-body { color: var(--text-soft); margin-top: 4px; }
+
+  .empty {
+    color: var(--text-faint); font-size: 13px; padding: 26px;
+    border: 1px dashed var(--border); border-radius: 13px; text-align: center; margin-top: 18px;
+  }
+  .error {
+    margin: 20px 28px 0; padding: 12px 15px; border-radius: 10px;
+    background: var(--rose-soft); color: var(--rose); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <defs>
+        <linearGradient id="sweepGrad" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stop-color="var(--indigo)" stop-opacity="0"/>
+          <stop offset="100%" stop-color="var(--indigo-2)"/>
+        </linearGradient>
+      </defs>
+      <path class="sweep" d="M16,16L16,4.5A11.5,11.5,0,0,1,25.96,10.25Z"/>
+      <circle cx="16" cy="16" r="12.6" fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+      <circle cx="16" cy="16" r="6.8" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".3"/>
+      <circle cx="16" cy="16" r="1.7" fill="currentColor" opacity=".55"/>
+      <circle class="blip" cx="20.6" cy="9.45" r="3.4"/>
+    </svg>
+    <span>PR Radar</span>
+    <em id="scope"></em>
+  </div>
+  <div class="counters" id="counters"></div>
+  <span class="stale" id="stale"></span>
+  <div class="spacer"></div>
+  <div class="controls">
+    <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>
+    <label class="toggle"><input type="checkbox" id="hideBots"> <span id="lblHideBots"></span></label>
+    <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>
+    <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>
+    <span id="stamp"></span>
+    <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
+    <button id="theme">☾</button>
+    <button id="refresh"></button>
+  </div>
+</header>
+<div id="error" class="error" hidden></div>
+<main>
+  <section class="col-mine">
+    <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
+    <div id="mine"></div>
+  </section>
+  <section class="col-review">
+    <h2 class="column-title"><span class="bar"></span><span id="titleReviews"></span></h2>
+    <div id="reviews"></div>
+  </section>
+</main>
+
+<script>
+const state = { data: null, lastActionCount: null, open: new Set(), timer: null, intervalMs: null };
+
+const el = id => document.getElementById(id);
+const store = {
+  get(key, fallback) {
+    const raw = localStorage.getItem('pr-radar:' + key);
+    return raw === null ? fallback : raw;
+  },
+  set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
+};
+
+const I18N = {
+  fr: {
+    agoUnits: ['s', 'min', 'h', 'j', 'sem'],
+    everyMinutes: '{n} min',
+    everySeconds: '{n} s',
+    opened: 'ouverte il y a {v}',
+    activeAgo: 'active il y a {v}',
+    openedTitle: 'ouverture de la PR — {date}',
+    ago: 'il y a {v}',
+    agoTitle: 'dernière activité réelle : commit, commentaire ou review',
+    stampTitle: 'dernier fetch — rafraîchissement automatique toutes les {every}',
+    themeTitle: 'Thème clair / sombre',
+    langTitle: 'Langue de l’interface',
+    refresh: 'Rafraîchir',
+    filterAction: 'à traiter',
+    filterBots: 'sans les bots',
+    filterDrafts: 'sans les drafts',
+    filterSound: 'son',
+    titleMine: 'Mes PRs',
+    titleReviews: 'PRs que je review',
+    counterMine: 'de mes PRs à traiter',
+    counterReviews_one: 'review à traiter',
+    counterReviews_many: 'reviews à traiter',
+    counterWaiting: 'en attente d’un fix',
+    stale_one: '{n} PR sans activité depuis {days} j, ignorée',
+    stale_many: '{n} PRs sans activité depuis {days} j, ignorées',
+    groupMineAction: 'À traiter de mon côté',
+    groupMineWaiting: 'J’ai répondu, la balle est chez les relecteurs',
+    groupReviewAction: 'À faire de mon côté',
+    groupReviewWaiting: 'J’attends un fix de l’auteur',
+    groupIdle: 'Rien à signaler',
+    emptyMine: 'Aucune PR ouverte de ton côté.',
+    emptyReviews: 'Aucune PR à reviewer.',
+    pillDraft: 'draft',
+    pillToFix: '{n} à traiter',
+    pillWaitingReply: '{n} en attente de réponse',
+    pillApproved: 'approuvée',
+    pillToReview: 'à reviewer',
+    pillAnswers_one: '{n} réponse pour moi',
+    pillAnswers_many: '{n} réponses pour moi',
+    pillAwaitingFix: '{n} en attente de fix',
+    pillIRequested: 'j’ai demandé des changements',
+    pillIApproved: 'j’ai approuvé',
+    pillPushed: 'commits depuis mes retours',
+    pillConflicts: 'conflits',
+    ciOk: 'CI ✓',
+    ciFail: 'CI en échec',
+    ciRunning: 'CI en cours',
+    files: '{n} fichiers',
+    outdated: 'obsolète',
+    conversation: 'conversation',
+    messages: '{n} messages',
+    lastWord: 'dernier mot : {who}, {ago}',
+    me: 'moi',
+    threads_one: '{n} thread ouvert',
+    threads_many: '{n} threads ouverts',
+    reasonChangesRequested: 'changes requested par {authors}',
+    reasonRecheck: 'nouveaux commits depuis mes retours, à re-vérifier',
+    error: 'Erreur : {message}',
+  },
+  en: {
+    agoUnits: ['s', 'min', 'h', 'd', 'w'],
+    everyMinutes: '{n} min',
+    everySeconds: '{n} s',
+    opened: 'opened {v} ago',
+    activeAgo: 'active {v} ago',
+    openedTitle: 'PR opened on {date}',
+    ago: '{v} ago',
+    agoTitle: 'real last activity: a commit, a comment or a review',
+    stampTitle: 'last fetch — auto-refresh every {every}',
+    themeTitle: 'Light / dark theme',
+    langTitle: 'Interface language',
+    refresh: 'Refresh',
+    filterAction: 'needs work',
+    filterBots: 'hide bots',
+    filterDrafts: 'hide drafts',
+    filterSound: 'sound',
+    titleMine: 'My PRs',
+    titleReviews: 'PRs I review',
+    counterMine: 'of my PRs to fix',
+    counterReviews_one: 'review to handle',
+    counterReviews_many: 'reviews to handle',
+    counterWaiting: 'awaiting a fix',
+    stale_one: '{n} PR inactive for over {days} days, ignored',
+    stale_many: '{n} PRs inactive for over {days} days, ignored',
+    groupMineAction: 'On my plate',
+    groupMineWaiting: 'I replied — waiting on the reviewers',
+    groupReviewAction: 'On my plate',
+    groupReviewWaiting: 'Waiting on the author',
+    groupIdle: 'Nothing to report',
+    emptyMine: 'No open PRs of yours.',
+    emptyReviews: 'No PRs to review.',
+    pillDraft: 'draft',
+    pillToFix: '{n} to address',
+    pillWaitingReply: '{n} awaiting a reply',
+    pillApproved: 'approved',
+    pillToReview: 'to review',
+    pillAnswers_one: '{n} reply for me',
+    pillAnswers_many: '{n} replies for me',
+    pillAwaitingFix: '{n} awaiting a fix',
+    pillIRequested: 'I requested changes',
+    pillIApproved: 'I approved',
+    pillPushed: 'commits since my feedback',
+    pillConflicts: 'conflicts',
+    ciOk: 'CI ✓',
+    ciFail: 'CI failing',
+    ciRunning: 'CI running',
+    files: '{n} files',
+    outdated: 'outdated',
+    conversation: 'conversation',
+    messages: '{n} messages',
+    lastWord: 'last word: {who}, {ago}',
+    me: 'me',
+    threads_one: '{n} open thread',
+    threads_many: '{n} open threads',
+    reasonChangesRequested: 'changes requested by {authors}',
+    reasonRecheck: 'new commits since my feedback — needs a re-check',
+    error: 'Error: {message}',
+  },
+};
+
+const PLURAL = { fr: n => (n > 1 ? 'many' : 'one'), en: n => (n === 1 ? 'one' : 'many') };
+const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
+
+let lang = I18N[store.get('lang', 'fr')] ? store.get('lang', 'fr') : 'fr';
+
+const t = (key, vars) =>
+  String(I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars?.[name] ?? '');
+
+const tn = (key, n, vars) => t(`${key}_${PLURAL[lang](n)}`, { n, ...vars });
+
+for (const key of ['onlyAction', 'hideBots', 'hideDrafts', 'sound']) {
+  el(key).checked = store.get(key, String(key === 'sound')) === 'true';
+  el(key).addEventListener('change', () => {
+    store.set(key, el(key).checked);
+    render();
+  });
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  el('theme').textContent = theme === 'dark' ? '☀' : '☾';
+}
+applyTheme(store.get('theme', 'light'));
+el('theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  store.set('theme', next);
+  applyTheme(next);
+});
+
+function applyLang(next) {
+  lang = next;
+  store.set('lang', next);
+  document.documentElement.lang = next;
+
+  for (const span of el('lang').querySelectorAll('span')) {
+    span.classList.toggle('on', span.dataset.lang === next);
+  }
+  el('lang').title = t('langTitle');
+  el('theme').title = t('themeTitle');
+  applyStampTitle();
+  el('refresh').textContent = t('refresh');
+  el('lblOnlyAction').textContent = t('filterAction');
+  el('lblHideBots').textContent = t('filterBots');
+  el('lblHideDrafts').textContent = t('filterDrafts');
+  el('lblSound').textContent = t('filterSound');
+  el('titleMine').textContent = t('titleMine');
+  el('titleReviews').textContent = t('titleReviews');
+  render();
+}
+el('lang').addEventListener('click', () => applyLang(lang === 'fr' ? 'en' : 'fr'));
+
+function applyStampTitle() {
+  const seconds = state.data?.refreshSeconds;
+  const every = !seconds
+    ? '—'
+    : seconds >= 120
+      ? t('everyMinutes', { n: Math.round(seconds / 60) })
+      : t('everySeconds', { n: seconds });
+  el('stamp').title = t('stampTitle', { every });
+}
+
+// L'intervalle vient du serveur (PR_RADAR_REFRESH_SECONDS) : on le (re)cale au vol.
+function scheduleRefresh(seconds) {
+  const intervalMs = Math.max(15, seconds || 300) * 1000;
+  if (state.intervalMs === intervalMs) return;
+  state.intervalMs = intervalMs;
+  clearInterval(state.timer);
+  state.timer = setInterval(() => load(false), intervalMs);
+}
+
+function beep() {
+  if (!el('sound').checked) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const now = ctx.currentTime;
+  [660, 880].forEach((freq, index) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now + index * 0.15);
+    gain.gain.linearRampToValueAtTime(0.1, now + index * 0.15 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.15 + 0.14);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now + index * 0.15);
+    osc.stop(now + index * 0.15 + 0.15);
+  });
+}
+
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+
+function ago(iso) {
+  if (!iso) return '';
+  const units = I18N[lang].agoUnits;
+  const steps = [60, 60, 24, 7, Infinity];
+  let value = (Date.now() - new Date(iso)) / 1000;
+  for (const [index, step] of steps.entries()) {
+    if (value < step) return `${Math.max(1, Math.round(value))} ${units[index]}`;
+    value /= step;
+  }
+  return '';
+}
+
+const since = iso => t('ago', { v: ago(iso) });
+
+const onDate = iso => new Date(iso)
+  .toLocaleDateString(LOCALE[lang], { day: 'numeric', month: 'long', year: 'numeric' });
+
+function visibleThreads(threads) {
+  return el('hideBots').checked ? threads.filter(thread => !thread.fromBot) : threads;
+}
+
+const pill = (kind, label) => `<span class="pill${kind ? ' ' + kind : ''}">${label}</span>`;
+
+const avatar = pr => pr.authorAvatar
+  ? `<img class="avatar" src="${escapeHtml(pr.authorAvatar)}&s=48" alt="" loading="lazy">`
+  : '';
+
+function ciPill(pr) {
+  const map = {
+    SUCCESS: ['good', 'ciOk'],
+    FAILURE: ['alert', 'ciFail'],
+    ERROR: ['alert', 'ciFail'],
+    PENDING: ['', 'ciRunning'],
+    EXPECTED: ['', 'ciRunning'],
+  };
+  const entry = map[pr.ciState];
+  return entry ? pill(entry[0], t(entry[1])) : '';
+}
+
+function threadHtml(thread) {
+  const file = thread.path ? thread.path.split('/').pop() : null;
+  const label = file
+    ? escapeHtml(file) + (thread.line ? ':' + thread.line : '')
+    : t('conversation');
+  return `
+    <div class="thread">
+      <div class="thread-head">
+        <span class="thread-author">${escapeHtml(thread.author)}</span>
+        <a class="thread-path" href="${escapeHtml(thread.url)}" target="_blank" rel="noreferrer"
+           title="${escapeHtml(thread.path || '')}">${label}</a>
+        ${thread.isOutdated ? pill('', t('outdated')) : ''}
+        ${thread.commentCount > 1 ? `<span>${t('messages', { n: thread.commentCount })}</span>` : ''}
+        <span>${t('lastWord', {
+          who: escapeHtml(thread.lastByMe ? t('me') : thread.lastAuthor),
+          ago: since(thread.lastAt),
+        })}</span>
+      </div>
+      <div class="thread-body">${escapeHtml(thread.excerpt)}</div>
+    </div>`;
+}
+
+function cardHtml(pr, threadsToShow, extraPills) {
+  const open = state.open.has(pr.id) ? ' open' : '';
+  const count = threadsToShow.length;
+
+  return `
+    <div class="card ${pr.bucket}${open}" data-id="${pr.id}">
+      <div class="card-top">
+        <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
+        <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
+        <span class="age" title="${t('openedTitle', { date: onDate(pr.createdAt) })}">${t('opened', { v: ago(pr.createdAt) })}</span>
+      </div>
+      <div class="meta">
+        ${pr.isDraft ? pill('', t('pillDraft')) : ''}
+        ${extraPills.join('')}
+        ${ciPill(pr)}
+        ${pr.side === 'mine' && pr.mergeable === 'CONFLICTING' ? pill('alert', t('pillConflicts')) : ''}
+        <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
+        <span class="sep">|</span>
+        <span title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
+        ${pr.side === 'review' ? `<span class="sep">|</span><span class="who">${avatar(pr)}${escapeHtml(pr.author)}</span>` : ''}
+      </div>
+      ${pr.displayReasons.length
+        ? `<div class="reasons">${pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}</div>`).join('')}</div>`
+        : ''}
+      ${count ? `<span class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</span>` : ''}
+      ${count ? `<div class="threads">${threadsToShow.map(threadHtml).join('')}</div>` : ''}
+    </div>`;
+}
+
+function resolveMine(pr) {
+  const toFix = visibleThreads(pr.toFix);
+  const waiting = visibleThreads(pr.waitingOnThem);
+  // Les remarques sont recomptées ici : le filtre « sans les bots » peut vider la liste.
+  const kept = pr.reasons.filter(r => r.kind !== 'threads');
+  const needsAction = kept.length > 0 || toFix.length > 0;
+
+  // Les pills disent déjà le nombre de remarques, la CI et les conflits : seul le nom
+  // du relecteur qui a demandé des changements apporte une information absente ailleurs.
+  const displayReasons = kept
+    .filter(r => r.kind === 'changes-requested')
+    .map(r => t('reasonChangesRequested', { authors: r.authors.join(', ') }));
+
+  return {
+    ...pr,
+    toFix,
+    waiting,
+    displayReasons,
+    needsAction,
+    bucket: needsAction ? 'action' : waiting.length ? 'waiting' : 'idle',
+  };
+}
+
+function resolveReview(pr) {
+  const answered = visibleThreads(pr.answeredToMe);
+  const awaiting = visibleThreads(pr.awaitingAuthor);
+  const awaitingFix = awaiting.length > 0 || pr.myLatestVerdict === 'CHANGES_REQUESTED';
+  const toRecheck = pr.pushedSinceMyFeedback && awaitingFix;
+  const toReview = pr.reasons.some(r => r.kind === 'to-review');
+  const needsAction = toReview || answered.length > 0 || toRecheck;
+
+  return {
+    ...pr,
+    answered,
+    awaiting,
+    displayReasons: toRecheck ? [t('reasonRecheck')] : [],
+    needsAction,
+    awaitingFix,
+    bucket: needsAction ? 'action' : awaitingFix ? 'waiting' : 'idle',
+  };
+}
+
+function mineCard(pr) {
+  const pills = [];
+  if (pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
+  if (pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
+  if (pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
+  return cardHtml(pr, [...pr.toFix, ...pr.waiting], pills);
+}
+
+function reviewCard(pr) {
+  const pills = [];
+  if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
+  if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
+  if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
+  if (pr.myLatestVerdict === 'CHANGES_REQUESTED') pills.push(pill('pending', t('pillIRequested')));
+  if (pr.myLatestVerdict === 'APPROVED') pills.push(pill('good', t('pillIApproved')));
+  // Quand la carte porte déjà la ligne « nouveaux commits… », le pill ne fait que répéter.
+  if (pr.pushedSinceMyFeedback && !pr.displayReasons.length) pills.push(pill('', t('pillPushed')));
+  return cardHtml(pr, [...pr.answered, ...pr.awaiting], pills);
+}
+
+function filterList(list) {
+  let filtered = list;
+  if (el('hideDrafts').checked) filtered = filtered.filter(pr => !pr.isDraft);
+  if (el('onlyAction').checked) filtered = filtered.filter(pr => pr.needsAction);
+  return filtered;
+}
+
+function renderColumn(target, list, cardFn, groupLabels, emptyLabel) {
+  const filtered = filterList(list);
+  if (!filtered.length) {
+    target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
+    return;
+  }
+  target.innerHTML = ['action', 'waiting', 'idle']
+    .map(bucket => {
+      const group = filtered.filter(pr => pr.bucket === bucket);
+      if (!group.length) return '';
+      return `<div class="group-label ${bucket}"><span class="gdot"></span>${groupLabels[bucket]}`
+        + `<span class="gcount">${group.length}</span></div>`
+        + group.map(cardFn).join('');
+    })
+    .join('');
+}
+
+const counter = (kind, value, label) =>
+  `<span class="counter ${kind}${value ? '' : ' zero'}"><span class="dot"></span><b>${value}</b> ${label}</span>`;
+
+function render() {
+  const data = state.data;
+  if (!data) return;
+
+  el('scope').textContent = `${data.org} · @${data.me}`;
+
+  const mine = data.mine.map(resolveMine);
+  const reviews = data.reviews.map(resolveReview);
+  const mineAction = filterList(mine).filter(pr => pr.needsAction).length;
+  const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
+  const waitingFix = filterList(reviews).filter(pr => pr.bucket === 'waiting').length;
+  const total = mineAction + reviewAction;
+
+  el('counters').innerHTML = [
+    counter('todo', mineAction, t('counterMine')),
+    counter('todo', reviewAction, tn('counterReviews', reviewAction)),
+    counter('pending', waitingFix, t('counterWaiting')),
+  ].join('');
+
+  const hidden = data.counts.hiddenStale;
+  el('stale').textContent = hidden ? tn('stale', hidden, { days: data.maxAgeDays }) : '';
+
+  document.title = total ? `(${total}) PR Radar` : 'PR Radar';
+  applyStampTitle();
+  el('stamp').textContent = new Date(data.fetchedAt)
+    .toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+
+  renderColumn(el('mine'), mine, mineCard, {
+    action: t('groupMineAction'),
+    waiting: t('groupMineWaiting'),
+    idle: t('groupIdle'),
+  }, t('emptyMine'));
+
+  renderColumn(el('reviews'), reviews, reviewCard, {
+    action: t('groupReviewAction'),
+    waiting: t('groupReviewWaiting'),
+    idle: t('groupIdle'),
+  }, t('emptyReviews'));
+
+  if (state.lastActionCount !== null && total > state.lastActionCount) beep();
+  state.lastActionCount = total;
+}
+
+async function load(force) {
+  try {
+    const response = await fetch('/api/prs' + (force ? '?force=1' : ''));
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || response.statusText);
+    el('error').hidden = true;
+    state.data = payload;
+    scheduleRefresh(payload.refreshSeconds);
+    render();
+  } catch (error) {
+    el('error').hidden = false;
+    el('error').textContent = t('error', { message: error.message });
+  }
+}
+
+document.addEventListener('click', event => {
+  const expander = event.target.closest('.expander');
+  if (!expander) return;
+  const { id } = expander.closest('.card').dataset;
+  if (state.open.has(id)) state.open.delete(id);
+  else state.open.add(id);
+  render();
+});
+
+el('refresh').addEventListener('click', () => load(true));
+applyLang(lang);
+load(false);
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Lance PR Radar et ouvre le navigateur.
+set -e
+cd "$(dirname "$0")"
+PORT="${PORT:-4321}"
+if curl -sf -o /dev/null "http://localhost:$PORT/api/prs"; then
+  echo "PR Radar tourne déjà sur le port $PORT."
+else
+  node server.js &
+  until curl -sf -o /dev/null "http://localhost:$PORT/"; do sleep 0.3; done
+fi
+open "http://localhost:$PORT/"
+wait
