@@ -1,139 +1,137 @@
 # PR Radar
 
-Dashboard local de tes PRs GitHub, en deux colonnes :
+A local dashboard for your GitHub pull requests, in two columns:
 
-- **Mes PRs** — celles que tu as ouvertes, avec ce qui te reste à faire dessus
-  (remarques non traitées, changes requested, CI rouge, conflits).
-- **PRs que je review** — celles où tu es relecteur, en distinguant *à toi de jouer*
-  de *tu attends un fix de l'auteur*.
+- **My PRs** — the ones you opened, with whatever is left for you to do on them
+  (unaddressed comments, changes requested, red CI, merge conflicts).
+- **PRs I review** — the ones you review, telling apart *your move* from
+  *waiting on the author to push a fix*.
 
-Chaque colonne est groupée par état :
+Each column is grouped by state:
 
-| Groupe | Mes PRs | Mes reviews |
+| Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `À fixer / À faire de mon côté` | remarques non traitées, changes requested, CI rouge, conflits | review demandée non faite, réponses à tes remarques, nouveaux commits depuis tes retours |
-| `En attente` | tu as répondu, la balle est chez les relecteurs | tes threads ouverts / ton changes requested attendent un fix |
-| `Rien à signaler` | le reste | le reste |
+| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | review requested and not done, replies to your comments, new commits since your feedback |
+| `Waiting` | you replied — the ball is with the reviewers | your open threads / your changes-requested await a fix |
+| `Nothing to report` | everything else | everything else |
 
-## Lancer
+## Running it
 
 ```bash
-cd ~/Sites/pr-radar
-yarn start          # ou: node server.js
-open http://localhost:4321
+cd pr-radar
+./pr-radar          # starts the server and opens the browser
+# or: yarn start / node server.js
 ```
 
-Aucune dépendance à installer. L'authentification réutilise ta session `gh`
-(`gh auth status` doit être vert). Un `GITHUB_TOKEN` dans l'environnement prend
-le pas sur `gh` si tu préfères.
+No dependencies to install. Authentication reuses your `gh` session
+(`gh auth status` must be green). A `GITHUB_TOKEN` in the environment takes
+precedence over `gh` if you prefer.
 
-## Config
+## Configuration
 
-Tout se règle dans le fichier **`.env`** à la racine (`.env.example` en donne une copie
-commentée). Une variable déjà exportée dans ton shell garde la priorité sur le fichier.
+Everything lives in a **`.env`** file at the root (`.env.example` is a commented
+copy). A variable already exported in your shell wins over the file.
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `4321` | Port du serveur |
-| `PR_RADAR_ORG` | `ForestAdmin` | Org scannée |
-| `PR_RADAR_MAX_AGE_DAYS` | `60` | Au-delà, la PR est ignorée |
-| `PR_RADAR_REFRESH_SECONDS` | `300` | Intervalle du rafraîchissement automatique |
-| `GITHUB_TOKEN` | — | Court-circuite `gh` |
+| `PR_RADAR_ORG` | — | GitHub org to scan (**required**) |
+| `PORT` | `4321` | Server port |
+| `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
+| `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
+| `GITHUB_TOKEN` | — | Bypasses `gh` |
 
-Le serveur cache sa réponse pendant **la moitié** de `PR_RADAR_REFRESH_SECONDS` : sinon
-un poll tomberait sur un cache tout juste valide et servirait des données presque deux
-fois plus vieilles que l'intervalle annoncé. Le bouton **Rafraîchir** contourne le cache.
+The server caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`.
+Otherwise a poll would land on a barely-valid cache and serve data almost twice
+as old as the advertised interval. The **Refresh** button bypasses the cache.
 
-## PRs ignorées
+## Where your feedback is looked for
 
-Une PR sans activité depuis plus de `PR_RADAR_MAX_AGE_DAYS` jours est écartée.
+Review feedback does not necessarily live in an inline thread. Three channels are
+covered, and all three feed the same classification:
 
-Le critère n'est **ni** la date de création **ni** `updated_at`, mais la dernière
-activité réelle : dernier commit, dernier commentaire humain, dernière review. En
-clair, `max(createdAt, dernier commit, derniers commentaires/reviews hors bots)`.
+1. **inline threads** — comments on a line of code;
+2. **submitted reviews** — `approve` / `request changes`, review body included;
+3. the PR's **main conversation**, folded into a synthetic thread.
 
-`updated_at` de GitHub ne convient pas : il bouge pour un label posé, un `mergeable`
-recalculé ou une CI relancée. `agent-ruby#259` n'avait aucun commit ni commentaire
-depuis 204 jours mais s'y déclarait « modifiée il y a 2 jours ». Les commentaires de
-bots sont exclus pour la même raison : un qlty qui repasse ne réveille pas une PR.
+Discovery uses four searches: `author:@me`, `reviewed-by:@me`,
+`review-requested:@me` and `commenter:@me`. That last one is essential:
+`reviewed-by:` only matches a **formally submitted** review, so a PR where you
+merely wrote in the conversation never shows up there.
 
-Ce même horodatage sert à afficher l'âge de la carte et à ordonner les colonnes.
+## Ignored PRs
 
-Le pré-tri sur `updated_at` est conservé mais volontairement large : il ne sert qu'à
-éviter de charger les détails des PRs mortes à coup sûr. Le nombre d'écartées reste
-affiché en tête pour que le filtre ne soit jamais silencieux.
+A PR with no real activity for more than `PR_RADAR_MAX_AGE_DAYS` days is dropped.
 
-```bash
-PR_RADAR_MAX_AGE_DAYS=180 node server.js   # remonter la fenêtre à 6 mois
-```
+The criterion is **neither** the creation date **nor** `updated_at`, but the last
+real activity: last commit, last human comment, last review. In short,
+`max(createdAt, last commit, last non-bot comments and reviews)`.
+
+GitHub's `updated_at` will not do: it moves when a label is added, when
+`mergeable` is recomputed, or when CI is re-run. A PR with no commit and no
+comment for 204 days still claimed it had been "updated 2 days ago". Bot comments
+are excluded for the same reason: a linter passing by does not wake a PR up.
+
+That same timestamp drives the age shown on the card and the column ordering.
+
+The coarse pre-filter on `updated_at` is kept, but deliberately loose: it only
+avoids fetching the details of PRs that are dead for certain. The number of
+dropped PRs stays visible in the header so the filter is never silent.
 
 ## Notifications
 
-- Le titre de l'onglet affiche le nombre d'actions requises : `(4) PR Radar`.
-- Un bip sonne quand ce nombre augmente (case **son**, mémorisée).
-- Rafraîchissement automatique piloté par `PR_RADAR_REFRESH_SECONDS` ; l'heure du
-  dernier fetch est dans le header, l'intervalle exact au survol.
+- The tab title shows the number of pending actions: `(4) PR Radar`.
+- A chime plays when that number goes up (**sound** checkbox, remembered).
+- Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
+  in the header, the exact interval on hover.
 
-## Filtres et affichage
+## Filters and display
 
-- **à traiter** — ne garde que les cartes qui demandent quelque chose.
-- **sans les bots** — ignore les threads de qlty / macroscope / dependabot & co.
-  Le décompte, le classement et le groupe des cartes sont recalculés en conséquence :
-  une PR signalée uniquement par un bot repasse dans « rien à signaler ».
-- **sans les drafts**.
-- `☾` / `☀` bascule clair / sombre (clair par défaut, choix mémorisé).
-- `FR` / `EN` bascule la langue de l'interface (français par défaut, choix mémorisé).
-  Les libellés d'état sont rendus côté navigateur : le serveur n'émet que des `kind`,
-  jamais de phrase, pour qu'aucun texte n'échappe à la traduction.
+- **needs work** — keep only the cards that ask something of you.
+- **hide bots** — ignore threads opened by review bots. The counts, the ordering
+  and each card's group are recomputed accordingly: a PR flagged only by a bot
+  falls back to "nothing to report".
+- **hide drafts**.
+- `☾` / `☀` toggles light / dark (light by default, remembered).
+- `FR` / `EN` toggles the interface language (French by default, remembered).
+  State labels are rendered in the browser: the server only emits `kind` values,
+  never a sentence, so no text can escape translation.
 
-Clique sur `▸ N threads ouverts` pour lire les remarques sans quitter la page.
+Click `▸ N open threads` to read the comments without leaving the page.
 
-Chaque carte porte deux âges, libellés pour ne pas être confondus : **« ouverte il y a
-X »** en haut à droite (date exacte au survol) et **« active il y a Y »** dans la ligne
-d'état, qui est la dernière activité réelle et sert aussi de clé de tri.
+Each card carries two ages, both labelled so they cannot be confused: **"opened
+X ago"** in the top right (exact date on hover) and **"active Y ago"** in the
+state line, which is the real last activity and doubles as the sort key.
 
-## Lecture des couleurs
+## Reading the colours
 
-La couleur encode la priorité, pas la gravité :
+Colour encodes priority, not severity:
 
-- **indigo → violet** — à toi de jouer (remarques à traiter, review demandée, réponses
-  pour toi). Rail de carte, fond dégradé, en-tête de groupe et compteur.
-- **ambre** — tu attends quelqu'un (tes threads ouverts, ton changes requested).
-- **émeraude** — approuvé, CI verte.
-- **brique** — réellement cassé, et seulement ça : CI en échec, conflits de merge.
-- **cyan** — repère de la colonne review et emplacement d'un thread (`fichier.rb:42`,
-  `conversation`). Jamais un état : c'est un accent de navigation.
+- **indigo → violet** — your move (comments to address, review requested, replies
+  for you). Card rail, gradient background, group header and counter.
+- **amber** — you are waiting on someone (your open threads, your changes
+  requested).
+- **emerald** — approved, green CI.
+- **brick** — actually broken, and only that: failing CI, merge conflicts.
+- **cyan** — the review column's marker and a thread's location (`file.rb:42`,
+  `conversation`). Never a state: it is a navigation accent.
 
-Les deux colonnes portent leur propre teinte de titre (indigo à gauche, cyan à droite)
-pour se repérer d'un coup d'œil quand elles défilent.
+Each column carries its own title hue (indigo on the left, cyan on the right) so
+you can tell them apart at a glance while scrolling.
 
-Les pills portent l'état ; une ligne de raison n'apparaît que pour ce qu'aucun pill ne
-dit déjà (le nom du relecteur qui a demandé des changements, les nouveaux commits à
-re-vérifier).
+Pills carry the state; a reason line only appears for what no pill already says
+(the name of the reviewer who requested changes, new commits to re-check).
 
-## Où sont cherchés tes retours
+## Implementation notes
 
-Un retour de review ne vit pas forcément dans un thread inline. Trois canaux sont
-couverts, et tous alimentent le même classement :
-
-1. les **threads inline** (commentaires sur une ligne de code) ;
-2. les **reviews soumises** (`approve` / `request changes`, corps de review inclus) ;
-3. la **conversation principale** de la PR, repliée en un thread synthétique.
-
-La découverte utilise quatre recherches : `author:@me`, `reviewed-by:@me`,
-`review-requested:@me` et `commenter:@me`. Cette dernière est indispensable :
-`reviewed-by:` ne matche qu'une review **formellement soumise**, donc une PR où tu as
-seulement écrit dans la conversation n'y apparaît jamais.
-
-## Notes d'implémentation
-
-- La liste des PRs passe par la **search REST** : la search GraphQL time out
-  (HTTP 499) sur une org de la taille de ForestAdmin. Les `node_id` renvoyés sont
-  directement les ids GraphQL des `PullRequest`, ensuite chargés par lots de 6.
-- Le body GraphQL est écrit dans un fichier temporaire : `gh api --input -` ne
-  reçoit pas correctement un body piped depuis Node avec `gh <= 2.7`.
-- Les reviews demandées **via une équipe** n'apparaissent pas : la search GitHub
-  exige `team-review-requested:org/team`, non couvert ici.
-- Le thread synthétique de conversation ignore les bots, mais ne sait pas distinguer
-  un vrai retour d'un « LGTM 🎉 » : sur tes propres PRs, un dernier commentaire
-  élogieux compte comme « à traiter ».
+- The PR list goes through the **REST search**: the GraphQL search times out
+  (HTTP 499) on a large org. The `node_id` it returns is directly the GraphQL id
+  of the `PullRequest`, then loaded in batches of 6.
+- The GraphQL body is written to a temporary file: `gh api --input -` does not
+  correctly receive a body piped from Node with `gh <= 2.7` — the request goes out
+  malformed and GitHub cuts it off. From a shell pipe it works, which makes the
+  bug misleading. (`gh auth token` also does not exist before 2.16.)
+- Reviews requested **through a team** do not show up: GitHub search requires
+  `team-review-requested:org/team`, which is not covered here.
+- The synthetic conversation thread excludes bots, but cannot tell a real piece of
+  feedback from an "LGTM 🎉": on your own PRs, a trailing congratulatory comment
+  counts as something to address.

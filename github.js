@@ -102,7 +102,7 @@ async function graphql(query, variables) {
   return payload.data;
 }
 
-// La search GraphQL time out (HTTP 499) sur une org de la taille de ForestAdmin ;
+// La search GraphQL time out (HTTP 499) sur une org d'une certaine taille ;
 // la search REST, elle, répond, et son node_id est directement l'id GraphQL du PullRequest.
 async function searchPullRequests(query) {
   const endpoint = `/search/issues?q=${encodeURIComponent(query)}&per_page=100&sort=updated&order=desc`;

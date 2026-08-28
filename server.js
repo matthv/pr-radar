@@ -14,7 +14,7 @@ try {
 const { fetchDashboard } = require('./github');
 
 const PORT = Number(process.env.PORT || 4321);
-const ORG = process.env.PR_RADAR_ORG || 'ForestAdmin';
+const ORG = process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 // Moitié de l'intervalle : sinon un poll tombe sur un cache tout juste valide et
@@ -69,6 +69,11 @@ async function serveStatic(res, urlPath) {
   }
 }
 
+if (!ORG) {
+  console.error('PR_RADAR_ORG is missing: set it in .env (see .env.example).');
+  process.exit(1);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -87,7 +92,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG} · PRs actives depuis ${MAX_AGE_DAYS} j · refresh ${REFRESH_SECONDS} s`,
+      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · refresh ${REFRESH_SECONDS}s`,
   );
-  dashboard(true).catch(error => console.error('Premier fetch en échec :', error.message));
+  dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });
