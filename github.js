@@ -9,6 +9,7 @@ const execFile = promisify(require('node:child_process').execFile);
 
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
 const PR_BATCH_SIZE = 6;
+const ID_BATCH_SIZE = 25;
 const PR_CONCURRENCY = 4;
 
 const BOT_LOGINS = new Set([
@@ -36,6 +37,7 @@ query($ids: [ID!]!) {
       number
       title
       url
+      state
       isDraft
       createdAt
       updatedAt
@@ -111,6 +113,70 @@ async function searchPullRequests(query) {
   return (payload.items || [])
     .filter(item => item.node_id)
     .map(item => ({ id: item.node_id, createdAt: item.created_at, updatedAt: item.updated_at }));
+}
+
+const EVENT_TYPES = new Set([
+  'IssueCommentEvent',
+  'PullRequestReviewEvent',
+  'PullRequestReviewCommentEvent',
+  'PullRequestEvent',
+]);
+
+const SAFE_REPO = /^[A-Za-z0-9._-]+$/;
+
+// L'index de recherche GitHub oublie des PRs : un commentaire posté depuis trois jours
+// peut rester invisible à `commenter:` et à `involves:`. Le flux d'événements du compte
+// ne passe pas par cet index et rattrape ces trous — au prix d'une fenêtre courte
+// (300 événements, 90 jours max).
+async function recentlyTouchedPullRequests(org, me) {
+  const pages = await Promise.all(
+    [1, 2, 3].map(page => gh(['api', `/users/${me}/events?per_page=100&page=${page}`])),
+  );
+
+  const refs = new Map();
+
+  for (const page of pages) {
+    const events = JSON.parse(page);
+    if (!Array.isArray(events)) continue;
+
+    for (const event of events) {
+      if (!EVENT_TYPES.has(event.type)) continue;
+      // Les IssueCommentEvent couvrent aussi les vraies issues.
+      if (event.type === 'IssueCommentEvent' && !event.payload?.issue?.pull_request) continue;
+
+      const number = event.payload?.issue?.number ?? event.payload?.pull_request?.number;
+      const [owner, name] = (event.repo?.name || '').split('/');
+      if (!number || owner !== org || !SAFE_REPO.test(name || '')) continue;
+
+      refs.set(`${owner}/${name}#${number}`, { owner, name, number });
+    }
+  }
+
+  return [...refs.values()];
+}
+
+async function resolvePullRequestIds(refs) {
+  const batches = [];
+  for (let i = 0; i < refs.length; i += ID_BATCH_SIZE) {
+    batches.push(refs.slice(i, i + ID_BATCH_SIZE));
+  }
+
+  const responses = await mapWithConcurrency(batches, PR_CONCURRENCY, batch => {
+    const query = `query { ${batch
+      .map(
+        (ref, index) =>
+          `p${index}: repository(owner: "${ref.owner}", name: "${ref.name}") ` +
+          `{ pullRequest(number: ${ref.number}) { id } }`,
+      )
+      .join(' ')} }`;
+    return graphql(query, {});
+  });
+
+  return responses.flatMap(response =>
+    Object.values(response)
+      .map(entry => entry?.pullRequest?.id)
+      .filter(Boolean),
+  );
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -245,6 +311,7 @@ function baseShape(pr, me) {
     title: pr.title,
     url: pr.url,
     repo: pr.repository.nameWithOwner,
+    state: pr.state,
     isDraft: pr.isDraft,
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,
@@ -374,12 +441,14 @@ async function fetchDashboard({ org, maxAgeDays }) {
   const scope = `org:${org} is:pr is:open`;
   // `reviewed-by:` ne matche qu'une review formellement soumise : une PR où l'on a
   // seulement commenté n'y apparaît pas. `commenter:` couvre ce cas.
-  const [me, mineFound, reviewedFound, requestedFound, commentedFound] = await Promise.all([
-    gh(['api', '/user', '--jq', '.login']).then(s => s.trim()),
+  const me = (await gh(['api', '/user', '--jq', '.login'])).trim();
+
+  const [mineFound, reviewedFound, requestedFound, commentedFound, touchedRefs] = await Promise.all([
     searchPullRequests(`${scope} author:@me`),
     searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
     searchPullRequests(`${scope} review-requested:@me -author:@me`),
     searchPullRequests(`${scope} commenter:@me -author:@me`),
+    recentlyTouchedPullRequests(org, me),
   ]);
 
   const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
@@ -389,20 +458,33 @@ async function fetchDashboard({ org, maxAgeDays }) {
   // ensuite sur `lastActivityAt`, qui demande les détails.
   const maybeFresh = item => new Date(item.updatedAt).getTime() >= cutoff;
   const found = [...mineFound, ...reviewedFound, ...requestedFound, ...commentedFound];
-  const seen = new Set(found.map(item => item.id));
   const stale = new Set(found.filter(item => !maybeFresh(item)).map(item => item.id));
 
   const ids = items => new Set(items.filter(maybeFresh).map(item => item.id));
   const mineSet = ids(mineFound);
   const requestedSet = ids(requestedFound);
   const reviewSet = new Set([...ids(reviewedFound), ...ids(commentedFound), ...requestedSet]);
-  const byId = await fetchPullRequests([...new Set([...mineSet, ...reviewSet])]);
+
+  // Les PRs venues du flux d'événements n'ont pas traversé la search : ni leur état ni
+  // leur auteur ne sont garantis. On les charge, puis on répartit sur l'auteur réel.
+  const touchedIds = await resolvePullRequestIds(touchedRefs);
+  const known = new Set([...mineSet, ...reviewSet]);
+  const extraIds = touchedIds.filter(id => !known.has(id));
+
+  const byId = await fetchPullRequests([...known, ...extraIds]);
 
   const shapes = new Map();
   for (const [id, node] of byId) {
     const shaped = baseShape(node, me);
+    if (shaped.state !== 'OPEN') continue;
     if (new Date(shaped.lastActivityAt).getTime() >= cutoff) shapes.set(id, shaped);
     else stale.add(id);
+  }
+
+  for (const id of extraIds) {
+    const shaped = shapes.get(id);
+    if (!shaped) continue;
+    (shaped.author === me ? mineSet : reviewSet).add(id);
   }
 
   const mine = [...mineSet]
@@ -426,7 +508,9 @@ async function fetchDashboard({ org, maxAgeDays }) {
     reviews,
     counts: {
       hiddenStale: stale.size,
-      seenTotal: seen.size,
+      // PRs réellement prises en compte : affichées + écartées par la fenêtre d'âge.
+      // Les PRs mergées venues du flux d'événements n'en font pas partie.
+      seenTotal: shapes.size + stale.size,
       mineTotal: mine.length,
       mineAction: mine.filter(p => p.needsAction).length,
       reviewsTotal: reviews.length,

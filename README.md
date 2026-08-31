@@ -53,10 +53,21 @@ covered, and all three feed the same classification:
 2. **submitted reviews** — `approve` / `request changes`, review body included;
 3. the PR's **main conversation**, folded into a synthetic thread.
 
-Discovery uses four searches: `author:@me`, `reviewed-by:@me`,
-`review-requested:@me` and `commenter:@me`. That last one is essential:
-`reviewed-by:` only matches a **formally submitted** review, so a PR where you
-merely wrote in the conversation never shows up there.
+Discovery uses four searches — `author:@me`, `reviewed-by:@me`,
+`review-requested:@me`, `commenter:@me` — plus the account's **event feed**.
+
+`commenter:` is essential because `reviewed-by:` only matches a **formally
+submitted** review, so a PR where you merely wrote in the conversation never shows
+up there.
+
+The event feed is there because **GitHub's search index is not reliable**: an
+issue comment three days old was observed missing from both `commenter:` and
+`involves:` for an open PR, while `repo:… <number>` found the PR fine.
+`/users/{me}/events` does not go through that index, so it plugs those holes.
+Its window is short by design (300 events, 90 days), and the PRs it yields have
+not been through a search filter — so their state and author are checked after
+the details are fetched: anything not `OPEN` is dropped, and the rest is split
+between the two columns on the real author.
 
 ## Ignored PRs
 
