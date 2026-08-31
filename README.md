@@ -104,10 +104,19 @@ dropped PRs stays visible in the header so the filter is never silent.
   falls back to "nothing to report".
 - **hide drafts**.
 - `☾` / `☀` toggles light / dark (light by default, remembered).
-- A **gitdeck** link in the header opens the local web git client. It points at
-  `PR_RADAR_GITDECK_URL`; leave that empty and the link disappears. It is a single
-  global link rather than one per card, because gitdeck keeps the selected repo in
-  internal state rather than in the URL, so there is nothing to deep-link to.
+- A **gitdeck** button in the header opens the local web git client, carrying
+  gitdeck's own branch mark and tinted in its blue. That mirrors gitdeck's
+  convention, which links back here with the radar mark tinted in indigo: each
+  tool wears the other's colours. Its brand colours are darkened in the light
+  theme — they are designed for a dark favicon square and fall to 1.8:1 contrast
+  on a light background.
+  It points at `PR_RADAR_GITDECK_URL`; leave that empty and the button disappears,
+  so there is no dead control for anyone who does not run gitdeck. No separate
+  boolean flag: the URL already carries both the destination and whether to show
+  it, and two variables for one decision can contradict each other.
+  It is a single global link rather than one per card, because gitdeck keeps the
+  selected repo in internal state rather than in the URL, so there is nothing to
+  deep-link to.
 - `FR` / `EN` toggles the interface language (French by default, remembered).
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.

@@ -35,6 +35,12 @@
     --cyan-soft: #e2f2f7;
 
     --link: #4f46c8;
+    /* Teintes de gitdeck assombries : ses couleurs de marque sont pensées pour son
+       favicon sur carré foncé et tombent à 1.8:1 de contraste sur fond clair. */
+    --gitdeck: #1a67c6;
+    --gitdeck-soft: #e7f0fd;
+    --gitdeck-pink: #d2568c;
+    --gitdeck-green: #2f9163;
     --shadow-sm: 0 1px 2px rgba(29, 30, 40, .05);
     --shadow-md: 0 6px 18px -6px rgba(60, 50, 140, .18), 0 2px 4px rgba(29, 30, 40, .04);
   }
@@ -68,6 +74,10 @@
     --cyan-soft: #102b34;
 
     --link: #a5a0f5;
+    --gitdeck: #7fb9fb;
+    --gitdeck-soft: #12233c;
+    --gitdeck-pink: #e0679b;
+    --gitdeck-green: #5fc98a;
     --shadow-sm: none;
     --shadow-md: 0 8px 22px -10px rgba(0, 0, 0, .6);
   }
@@ -137,16 +147,23 @@
   }
   button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
   #theme { padding: 6px 10px; }
+  /* Miroir de la convention de gitdeck : chaque outil porte le logo de l'autre,
+     teinté dans la couleur de l'autre. */
   a.link-out {
     display: none; align-items: center; gap: 6px;
-    font-size: 12.5px; font-weight: 520; color: var(--text-soft);
-    background: var(--surface); border: 1px solid var(--border);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--gitdeck); background: var(--gitdeck-soft);
+    border: 1px solid transparent;
     border-radius: 9px; padding: 6px 11px; box-shadow: var(--shadow-sm);
-    transition: color .15s, border-color .15s, transform .15s;
+    transition: border-color .15s, transform .15s;
   }
   a.link-out[href] { display: inline-flex; }
-  a.link-out:hover { color: var(--cyan); border-color: var(--cyan); transform: translateY(-1px); }
-  a.link-out svg { width: 10px; height: 10px; opacity: .55; }
+  a.link-out:hover { border-color: var(--gitdeck); transform: translateY(-1px); }
+  a.link-out svg { width: 14px; height: 14px; flex: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    a.link-out:hover .branch-tip { animation: blip 1.6s ease-in-out infinite; }
+  }
+  @keyframes blip { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .seg { display: flex; gap: 3px; padding: 3px; }
   .seg span {
     padding: 3px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 620;
@@ -299,7 +316,15 @@
     <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>
     <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>
     <span id="stamp"></span>
-    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">gitdeck<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 1.5h6.5V8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 1.5 1.5 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></a>
+    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
+      <svg class="gitdeck-logo" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M10 6v13a4 4 0 0 0 4 4h4" fill="none" stroke="currentColor" stroke-width="2.6"/>
+        <circle cx="10" cy="6" r="3" fill="currentColor"/>
+        <circle class="branch-tip" cx="22" cy="23" r="3" fill="var(--gitdeck-pink)"/>
+        <circle cx="10" cy="26" r="3" fill="var(--gitdeck-green)"/>
+      </svg>
+      <span>gitdeck</span>
+    </a>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
     <button id="refresh"></button>
