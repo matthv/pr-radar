@@ -38,6 +38,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
+| `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
 The server caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`.
@@ -103,6 +104,10 @@ dropped PRs stays visible in the header so the filter is never silent.
   falls back to "nothing to report".
 - **hide drafts**.
 - `☾` / `☀` toggles light / dark (light by default, remembered).
+- A **gitdeck** link in the header opens the local web git client. It points at
+  `PR_RADAR_GITDECK_URL`; leave that empty and the link disappears. It is a single
+  global link rather than one per card, because gitdeck keeps the selected repo in
+  internal state rather than in the URL, so there is nothing to deep-link to.
 - `FR` / `EN` toggles the interface language (French by default, remembered).
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.

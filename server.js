@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT || 4321);
 const ORG = process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
+const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 // Moitié de l'intervalle : sinon un poll tombe sur un cache tout juste valide et
 // sert des données presque deux fois plus vieilles que l'intervalle annoncé.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
@@ -38,7 +39,10 @@ async function dashboard(force) {
 
   inFlight = fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS })
     .then(payload => {
-      cache = { at: Date.now(), payload: { ...payload, refreshSeconds: REFRESH_SECONDS } };
+      cache = {
+        at: Date.now(),
+        payload: { ...payload, refreshSeconds: REFRESH_SECONDS, gitdeckUrl: GITDECK_URL },
+      };
       return cache.payload;
     })
     .finally(() => {

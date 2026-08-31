@@ -137,6 +137,16 @@
   }
   button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
   #theme { padding: 6px 10px; }
+  a.link-out {
+    display: none; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 520; color: var(--text-soft);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 9px; padding: 6px 11px; box-shadow: var(--shadow-sm);
+    transition: color .15s, border-color .15s, transform .15s;
+  }
+  a.link-out[href] { display: inline-flex; }
+  a.link-out:hover { color: var(--cyan); border-color: var(--cyan); transform: translateY(-1px); }
+  a.link-out svg { width: 10px; height: 10px; opacity: .55; }
   .seg { display: flex; gap: 3px; padding: 3px; }
   .seg span {
     padding: 3px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 620;
@@ -289,6 +299,7 @@
     <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>
     <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>
     <span id="stamp"></span>
+    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">gitdeck<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 1.5h6.5V8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 1.5 1.5 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></a>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
     <button id="refresh"></button>
@@ -330,6 +341,7 @@ const I18N = {
     agoTitle: 'dernière activité réelle : commit, commentaire ou review',
     stampTitle: 'dernier fetch — rafraîchissement automatique toutes les {every}',
     themeTitle: 'Thème clair / sombre',
+    gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
     refresh: 'Rafraîchir',
     filterAction: 'à traiter',
@@ -389,6 +401,7 @@ const I18N = {
     agoTitle: 'real last activity: a commit, a comment or a review',
     stampTitle: 'last fetch — auto-refresh every {every}',
     themeTitle: 'Light / dark theme',
+    gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
     refresh: 'Refresh',
     filterAction: 'needs work',
@@ -478,6 +491,7 @@ function applyLang(next) {
   }
   el('lang').title = t('langTitle');
   el('theme').title = t('themeTitle');
+  el('gitdeck').title = t('gitdeckTitle');
   applyStampTitle();
   el('refresh').textContent = t('refresh');
   el('lblOnlyAction').textContent = t('filterAction');
@@ -728,6 +742,10 @@ function render() {
     counter('todo', reviewAction, tn('counterReviews', reviewAction)),
     counter('pending', waitingFix, t('counterWaiting')),
   ].join('');
+
+  // Sans attribut href, le CSS masque le lien : une URL vide le retire du header.
+  if (data.gitdeckUrl) el('gitdeck').href = data.gitdeckUrl;
+  else el('gitdeck').removeAttribute('href');
 
   const hidden = data.counts.hiddenStale;
   el('stale').textContent = hidden ? tn('stale', hidden, { days: data.maxAgeDays }) : '';
