@@ -9,6 +9,12 @@ A local dashboard for your GitHub pull requests, in two columns:
 
 Each column is grouped by state:
 
+A PR lands in **My PRs** when you opened it **or** when you authored its head
+commit — taking over someone else's PR makes the next move yours. Such a card is
+marked `taken over from <author>`. As soon as the original author pushes again the
+head commit changes and the PR goes back to the review column, so the split
+follows reality without any manual step.
+
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
 | `On my plate` | unaddressed comments, changes requested, red CI, conflicts | review requested and not done, replies to your comments, new commits since your feedback |
@@ -77,6 +83,9 @@ A PR with no real activity for more than `PR_RADAR_MAX_AGE_DAYS` days is dropped
 The criterion is **neither** the creation date **nor** `updated_at`, but the last
 real activity: last commit, last human comment, last review. In short,
 `max(createdAt, last commit, last non-bot comments and reviews)`.
+
+"New commits since my feedback" ignores commits **you** authored. Without that
+guard, a PR you have taken over asks you to re-check your own work.
 
 GitHub's `updated_at` will not do: it moves when a label is added, when
 `mergeable` is recomputed, or when CI is re-run. A PR with no commit and no

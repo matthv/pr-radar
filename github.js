@@ -49,7 +49,15 @@ query($ids: [ID!]!) {
       author { login avatarUrl }
       repository { nameWithOwner }
       labels(first: 10) { nodes { name color } }
-      commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state } } } }
+      commits(last: 1) {
+        nodes {
+          commit {
+            committedDate
+            author { user { login } }
+            statusCheckRollup { state }
+          }
+        }
+      }
       reviews(first: 30) { nodes { author { __typename login } state submittedAt url } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
@@ -326,6 +334,7 @@ function baseShape(pr, me) {
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
+    headCommitAuthor: lastCommit?.author?.user?.login ?? null,
     threads: [
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
       ...(conversation ? [conversation] : []),
@@ -400,8 +409,13 @@ function decorateReview(pr, me, requestedFromMe) {
     .sort()
     .pop();
 
+  // Un commit de moi n'est pas quelque chose à re-vérifier : sans ce garde-fou, une PR
+  // dont j'ai repris la main me demande de contrôler mon propre travail.
   const pushedSinceMyFeedback = Boolean(
-    myLastActivity && pr.lastCommitAt && new Date(pr.lastCommitAt) > new Date(myLastActivity),
+    myLastActivity &&
+      pr.lastCommitAt &&
+      pr.headCommitAuthor !== me &&
+      new Date(pr.lastCommitAt) > new Date(myLastActivity),
   );
 
   const myLatestVerdict = latestReviewPerAuthor(pr.reviews).find(r => r.author === me)?.state ?? null;
@@ -485,6 +499,15 @@ async function fetchDashboard({ org, maxAgeDays }) {
     const shaped = shapes.get(id);
     if (!shaped) continue;
     (shaped.author === me ? mineSet : reviewSet).add(id);
+  }
+
+  // Reprendre la main sur la PR de quelqu'un d'autre, c'est en devenir responsable :
+  // le prochain geste est le mien, donc elle passe côté « mes PRs ». Dès que l'auteur
+  // repousse, le commit de tête change et elle repart côté review — c'est réversible.
+  for (const [id, shaped] of shapes) {
+    if (!reviewSet.has(id) || shaped.headCommitAuthor !== me) continue;
+    reviewSet.delete(id);
+    mineSet.add(id);
   }
 
   const mine = [...mineSet]

@@ -392,6 +392,7 @@ const I18N = {
     pillToFix: '{n} à traiter',
     pillWaitingReply: '{n} en attente de réponse',
     pillApproved: 'approuvée',
+    pillTakenOver: 'reprise de {author}',
     pillToReview: 'à reviewer',
     pillAnswers_one: '{n} réponse pour moi',
     pillAnswers_many: '{n} réponses pour moi',
@@ -452,6 +453,7 @@ const I18N = {
     pillToFix: '{n} to address',
     pillWaitingReply: '{n} awaiting a reply',
     pillApproved: 'approved',
+    pillTakenOver: 'taken over from {author}',
     pillToReview: 'to review',
     pillAnswers_one: '{n} reply for me',
     pillAnswers_many: '{n} replies for me',
@@ -704,6 +706,9 @@ function resolveReview(pr) {
 
 function mineCard(pr) {
   const pills = [];
+  // Une PR ouverte par quelqu'un d'autre n'atterrit ici que parce que j'en ai repris
+  // la main : sans le dire, sa présence dans « mes PRs » est incompréhensible.
+  if (pr.author !== state.data.me) pills.push(pill('', t('pillTakenOver', { author: pr.author })));
   if (pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
   if (pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
   if (pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
