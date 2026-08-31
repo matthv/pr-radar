@@ -132,6 +132,11 @@ dropped PRs stays visible in the header so the filter is never silent.
 
 Click `▸ N open threads` to read the comments without leaving the page.
 
+Both columns show who is involved, as a stack of overlapping avatars: the PR
+author first, then whoever pushed commits, in the order they entered the PR.
+Hovering gives the full chain (`PMerlet → you`). The stack is hidden when it would
+carry no information — you alone on your own PR, which the column already says.
+
 Each card carries two ages, both labelled so they cannot be confused: **"opened
 X ago"** in the top right (exact date on hover) and **"active Y ago"** in the
 state line, which is the real last activity and doubles as the sort key.

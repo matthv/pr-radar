@@ -243,8 +243,16 @@
 
   .meta { display: flex; flex-wrap: wrap; gap: 6px 9px; margin-top: 10px; font-size: 12px; color: var(--text-faint); align-items: center; }
   .meta .sep { color: var(--border); }
-  .who { display: flex; align-items: center; gap: 5px; }
-  .avatar { width: 17px; height: 17px; border-radius: 50%; flex: none; background: var(--hairline); }
+  .who { display: flex; align-items: center; gap: 6px; }
+  .stack { display: flex; flex: none; }
+  .avatar {
+    width: 18px; height: 18px; border-radius: 50%; flex: none;
+    background: var(--hairline); border: 1.5px solid var(--surface);
+  }
+  /* Chevauchement : les avatars se lisent comme une file, l'auteur d'origine devant. */
+  .stack .avatar + .avatar { margin-left: -6px; }
+  .card.action .avatar { border-color: var(--surface); }
+  .card.idle .avatar { border-color: var(--sunken); }
 
   .pill {
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
@@ -595,9 +603,31 @@ function visibleThreads(threads) {
 
 const pill = (kind, label) => `<span class="pill${kind ? ' ' + kind : ''}">${label}</span>`;
 
-const avatar = pr => pr.authorAvatar
-  ? `<img class="avatar" src="${escapeHtml(pr.authorAvatar)}&s=48" alt="" loading="lazy">`
-  : '';
+const MAX_FACES = 4;
+
+// Dans « Mes PRs », mon seul avatar n'apprendrait rien : la colonne le dit déjà. On
+// n'affiche la pile que lorsqu'elle porte une information — plusieurs personnes, ou
+// quelqu'un d'autre que moi.
+function whoHtml(pr) {
+  const people = pr.contributors ?? [];
+  const informative = people.length > 1 || (people[0] && people[0].login !== state.data.me);
+  if (!informative) return '';
+
+  const shown = people.slice(0, MAX_FACES);
+  const hidden = people.length - shown.length;
+  const faces = shown
+    .map(person =>
+      person.avatarUrl
+        ? `<img class="avatar" src="${escapeHtml(person.avatarUrl)}&s=48" alt=""
+             title="${escapeHtml(person.login)}" loading="lazy">`
+        : `<span class="avatar" title="${escapeHtml(person.login)}"></span>`,
+    )
+    .join('');
+
+  return `<span class="sep">|</span><span class="who" title="${escapeHtml(people.map(p => p.login).join(' → '))}">`
+    + `<span class="stack">${faces}</span>`
+    + `<span>${escapeHtml(people[0].login)}${hidden ? ` +${hidden}` : ''}</span></span>`;
+}
 
 function ciPill(pr) {
   const map = {
@@ -652,7 +682,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
         <span class="sep">|</span>
         <span title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
-        ${pr.side === 'review' ? `<span class="sep">|</span><span class="who">${avatar(pr)}${escapeHtml(pr.author)}</span>` : ''}
+        ${whoHtml(pr)}
       </div>
       ${pr.displayReasons.length
         ? `<div class="reasons">${pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}</div>`).join('')}</div>`

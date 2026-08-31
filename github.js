@@ -49,7 +49,7 @@ query($ids: [ID!]!) {
       author { login avatarUrl }
       repository { nameWithOwner }
       labels(first: 10) { nodes { name color } }
-      commits(last: 1) {
+      head: commits(last: 1) {
         nodes {
           commit {
             committedDate
@@ -57,6 +57,9 @@ query($ids: [ID!]!) {
             statusCheckRollup { state }
           }
         }
+      }
+      recent: commits(last: 20) {
+        nodes { commit { author { user { login avatarUrl } } } }
       }
       reviews(first: 30) { nodes { author { __typename login } state submittedAt url } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
@@ -268,7 +271,7 @@ function analyzeThread(thread, me) {
 function lastActivity(pr) {
   const dates = [
     pr.createdAt,
-    pr.commits.nodes[0]?.commit?.committedDate,
+    pr.head.nodes[0]?.commit?.committedDate,
     ...pr.reviews.nodes.filter(r => r?.author?.__typename !== 'Bot').map(r => r?.submittedAt),
     ...pr.comments.nodes.filter(c => c?.author?.__typename !== 'Bot').map(c => c?.createdAt),
     ...pr.reviewThreads.nodes.flatMap(t =>
@@ -309,8 +312,24 @@ function conversationThread(pr, me) {
   };
 }
 
+// Auteur de la PR d'abord, puis les auteurs de commits dans l'ordre chronologique :
+// c'est l'ordre dans lequel les gens sont entrés dans la PR.
+function contributorsOf(pr) {
+  const people = new Map();
+
+  const add = user => {
+    if (!user?.login || people.has(user.login)) return;
+    people.set(user.login, { login: user.login, avatarUrl: user.avatarUrl ?? null });
+  };
+
+  add(pr.author);
+  for (const node of pr.recent.nodes) add(node?.commit?.author?.user);
+
+  return [...people.values()];
+}
+
 function baseShape(pr, me) {
-  const lastCommit = pr.commits.nodes[0]?.commit;
+  const lastCommit = pr.head.nodes[0]?.commit;
   const conversation = conversationThread(pr, me);
 
   return {
@@ -330,7 +349,7 @@ function baseShape(pr, me) {
     deletions: pr.deletions,
     changedFiles: pr.changedFiles,
     author: pr.author?.login ?? '?',
-    authorAvatar: pr.author?.avatarUrl ?? null,
+    contributors: contributorsOf(pr),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
