@@ -105,6 +105,26 @@ dropped PRs stays visible in the header so the filter is never silent.
 - Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
   in the header, the exact interval on hover.
 
+## The summary band
+
+Above the two columns sit three counters — your PRs to fix, reviews to handle, PRs
+awaiting a fix — and the count of PRs the age window dropped. They live in the body
+rather than the header on purpose: they summarise the content below, they are not
+controls of the tool. The header stays a toolbar and stays pinned; the summary
+scrolls away with what it describes.
+
+**Each counter is a filter.** Clicking one isolates its set: the relevant column
+goes full width and the other collapses. Click it again, or press `Escape`, to go
+back. Only one at a time — these are competing views of the same board, not filters
+that stack. A counter at zero is disabled: it would only ever filter to nothing.
+
+A counter takes precedence over the **needs work** checkbox, which could otherwise
+contradict it — focusing "awaiting a fix" with that box ticked would show an empty
+list forever.
+
+The filter is deliberately not remembered: reopening the tool on an already
+filtered board, with no memory of having filtered it, would look like empty columns.
+
 ## Filters and display
 
 - **needs work** — keep only the cards that ask something of you.
@@ -114,11 +134,9 @@ dropped PRs stays visible in the header so the filter is never silent.
 - **hide drafts**.
 - `☾` / `☀` toggles light / dark (light by default, remembered).
 - A **gitdeck** button in the header opens the local web git client, carrying
-  gitdeck's own branch mark and tinted in its blue. That mirrors gitdeck's
-  convention, which links back here with the radar mark tinted in indigo: each
-  tool wears the other's colours. Its brand colours are darkened in the light
-  theme — they are designed for a dark favicon square and fall to 1.8:1 contrast
-  on a light background.
+  gitdeck's own branch mark so it is recognisable at a glance. The button itself
+  stays neutral like the other controls: gitdeck now shares this indigo, so
+  tinting it would make it read as an action of PR Radar competing with Refresh.
   It points at `PR_RADAR_GITDECK_URL`; leave that empty and the button disappears,
   so there is no dead control for anyone who does not run gitdeck. No separate
   boolean flag: the URL already carries both the destination and whether to show
@@ -132,10 +150,11 @@ dropped PRs stays visible in the header so the filter is never silent.
 
 Click `▸ N open threads` to read the comments without leaving the page.
 
-Both columns show who is involved, as a stack of overlapping avatars: the PR
-author first, then whoever pushed commits, in the order they entered the PR.
-Hovering gives the full chain (`PMerlet → you`). The stack is hidden when it would
-carry no information — you alone on your own PR, which the column already says.
+Both columns show who is involved, as a stack of overlapping avatars followed by
+the names, comma-separated: the PR author first, then whoever pushed commits, in
+the order they entered the PR. A PR you took over therefore reads `its author,
+you`. Hovering gives the full chain. Past four people the extra ones collapse into
+a `+N`.
 
 Each card carries two ages, both labelled so they cannot be confused: **"opened
 X ago"** in the top right (exact date on hover) and **"active Y ago"** in the

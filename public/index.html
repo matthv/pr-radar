@@ -35,12 +35,6 @@
     --cyan-soft: #e2f2f7;
 
     --link: #4f46c8;
-    /* Teintes de gitdeck assombries : ses couleurs de marque sont pensées pour son
-       favicon sur carré foncé et tombent à 1.8:1 de contraste sur fond clair. */
-    --gitdeck: #1a67c6;
-    --gitdeck-soft: #e7f0fd;
-    --gitdeck-pink: #d2568c;
-    --gitdeck-green: #2f9163;
     --shadow-sm: 0 1px 2px rgba(29, 30, 40, .05);
     --shadow-md: 0 6px 18px -6px rgba(60, 50, 140, .18), 0 2px 4px rgba(29, 30, 40, .04);
   }
@@ -74,10 +68,6 @@
     --cyan-soft: #102b34;
 
     --link: #a5a0f5;
-    --gitdeck: #7fb9fb;
-    --gitdeck-soft: #12233c;
-    --gitdeck-pink: #e0679b;
-    --gitdeck-green: #5fc98a;
     --shadow-sm: none;
     --shadow-md: 0 8px 22px -10px rgba(0, 0, 0, .6);
   }
@@ -114,30 +104,64 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes pulse { 0%, 100% { opacity: 1; r: 3.4px; } 50% { opacity: .6; r: 2.8px; } }
 
+  /* Les compteurs ont quitté le header : c'est un résumé du contenu, pas une commande
+     de l'outil. Posés au-dessus des colonnes qu'ils résument, ils peuvent reprendre un
+     contour — depuis qu'ils filtrent, la boîte ne ment plus. */
+  .summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 20px 28px 0;
+  }
   .counters { display: flex; gap: 8px; flex-wrap: wrap; }
   .counter {
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 11px 5px 9px; border-radius: 9px;
-    font-size: 12.5px; color: var(--text-soft);
-    background: var(--surface); border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; gap: 8px;
+    font: inherit; font-size: 12px; color: var(--text-soft); text-align: left;
+    padding: 6px 11px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: background .15s, border-color .15s, box-shadow .18s, transform .18s;
   }
-  .counter b { font-size: 15px; font-weight: 680; font-variant-numeric: tabular-nums; }
-  .counter .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-  .counter.todo { background: var(--indigo-soft); border-color: transparent; color: var(--indigo); }
+  .counter:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--indigo) 40%, transparent);
+    box-shadow: var(--shadow-md); transform: translateY(-1px);
+  }
+  .counter.pending:hover:not([disabled]) {
+    border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+  }
+  .counter.on {
+    background: var(--indigo-soft);
+    border-color: color-mix(in srgb, var(--indigo) 45%, transparent);
+  }
+  .counter.pending.on {
+    background: var(--amber-soft);
+    border-color: color-mix(in srgb, var(--amber) 50%, transparent);
+  }
+  .counter:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .counter[disabled] { cursor: default; background: transparent; box-shadow: none; }
+  .counter b {
+    font-size: 16px; font-weight: 680; letter-spacing: -.4px; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .counter .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .counter.todo b { color: var(--indigo); }
   .counter.todo .dot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
-  .counter.pending { background: var(--amber-soft); border-color: transparent; color: var(--amber); }
+  .counter.pending b { color: var(--amber); }
   .counter.pending .dot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
-  .counter.zero { background: var(--surface); border-color: var(--border); color: var(--text-faint); }
-  .counter.zero b { font-weight: 550; }
+  .counter.zero { color: var(--text-faint); border-color: var(--hairline); }
+  .counter.zero b { color: var(--text-faint); font-weight: 550; }
   .counter.zero .dot { background: var(--border); }
+  /* Le chevron dit « ceci mène quelque part » sans encombrer : discret au repos,
+     franc au survol et quand le filtre est actif. */
+  .counter .go { font-size: 11px; opacity: .3; transition: opacity .15s, transform .15s; }
+  .counter:hover:not([disabled]) .go { opacity: .8; transform: translateX(2px); }
+  .counter.on .go { opacity: .8; }
+  .counter[disabled] .go { display: none; }
 
   .spacer { flex: 1 1 auto; }
   .controls { display: flex; align-items: center; gap: 15px; font-size: 12.5px; color: var(--text-soft); }
   label.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
   label.toggle input { accent-color: var(--indigo); margin: 0; }
   #stamp { color: var(--text-faint); font-variant-numeric: tabular-nums; }
-  .stale { font-size: 12.5px; color: var(--text-faint); }
+  .stale { font-size: 12.5px; color: var(--text-faint); margin-left: auto; }
 
   button {
     font: inherit; font-size: 12.5px; font-weight: 520; cursor: pointer; color: var(--text-soft);
@@ -145,21 +169,23 @@
     border-radius: 9px; padding: 6px 12px; box-shadow: var(--shadow-sm);
     transition: color .15s, border-color .15s, transform .15s;
   }
-  button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
+  /* Les compteurs sont des <button> mais ne doivent pas hériter du survol des vraies
+     commandes : ni bordure franche, ni soulèvement. */
+  button:not(.counter):hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
   #theme { padding: 6px 10px; }
-  /* Miroir de la convention de gitdeck : chaque outil porte le logo de l'autre,
-     teinté dans la couleur de l'autre. */
+  /* gitdeck partage désormais l'indigo de PR Radar : le teinter reviendrait à en faire
+     une action de PR Radar, en concurrence avec Rafraîchir. Le bouton reste donc neutre
+     comme les autres commandes, et c'est sa marque qui l'identifie. */
   a.link-out {
-    display: none; align-items: center; gap: 6px;
-    font-size: 12.5px; font-weight: 600;
-    color: var(--gitdeck); background: var(--gitdeck-soft);
-    border: 1px solid transparent;
+    display: none; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 520; color: var(--text-soft);
+    background: var(--surface); border: 1px solid var(--border);
     border-radius: 9px; padding: 6px 11px; box-shadow: var(--shadow-sm);
-    transition: border-color .15s, transform .15s;
+    transition: color .15s, border-color .15s, transform .15s;
   }
   a.link-out[href] { display: inline-flex; }
-  a.link-out:hover { border-color: var(--gitdeck); transform: translateY(-1px); }
-  a.link-out svg { width: 14px; height: 14px; flex: none; }
+  a.link-out:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
+  a.link-out svg { width: 15px; height: 15px; flex: none; }
   @media (prefers-reduced-motion: no-preference) {
     a.link-out:hover .branch-tip { animation: blip 1.6s ease-in-out infinite; }
   }
@@ -174,8 +200,11 @@
   #refresh { color: #fff; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
   #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
 
-  main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 26px 28px 70px; align-items: start; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 22px 28px 70px; align-items: start; }
   @media (max-width: 1100px) { main { grid-template-columns: 1fr; gap: 26px; } }
+  /* Un compteur actif isole sa colonne : pleine largeur, l'autre repliée. */
+  main[data-focus="mine"], main[data-focus="reviews"] { grid-template-columns: 1fr; }
+  main[data-focus="mine"] .col-review, main[data-focus="reviews"] .col-mine { display: none; }
 
   .col-mine { --col: var(--indigo); --col-2: var(--indigo-2); }
   .col-review { --col: var(--cyan); --col-2: var(--cyan-2); }
@@ -315,8 +344,6 @@
     <span>PR Radar</span>
     <em id="scope"></em>
   </div>
-  <div class="counters" id="counters"></div>
-  <span class="stale" id="stale"></span>
   <div class="spacer"></div>
   <div class="controls">
     <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>
@@ -326,10 +353,17 @@
     <span id="stamp"></span>
     <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
       <svg class="gitdeck-logo" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M10 6v13a4 4 0 0 0 4 4h4" fill="none" stroke="currentColor" stroke-width="2.6"/>
-        <circle cx="10" cy="6" r="3" fill="currentColor"/>
-        <circle class="branch-tip" cx="22" cy="23" r="3" fill="var(--gitdeck-pink)"/>
-        <circle cx="10" cy="26" r="3" fill="var(--gitdeck-green)"/>
+        <defs>
+          <linearGradient id="gdGrad" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="var(--indigo)"/>
+            <stop offset="100%" stop-color="var(--indigo-2)"/>
+          </linearGradient>
+        </defs>
+        <path d="M10 27V13a6 6 0 0 1 6-6h6" fill="none" stroke="url(#gdGrad)" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M10 20h5" fill="none" stroke="url(#gdGrad)" stroke-width="2.2" stroke-linecap="round" opacity=".45"/>
+        <circle cx="10" cy="27" r="3.4" fill="url(#gdGrad)"/>
+        <circle class="branch-tip" cx="22" cy="7" r="3.4" fill="none" stroke="url(#gdGrad)" stroke-width="2.4"/>
+        <circle cx="17" cy="20" r="2.6" fill="url(#gdGrad)" opacity=".55"/>
       </svg>
       <span>gitdeck</span>
     </a>
@@ -339,6 +373,10 @@
   </div>
 </header>
 <div id="error" class="error" hidden></div>
+<div class="summary">
+  <div class="counters" id="counters"></div>
+  <span class="stale" id="stale"></span>
+</div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -351,7 +389,16 @@
 </main>
 
 <script>
-const state = { data: null, lastActionCount: null, open: new Set(), timer: null, intervalMs: null };
+// `focus` n'est pas mémorisé : ouvrir l'outil sur un tableau déjà filtré, sans s'en
+// souvenir, ferait croire à des colonnes vides.
+const state = {
+  data: null,
+  lastActionCount: null,
+  open: new Set(),
+  timer: null,
+  intervalMs: null,
+  focus: null,
+};
 
 const el = id => document.getElementById(id);
 const store = {
@@ -374,6 +421,8 @@ const I18N = {
     agoTitle: 'dernière activité réelle : commit, commentaire ou review',
     stampTitle: 'dernier fetch — rafraîchissement automatique toutes les {every}',
     themeTitle: 'Thème clair / sombre',
+    focusHint: 'cliquer pour n’afficher que ces PRs',
+    focusClear: 'cliquer (ou Échap) pour retirer le filtre',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
     refresh: 'Rafraîchir',
@@ -435,6 +484,8 @@ const I18N = {
     agoTitle: 'real last activity: a commit, a comment or a review',
     stampTitle: 'last fetch — auto-refresh every {every}',
     themeTitle: 'Light / dark theme',
+    focusHint: 'click to show only these PRs',
+    focusClear: 'click (or Esc) to clear the filter',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
     refresh: 'Refresh',
@@ -605,13 +656,9 @@ const pill = (kind, label) => `<span class="pill${kind ? ' ' + kind : ''}">${lab
 
 const MAX_FACES = 4;
 
-// Dans « Mes PRs », mon seul avatar n'apprendrait rien : la colonne le dit déjà. On
-// n'affiche la pile que lorsqu'elle porte une information — plusieurs personnes, ou
-// quelqu'un d'autre que moi.
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
-  const informative = people.length > 1 || (people[0] && people[0].login !== state.data.me);
-  if (!informative) return '';
+  if (!people.length) return '';
 
   const shown = people.slice(0, MAX_FACES);
   const hidden = people.length - shown.length;
@@ -624,9 +671,11 @@ function whoHtml(pr) {
     )
     .join('');
 
+  const names = shown.map(person => escapeHtml(person.login)).join(', ');
+
   return `<span class="sep">|</span><span class="who" title="${escapeHtml(people.map(p => p.login).join(' → '))}">`
     + `<span class="stack">${faces}</span>`
-    + `<span>${escapeHtml(people[0].login)}${hidden ? ` +${hidden}` : ''}</span></span>`;
+    + `<span>${names}${hidden ? ` +${hidden}` : ''}</span></span>`;
 }
 
 function ciPill(pr) {
@@ -757,15 +806,26 @@ function reviewCard(pr) {
   return cardHtml(pr, [...pr.answered, ...pr.awaiting], pills);
 }
 
+// Cliquer un compteur isole son ensemble : la colonne concernée passe pleine largeur,
+// l'autre disparaît. Un seul actif à la fois — ce sont des vues concurrentes du même
+// tableau, pas des filtres qui se cumulent.
+const FOCUS = {
+  mineAction: { column: 'mine', bucket: 'action' },
+  reviewAction: { column: 'reviews', bucket: 'action' },
+  reviewWaiting: { column: 'reviews', bucket: 'waiting' },
+};
+
 function filterList(list) {
   let filtered = list;
   if (el('hideDrafts').checked) filtered = filtered.filter(pr => !pr.isDraft);
-  if (el('onlyAction').checked) filtered = filtered.filter(pr => pr.needsAction);
+  // Le focus l'emporte sur la case « à traiter » : les deux combinés pourraient se
+  // contredire (focus sur « en attente » + cases cochée = liste toujours vide).
+  if (!state.focus && el('onlyAction').checked) filtered = filtered.filter(pr => pr.needsAction);
   return filtered;
 }
 
-function renderColumn(target, list, cardFn, groupLabels, emptyLabel) {
-  const filtered = filterList(list);
+function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket) {
+  const filtered = filterList(list).filter(pr => !onlyBucket || pr.bucket === onlyBucket);
   if (!filtered.length) {
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
     return;
@@ -781,8 +841,16 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel) {
     .join('');
 }
 
-const counter = (kind, value, label) =>
-  `<span class="counter ${kind}${value ? '' : ' zero'}"><span class="dot"></span><b>${value}</b> ${label}</span>`;
+const counter = (key, kind, value, label) => {
+  const active = state.focus === key;
+  const classes = ['counter', kind, value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
+  // Un compteur à zéro ne filtre que du vide : autant ne pas le proposer.
+  return `<button type="button" class="${classes.join(' ')}" data-focus="${key}"`
+    + `${value ? '' : ' disabled'}`
+    + `${value ? ` title="${t(active ? 'focusClear' : 'focusHint')}"` : ''}>`
+    + `<span class="dot"></span><b>${value}</b> ${label}`
+    + `<span class="go">${active ? '×' : '›'}</span></button>`;
+};
 
 function render() {
   const data = state.data;
@@ -798,9 +866,9 @@ function render() {
   const total = mineAction + reviewAction;
 
   el('counters').innerHTML = [
-    counter('todo', mineAction, t('counterMine')),
-    counter('todo', reviewAction, tn('counterReviews', reviewAction)),
-    counter('pending', waitingFix, t('counterWaiting')),
+    counter('mineAction', 'todo', mineAction, t('counterMine')),
+    counter('reviewAction', 'todo', reviewAction, tn('counterReviews', reviewAction)),
+    counter('reviewWaiting', 'pending', waitingFix, t('counterWaiting')),
   ].join('');
 
   // Sans attribut href, le CSS masque le lien : une URL vide le retire du header.
@@ -815,17 +883,20 @@ function render() {
   el('stamp').textContent = new Date(data.fetchedAt)
     .toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
 
+  const focus = FOCUS[state.focus];
+  document.querySelector('main').dataset.focus = focus ? focus.column : '';
+
   renderColumn(el('mine'), mine, mineCard, {
     action: t('groupMineAction'),
     waiting: t('groupMineWaiting'),
     idle: t('groupIdle'),
-  }, t('emptyMine'));
+  }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
 
   renderColumn(el('reviews'), reviews, reviewCard, {
     action: t('groupReviewAction'),
     waiting: t('groupReviewWaiting'),
     idle: t('groupIdle'),
-  }, t('emptyReviews'));
+  }, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
   state.lastActionCount = total;
@@ -847,11 +918,25 @@ async function load(force) {
 }
 
 document.addEventListener('click', event => {
+  const focusButton = event.target.closest('.counter');
+  if (focusButton) {
+    const { focus } = focusButton.dataset;
+    state.focus = state.focus === focus ? null : focus;
+    render();
+    return;
+  }
+
   const expander = event.target.closest('.expander');
   if (!expander) return;
   const { id } = expander.closest('.card').dataset;
   if (state.open.has(id)) state.open.delete(id);
   else state.open.add(id);
+  render();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !state.focus) return;
+  state.focus = null;
   render();
 });
 
