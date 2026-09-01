@@ -59,15 +59,16 @@ query($ids: [ID!]!) {
           }
         }
       }
-      recent: commits(last: 20) {
+      recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(first: 30) { nodes { author { __typename login } state submittedAt url } }
+      reviews(last: 100) { totalCount nodes { author { __typename login } state submittedAt url } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
       }
-      reviewThreads(first: 50) {
+      reviewThreads(last: 100) {
+        totalCount
         nodes {
           id
           isResolved
@@ -367,6 +368,20 @@ function contributorsOf(pr) {
   return [...people.values()];
 }
 
+// GraphQL pages are capped, and `first` would hand back the oldest entries: on a PR
+// with 72 reviews my own verdict fell outside the window entirely. `last` keeps the
+// recent ones, and a page that came back full is reported rather than silently trusted.
+function truncationOf(pr) {
+  const over = [];
+  if (pr.reviewThreads.totalCount > pr.reviewThreads.nodes.length) {
+    over.push(`${pr.reviewThreads.totalCount - pr.reviewThreads.nodes.length} threads`);
+  }
+  if (pr.reviews.totalCount > pr.reviews.nodes.length) {
+    over.push(`${pr.reviews.totalCount - pr.reviews.nodes.length} reviews`);
+  }
+  return over.length ? over.join(', ') : null;
+}
+
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
   const conversation = conversationThread(pr, me);
@@ -393,6 +408,7 @@ function baseShape(pr, me) {
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
     headCommitAuthor: lastCommit?.author?.user?.login ?? null,
+    truncated: truncationOf(pr),
     threads: [
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
       ...(conversation ? [conversation] : []),
@@ -594,6 +610,16 @@ async function fetchDashboard({ org, maxAgeDays }) {
     if (shaped.state !== 'OPEN') continue;
     if (new Date(shaped.lastActivityAt).getTime() >= cutoff) shapes.set(id, shaped);
     else stale.add(id);
+  }
+
+  // Truncation is a wrong answer, not a slow one: it must not pass unnoticed.
+  for (const shaped of shapes.values()) {
+    if (shaped.truncated) {
+      warnings.push({
+        source: `${shaped.repo}#${shaped.number}`,
+        message: `page GraphQL pleine, ${shaped.truncated} non chargés`,
+      });
+    }
   }
 
   for (const id of extraIds) {

@@ -164,6 +164,47 @@
   #stamp.aged { color: var(--amber); font-weight: 600; }
   #stamp.aged::after { content: " ⚠"; }
   .stale { font-size: 12.5px; color: var(--text-faint); margin-left: auto; }
+  /* Interactive, so it gets a container — same rule as the toolbar controls. Its
+     options live outside `.controls`, so they do not inherit that boxed look. */
+  .picker { position: relative; }
+  .picker-trigger {
+    display: flex; align-items: center; gap: 8px;
+    font: inherit; font-size: 12px; color: var(--text-soft); cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px 11px; box-shadow: var(--shadow-sm);
+    transition: border-color .15s, background .15s;
+  }
+  .picker-trigger:hover { border-color: color-mix(in srgb, var(--indigo) 40%, transparent); }
+  .picker-trigger.on {
+    background: var(--indigo-soft); color: var(--indigo); font-weight: 600;
+    border-color: color-mix(in srgb, var(--indigo) 45%, transparent);
+  }
+  .picker-trigger:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .picker-trigger .caret { font-size: 9px; opacity: .5; }
+
+  .picker-panel {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+    width: 270px; padding: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-md);
+  }
+  .picker-panel input {
+    width: 100%; font: inherit; font-size: 12.5px; color: var(--text);
+    background: var(--sunken); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 9px; margin-bottom: 6px;
+  }
+  .picker-panel input:focus { outline: none; border-color: var(--indigo); }
+  .picker-list { max-height: 270px; overflow-y: auto; display: flex; flex-direction: column; }
+  .picker-option {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font: inherit; font-size: 12.5px; text-align: left; color: var(--text-soft);
+    background: none; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer;
+  }
+  .picker-option:hover, .picker-option.active { background: var(--hairline); color: var(--text); }
+  .picker-option[aria-selected="true"] { color: var(--indigo); font-weight: 620; }
+  .picker-option .n { flex: none; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .picker-option .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker-empty { font-size: 12px; color: var(--text-faint); padding: 10px; text-align: center; }
 
   /* The boxed-control look is reserved for the toolbar. The page's other <button>s —
      counters, expanders — are not controls of the tool and used to inherit that box by
@@ -280,13 +321,13 @@
     flex: none; margin-left: auto; white-space: nowrap;
     font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums;
   }
-  /* --text-faint on --hairline sat at 2.68:1, well under the 4.5 AA threshold.
-     --text-soft reaches 5.87 in light and 6.39 in dark; the bolder title keeps the
-     hierarchy without the chip having to stay unreadable. */
+  /* Cyan is already "where" in this palette — it is what a thread's file path wears.
+     A repo name is a location too, and grey made it indistinguishable from the neutral
+     state pills, which answer "what". 4.67:1 in light, 7.52 in dark. */
   .repo {
     font-size: 11.5px; font-weight: 550; padding: 2px 7px; border-radius: 6px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
-    background: var(--hairline); color: var(--text-soft); white-space: nowrap;
+    background: var(--cyan-soft); color: var(--cyan); white-space: nowrap;
   }
   .title { font-weight: 620; font-size: 14.5px; letter-spacing: -.15px; flex: 1 1 240px; }
   .title:hover { color: var(--link); }
@@ -407,6 +448,14 @@
 <div id="warning" class="warning" hidden></div>
 <div class="summary">
   <div class="counters" id="counters"></div>
+  <div class="picker" id="picker">
+    <button type="button" class="picker-trigger" id="repoTrigger"
+            aria-haspopup="listbox" aria-expanded="false"></button>
+    <div class="picker-panel" id="repoPanel" hidden>
+      <input type="search" id="repoSearch" autocomplete="off" spellcheck="false">
+      <div class="picker-list" id="repoList" role="listbox"></div>
+    </div>
+  </div>
   <span class="stale" id="stale"></span>
 </div>
 <main>
@@ -430,6 +479,11 @@ const state = {
   timer: null,
   intervalMs: null,
   focus: null,
+  repo: null,
+  repos: [],
+  repoOpen: false,
+  repoQuery: '',
+  repoActive: 0,
 };
 
 const el = id => document.getElementById(id);
@@ -455,6 +509,9 @@ const I18N = {
     warning_one: 'Données incomplètes : {sources} n’a pas répondu. Le reste est à jour.',
     warning_many: 'Données incomplètes : {sources} n’ont pas répondu. Le reste est à jour.',
     themeTitle: 'Thème clair / sombre',
+    allProjects: 'Tous les projets ({n})',
+    searchProject: 'Filtrer les projets…',
+    noProject: 'Aucun projet ne correspond',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
@@ -522,6 +579,9 @@ const I18N = {
     warning_one: 'Incomplete data: {sources} did not answer. The rest is up to date.',
     warning_many: 'Incomplete data: {sources} did not answer. The rest is up to date.',
     themeTitle: 'Light / dark theme',
+    allProjects: 'All projects ({n})',
+    searchProject: 'Filter projects…',
+    noProject: 'No matching project',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
     gitdeckTitle: 'open gitdeck — the local git client',
@@ -890,6 +950,7 @@ const FOCUS = {
 
 function filterList(list) {
   let filtered = list;
+  if (state.repo) filtered = filtered.filter(pr => pr.repo === state.repo);
   if (el('hideDrafts').checked) filtered = filtered.filter(pr => !pr.isDraft);
   // Focus wins over the "needs work" checkbox: combined they could contradict each
   // other (focusing "awaiting" with the box ticked = a permanently empty list).
@@ -912,6 +973,65 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
         + group.map(cardFn).join('');
     })
     .join('');
+}
+
+function repoOptions() {
+  const query = state.repoQuery.trim().toLowerCase();
+  const shortName = repo => repo.replace(/^.*\//, '');
+  const all = { repo: null, label: t('allProjects', { n: state.repoTotal }), count: null };
+  const matching = state.repos
+    .filter(entry => !query || shortName(entry.repo).toLowerCase().includes(query))
+    .map(entry => ({ repo: entry.repo, label: shortName(entry.repo), count: entry.count }));
+
+  return query ? matching : [all, ...matching];
+}
+
+function renderRepoTrigger() {
+  const label = state.repo
+    ? `${state.repo.replace(/^.*\//, '')} (${state.repos.find(e => e.repo === state.repo)?.count ?? 0})`
+    : t('allProjects', { n: state.repoTotal });
+
+  const trigger = el('repoTrigger');
+  trigger.innerHTML = `<span>${escapeHtml(label)}</span><span class="caret">▾</span>`;
+  trigger.classList.toggle('on', Boolean(state.repo));
+  trigger.setAttribute('aria-expanded', String(state.repoOpen));
+}
+
+// Rebuilt on its own so typing never blows away the search field's focus.
+function renderRepoList() {
+  const options = repoOptions();
+  state.repoActive = Math.min(state.repoActive, Math.max(0, options.length - 1));
+
+  el('repoList').innerHTML = options.length
+    ? options
+        .map((option, index) => {
+          const selected = (option.repo ?? null) === state.repo;
+          return `<button type="button" class="picker-option${index === state.repoActive ? ' active' : ''}"`
+            + ` role="option" aria-selected="${selected}" data-repo="${escapeHtml(option.repo ?? '')}">`
+            + `<span class="label">${escapeHtml(option.label)}</span>`
+            + `${option.count === null ? '' : `<span class="n">${option.count}</span>`}</button>`;
+        })
+        .join('')
+    : `<div class="picker-empty">${t('noProject')}</div>`;
+}
+
+function openRepoPicker(open) {
+  state.repoOpen = open;
+  state.repoQuery = '';
+  state.repoActive = 0;
+  el('repoPanel').hidden = !open;
+  el('repoSearch').value = '';
+  el('repoSearch').placeholder = t('searchProject');
+  el('repoTrigger').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  renderRepoList();
+  el('repoSearch').focus();
+}
+
+function pickRepo(repo) {
+  state.repo = repo || null;
+  openRepoPicker(false);
+  render();
 }
 
 const counter = (key, kind, value, label) => {
@@ -968,6 +1088,18 @@ function render() {
     Date.now() - fetchedAt > (data.refreshSeconds ?? 300) * 2000,
   );
 
+  // Only the projects actually on the board, so the list never offers an empty result.
+  const all = [...data.mine, ...data.reviews];
+  const perRepo = new Map();
+  for (const pr of all) perRepo.set(pr.repo, (perRepo.get(pr.repo) ?? 0) + 1);
+  if (state.repo && !perRepo.has(state.repo)) state.repo = null;
+
+  const repos = [...perRepo.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  state.repos = repos.map(([repo, count]) => ({ repo, count }));
+  state.repoTotal = all.length;
+  renderRepoTrigger();
+  if (state.repoOpen) renderRepoList();
+
   const focus = FOCUS[state.focus];
   document.querySelector('main').dataset.focus = focus ? focus.column : '';
 
@@ -1003,6 +1135,16 @@ async function load(force) {
 }
 
 document.addEventListener('click', event => {
+  const option = event.target.closest('.picker-option');
+  if (option) {
+    pickRepo(option.dataset.repo);
+    return;
+  }
+  // composedPath is captured at dispatch time, so it still holds nodes that a re-render
+  // has since detached — `closest` on the target alone would miss them.
+  const insidePicker = event.composedPath().some(node => node.id === 'picker');
+  if (state.repoOpen && !insidePicker) openRepoPicker(false);
+
   const focusButton = event.target.closest('.counter');
   if (focusButton) {
     const { focus } = focusButton.dataset;
@@ -1020,7 +1162,13 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || !state.focus) return;
+  if (event.key !== 'Escape') return;
+  if (state.repoOpen) {
+    openRepoPicker(false);
+    el('repoTrigger').focus();
+    return;
+  }
+  if (!state.focus) return;
   state.focus = null;
   render();
 });
@@ -1029,6 +1177,29 @@ document.addEventListener('keydown', event => {
 // forty-minute-old data believing it is fresh. The server cache absorbs the extra call.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') load(false);
+});
+
+el('repoTrigger').addEventListener('click', () => openRepoPicker(!state.repoOpen));
+
+el('repoSearch').addEventListener('input', event => {
+  state.repoQuery = event.target.value;
+  state.repoActive = 0;
+  renderRepoList();
+});
+
+el('repoSearch').addEventListener('keydown', event => {
+  const options = repoOptions();
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    state.repoActive = (state.repoActive + step + options.length) % Math.max(1, options.length);
+    renderRepoList();
+    return;
+  }
+  if (event.key === 'Enter' && options[state.repoActive]) {
+    event.preventDefault();
+    pickRepo(options[state.repoActive].repo);
+  }
 });
 
 el('refresh').addEventListener('click', () => load(true));
