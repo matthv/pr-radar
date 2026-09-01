@@ -473,7 +473,7 @@ const I18N = {
     stale_one: '{n} PR sans activité depuis {days} j, ignorée',
     stale_many: '{n} PRs sans activité depuis {days} j, ignorées',
     groupMineAction: 'À traiter de mon côté',
-    groupMineWaiting: 'J’ai répondu, la balle est chez les relecteurs',
+    groupMineWaiting: 'En attente des relecteurs',
     groupReviewAction: 'À faire de mon côté',
     groupReviewWaiting: 'J’attends un fix de l’auteur',
     groupIdle: 'Rien à signaler',
@@ -491,6 +491,8 @@ const I18N = {
     pillIRequested: 'j’ai demandé des changements',
     pillIApproved: 'j’ai approuvé',
     pillPushed: 'commits depuis mes retours',
+    pillBotTitle_one: '{n} remarque non résolue de {login}',
+    pillBotTitle_many: '{n} remarques non résolues de {login}',
     pillConflicts: 'conflits',
     ciOk: 'CI ✓',
     ciFail: 'CI en échec',
@@ -538,7 +540,7 @@ const I18N = {
     stale_one: '{n} PR inactive for over {days} days, ignored',
     stale_many: '{n} PRs inactive for over {days} days, ignored',
     groupMineAction: 'On my plate',
-    groupMineWaiting: 'I replied — waiting on the reviewers',
+    groupMineWaiting: 'Waiting on the reviewers',
     groupReviewAction: 'On my plate',
     groupReviewWaiting: 'Waiting on the author',
     groupIdle: 'Nothing to report',
@@ -556,6 +558,8 @@ const I18N = {
     pillIRequested: 'I requested changes',
     pillIApproved: 'I approved',
     pillPushed: 'commits since my feedback',
+    pillBotTitle_one: '{n} unresolved remark from {login}',
+    pillBotTitle_many: '{n} unresolved remarks from {login}',
     pillConflicts: 'conflicts',
     ciOk: 'CI ✓',
     ciFail: 'CI failing',
@@ -688,9 +692,11 @@ function visibleThreads(threads) {
   return el('hideBots').checked ? threads.filter(thread => !thread.fromBot) : threads;
 }
 
-const pill = (kind, label) => `<span class="pill${kind ? ' ' + kind : ''}">${label}</span>`;
+const pill = (kind, label, title) =>
+  `<span class="pill${kind ? ' ' + kind : ''}"${title ? ` title="${escapeHtml(title)}"` : ''}>${label}</span>`;
 
 const MAX_FACES = 4;
+const MAX_BOT_PILLS = 3;
 
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
@@ -789,7 +795,7 @@ function resolveMine(pr) {
     .filter(r => r.kind === 'changes-requested')
     .map(r => t('reasonChangesRequested', { authors: r.authors.join(', ') }));
 
-  const bucket = needsAction ? 'action' : waiting.length ? 'waiting' : 'idle';
+  const bucket = needsAction ? 'action' : waiting.length || pr.awaitingReview ? 'waiting' : 'idle';
 
   return {
     ...pr,
@@ -811,11 +817,28 @@ function resolveReview(pr) {
   const toReview = pr.reasons.some(r => r.kind === 'to-review');
   const needsAction = toReview || answered.length > 0 || toRecheck;
 
+  // Bot threads never enter answered/awaiting — I have not taken part in them — so on
+  // the review side they were entirely invisible. On my own PRs they already land in
+  // `toFix`, which is why this only shows here. Grouped per bot: 29 remarks from a
+  // linter and 29 from a review bot do not call for the same thing.
+  const botsByLogin = new Map();
+  if (!el('hideBots').checked) {
+    for (const thread of pr.threads) {
+      if (!thread.fromBot || thread.isResolved) continue;
+      const login = thread.author.replace(/\[bot\]$/, '');
+      botsByLogin.set(login, (botsByLogin.get(login) ?? 0) + 1);
+    }
+  }
+  const bots = [...botsByLogin.entries()]
+    .map(([login, count]) => ({ login, count }))
+    .sort((a, b) => b.count - a.count);
+
   const bucket = needsAction ? 'action' : awaitingFix ? 'waiting' : 'idle';
 
   return {
     ...pr,
     answered,
+    bots,
     awaiting,
     displayReasons: toRecheck ? [t('reasonRecheck')] : [],
     needsAction,
@@ -845,6 +868,14 @@ function reviewCard(pr) {
   if (pr.myLatestVerdict === 'APPROVED') pills.push(pill('good', t('pillIApproved')));
   // When the card already carries the "new commits…" line, the pill merely repeats it.
   if (pr.pushedSinceMyFeedback && !pr.displayReasons.length) pills.push(pill('', t('pillPushed')));
+  // Neutral: a bot having plenty to say is context, not something asked of me.
+  for (const bot of pr.bots.slice(0, MAX_BOT_PILLS)) {
+    pills.push(pill(
+      '',
+      `${escapeHtml(bot.login)} ${bot.count}`,
+      tn('pillBotTitle', bot.count, { login: bot.login }),
+    ));
+  }
   return cardHtml(pr, [...pr.answered, ...pr.awaiting], pills);
 }
 

@@ -209,7 +209,9 @@ test('my PR: a resolved thread asks nothing', () => {
   const decorated = decorateMine(baseShape(pr, ME));
 
   assert.equal(decorated.toFix.length, 0);
-  assert.equal(decorated.bucket, 'idle');
+  assert.equal(decorated.needsAction, false);
+  // Not settled either: with no approval, the PR is still blocked on a review.
+  assert.equal(decorated.bucket, 'waiting');
 });
 
 test('my PR: failing CI and conflicts are actionable on their own', () => {
@@ -317,4 +319,28 @@ test('reviewing: a reply after my approval calls me back', () => {
 
   assert.equal(decorated.answeredToMe.length, 1);
   assert.equal(decorated.bucket, 'action');
+});
+
+test('my PR: a freshly opened one is waiting on the reviewers, not settled', () => {
+  const pr = node({ author: user(ME), reviewDecision: 'REVIEW_REQUIRED' });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.needsAction, false, 'it asks nothing of me');
+  assert.equal(decorated.awaitingReview, true);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('my PR: a draft waits on no one, and an approved one is done', () => {
+  const draft = decorateMine(baseShape(node({ isDraft: true, reviewDecision: 'REVIEW_REQUIRED' }), ME));
+  assert.equal(draft.awaitingReview, false);
+  assert.equal(draft.bucket, 'idle');
+
+  const approved = decorateMine(baseShape(node({ reviewDecision: 'APPROVED' }), ME));
+  assert.equal(approved.awaitingReview, false);
+  assert.equal(approved.bucket, 'idle');
+});
+
+test('my PR: a repo with no review policy still counts as awaiting review', () => {
+  const decorated = decorateMine(baseShape(node({ reviewDecision: null }), ME));
+  assert.equal(decorated.bucket, 'waiting');
 });

@@ -440,6 +440,10 @@ function decorateMine(pr) {
 
   const needsAction = reasons.length > 0;
 
+  // A freshly opened PR asks nothing of me, but I am blocked on a review — "nothing to
+  // report" undersells that. A draft is waiting on no one, and an approved PR is done.
+  const awaitingReview = !pr.isDraft && pr.reviewDecision !== 'APPROVED';
+
   return {
     ...pr,
     side: 'mine',
@@ -448,7 +452,8 @@ function decorateMine(pr) {
     changesRequested,
     reasons,
     needsAction,
-    bucket: needsAction ? 'action' : waitingOnThem.length ? 'waiting' : 'idle',
+    awaitingReview,
+    bucket: needsAction ? 'action' : waitingOnThem.length || awaitingReview ? 'waiting' : 'idle',
   };
 }
 
