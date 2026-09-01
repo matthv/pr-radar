@@ -314,7 +314,10 @@
     padding-left: 18px;
   }
   .card.idle.approved::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
-  .card:not(.idle):hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  /* Whatever presents as a full card lifts on hover. Only the plain receding ones stay
+     put — and an approved card is not one of them, since it kept its border and shadow. */
+  .card:not(.idle):hover,
+  .card.approved:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
   .card-top { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
   .age {
