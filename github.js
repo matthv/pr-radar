@@ -476,7 +476,6 @@ function decorateMine(pr) {
 function decorateReview(pr, me, requestedFromMe) {
   const myThreads = pr.threads.filter(t => t.iParticipated);
   const myUnresolved = myThreads.filter(t => !t.isResolved);
-  const awaitingAuthor = myUnresolved.filter(t => t.lastByMe);
 
   const myReviews = pr.reviews.filter(r => r.author === me);
   const myLastActivity = [
@@ -487,13 +486,26 @@ function decorateReview(pr, me, requestedFromMe) {
     .sort()
     .pop();
 
-  // A reply only calls for my attention if it landed after my last move, and a review
-  // submission is a move: approving is a reviewer's terminal act, so it settles replies
-  // that came before it. Comparing a reply against my last comment *in that thread*
-  // alone left an approval unable to close anything out.
+  const approvedAt = myReviews
+    .filter(r => r.state === 'APPROVED')
+    .map(r => r.submittedAt)
+    .sort()
+    .pop();
+
+  // One principle, applied to both sides of a thread: a later move of mine supersedes an
+  // earlier pending state of mine. Approving is a reviewer's terminal act.
+  //
+  // A reply is measured against my last move of any kind — a review submission included.
   const answeredToMe = myUnresolved.filter(
     thread =>
       !thread.lastByMe && (!myLastActivity || new Date(thread.lastAt) > new Date(myLastActivity)),
+  );
+
+  // A question of mine is measured against my approval specifically, not against any
+  // move: my own comment in that thread *is* the pending state, so it cannot settle
+  // itself. Approving after asking means I decided it was fine.
+  const awaitingAuthor = myUnresolved.filter(
+    thread => thread.lastByMe && !(approvedAt && new Date(approvedAt) > new Date(thread.lastAt)),
   );
 
   // My own commit is not something to re-check: without this guard, a PR I have taken

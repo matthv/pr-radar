@@ -344,3 +344,48 @@ test('my PR: a repo with no review policy still counts as awaiting review', () =
   const decorated = decorateMine(baseShape(node({ reviewDecision: null }), ME));
   assert.equal(decorated.bucket, 'waiting');
 });
+
+// Same principle as the reply case, on the other side of the thread: approving after
+// asking a question means I decided it was fine.
+test('reviewing: approving settles my own open question', () => {
+  const pr = node({
+    comments: { nodes: [issueComment([ME, ago(3)])] },
+    reviews: { nodes: [{ author: user(ME), state: 'APPROVED', submittedAt: ago(1), url: 'u' }] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.awaitingAuthor.length, 0, 'my question predates my approval');
+  assert.equal(decorated.awaitingFix, false);
+  // The green class is applied in the browser from exactly this pair, because the
+  // "hide bots" filter can shift the bucket there.
+  assert.equal(decorated.bucket, 'idle');
+  assert.equal(decorated.myLatestVerdict, 'APPROVED');
+});
+
+test('reviewing: a question asked after approving still awaits an answer', () => {
+  const pr = node({
+    comments: { nodes: [issueComment([ME, ago(1)])] },
+    reviews: { nodes: [{ author: user(ME), state: 'APPROVED', submittedAt: ago(3), url: 'u' }] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.awaitingAuthor.length, 1);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('reviewing: a changes-requested still awaits a fix, approval or not', () => {
+  const pr = node({
+    comments: { nodes: [issueComment([ME, ago(3)])] },
+    reviews: {
+      nodes: [
+        { author: user(ME), state: 'APPROVED', submittedAt: ago(2), url: 'u' },
+        { author: user(ME), state: 'CHANGES_REQUESTED', submittedAt: ago(1), url: 'u' },
+      ],
+    },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.myLatestVerdict, 'CHANGES_REQUESTED');
+  assert.equal(decorated.awaitingFix, true);
+  assert.equal(decorated.bucket, 'waiting');
+});
