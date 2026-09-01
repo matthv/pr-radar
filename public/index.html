@@ -104,9 +104,9 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes pulse { 0%, 100% { opacity: 1; r: 3.4px; } 50% { opacity: .6; r: 2.8px; } }
 
-  /* Les compteurs ont quitté le header : c'est un résumé du contenu, pas une commande
-     de l'outil. Posés au-dessus des colonnes qu'ils résument, ils peuvent reprendre un
-     contour — depuis qu'ils filtrent, la boîte ne ment plus. */
+  /* The counters left the header: this is a summary of the content, not a control of
+     the tool. Sitting above the columns they summarise, they may carry a container
+     again — now that they filter, the box no longer lies. */
   .summary {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
     padding: 20px 28px 0;
@@ -149,8 +149,8 @@
   .counter.zero { color: var(--text-faint); border-color: var(--hairline); }
   .counter.zero b { color: var(--text-faint); font-weight: 550; }
   .counter.zero .dot { background: var(--border); }
-  /* Le chevron dit « ceci mène quelque part » sans encombrer : discret au repos,
-     franc au survol et quand le filtre est actif. */
+  /* The chevron says "this leads somewhere" without crowding: faint at rest, plain on
+     hover and while the filter is on. */
   .counter .go { font-size: 11px; opacity: .3; transition: opacity .15s, transform .15s; }
   .counter:hover:not([disabled]) .go { opacity: .8; transform: translateX(2px); }
   .counter.on .go { opacity: .8; }
@@ -161,21 +161,24 @@
   label.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
   label.toggle input { accent-color: var(--indigo); margin: 0; }
   #stamp { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  #stamp.aged { color: var(--amber); font-weight: 600; }
+  #stamp.aged::after { content: " ⚠"; }
   .stale { font-size: 12.5px; color: var(--text-faint); margin-left: auto; }
 
-  button {
+  /* The boxed-control look is reserved for the toolbar. The page's other <button>s —
+     counters, expanders — are not controls of the tool and used to inherit that box by
+     accident. */
+  .controls button {
     font: inherit; font-size: 12.5px; font-weight: 520; cursor: pointer; color: var(--text-soft);
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 9px; padding: 6px 12px; box-shadow: var(--shadow-sm);
     transition: color .15s, border-color .15s, transform .15s;
   }
-  /* Les compteurs sont des <button> mais ne doivent pas hériter du survol des vraies
-     commandes : ni bordure franche, ni soulèvement. */
-  button:not(.counter):hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
+  .controls button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
   #theme { padding: 6px 10px; }
-  /* gitdeck partage désormais l'indigo de PR Radar : le teinter reviendrait à en faire
-     une action de PR Radar, en concurrence avec Rafraîchir. Le bouton reste donc neutre
-     comme les autres commandes, et c'est sa marque qui l'identifie. */
+  /* gitdeck now shares PR Radar's indigo: tinting it would make it read as an action of
+     PR Radar competing with Refresh. The button stays neutral like the other controls,
+     and its mark does the identifying. */
   a.link-out {
     display: none; align-items: center; gap: 7px;
     font-size: 12.5px; font-weight: 520; color: var(--text-soft);
@@ -202,8 +205,11 @@
 
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 22px 28px 70px; align-items: start; }
   @media (max-width: 1100px) { main { grid-template-columns: 1fr; gap: 26px; } }
-  /* Un compteur actif isole sa colonne : pleine largeur, l'autre repliée. */
+  /* An active counter isolates its column: full width, the other collapsed. */
   main[data-focus="mine"], main[data-focus="reviews"] { grid-template-columns: 1fr; }
+  /* Full width on a wide screen would leave the card's age a thousand pixels from the
+     rest of its line. */
+  main[data-focus] section { max-width: 940px; }
   main[data-focus="mine"] .col-review, main[data-focus="reviews"] .col-mine { display: none; }
 
   .col-mine { --col: var(--indigo); --col-2: var(--indigo-2); }
@@ -255,6 +261,18 @@
   .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
   .card.waiting { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
   .card.idle { background: var(--sunken); border-color: transparent; box-shadow: none; padding-left: 16px; }
+  /* Green only once nothing is left to do. On a card that still asks something, it
+     would overwrite the "your move" signal in the very channel that carries it — and
+     an approved PR whose author has since replied is still your move. */
+  .card.idle.approved {
+    /* Same recipe as the action and waiting cards — fading to --sunken instead left the
+       card green on the left and grey on the right. */
+    background: linear-gradient(100deg, var(--emerald-soft) -10%, var(--surface) 45%);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+    padding-left: 18px;
+  }
+  .card.idle.approved::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
   .card:not(.idle):hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
   .card-top { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
@@ -262,23 +280,28 @@
     flex: none; margin-left: auto; white-space: nowrap;
     font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums;
   }
+  /* --text-faint on --hairline sat at 2.68:1, well under the 4.5 AA threshold.
+     --text-soft reaches 5.87 in light and 6.39 in dark; the bolder title keeps the
+     hierarchy without the chip having to stay unreadable. */
   .repo {
     font-size: 11.5px; font-weight: 550; padding: 2px 7px; border-radius: 6px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
-    background: var(--hairline); color: var(--text-faint); white-space: nowrap;
+    background: var(--hairline); color: var(--text-soft); white-space: nowrap;
   }
   .title { font-weight: 620; font-size: 14.5px; letter-spacing: -.15px; flex: 1 1 240px; }
   .title:hover { color: var(--link); }
 
   .meta { display: flex; flex-wrap: wrap; gap: 6px 9px; margin-top: 10px; font-size: 12px; color: var(--text-faint); align-items: center; }
-  .meta .sep { color: var(--border); }
+  /* The separator is generated on the element it precedes, so it wraps with it and can
+     never be left orphaned at the end of a line. */
+  .meta .sep::before { content: "|"; color: var(--border); margin-right: 9px; }
   .who { display: flex; align-items: center; gap: 6px; }
   .stack { display: flex; flex: none; }
   .avatar {
     width: 18px; height: 18px; border-radius: 50%; flex: none;
     background: var(--hairline); border: 1.5px solid var(--surface);
   }
-  /* Chevauchement : les avatars se lisent comme une file, l'auteur d'origine devant. */
+  /* Overlap: the avatars read as a queue, the original author in front. */
   .stack .avatar + .avatar { margin-left: -6px; }
   .card.action .avatar { border-color: var(--surface); }
   .card.idle .avatar { border-color: var(--sunken); }
@@ -299,10 +322,12 @@
   .card.waiting .reason { color: var(--amber); }
 
   .expander {
-    font-size: 12px; font-weight: 520; color: var(--text-faint); cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 520; color: var(--text-faint);
+    background: none; border: 0; padding: 0; cursor: pointer;
     margin-top: 11px; display: inline-block;
   }
   .expander:hover { color: var(--link); }
+  .expander:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 4px; }
   .threads { margin-top: 11px; border-top: 1px solid var(--hairline); display: none; }
   .card.open .threads { display: block; }
   .thread { padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: 12.5px; }
@@ -322,6 +347,12 @@
   .error {
     margin: 20px 28px 0; padding: 12px 15px; border-radius: 10px;
     background: var(--rose-soft); color: var(--rose); font-size: 13px;
+  }
+  /* A partial outage must be loud: a silent gap in `author` would read as
+     "you have no open PRs". */
+  .warning {
+    margin: 20px 28px 0; padding: 12px 15px; border-radius: 10px;
+    background: var(--amber-soft); color: var(--amber); font-size: 13px; font-weight: 500;
   }
 </style>
 </head>
@@ -373,6 +404,7 @@
   </div>
 </header>
 <div id="error" class="error" hidden></div>
+<div id="warning" class="warning" hidden></div>
 <div class="summary">
   <div class="counters" id="counters"></div>
   <span class="stale" id="stale"></span>
@@ -389,8 +421,8 @@
 </main>
 
 <script>
-// `focus` n'est pas mémorisé : ouvrir l'outil sur un tableau déjà filtré, sans s'en
-// souvenir, ferait croire à des colonnes vides.
+// `focus` is not persisted: reopening on an already filtered board, with no memory of
+// having filtered it, would look like empty columns.
 const state = {
   data: null,
   lastActionCount: null,
@@ -420,6 +452,8 @@ const I18N = {
     ago: 'il y a {v}',
     agoTitle: 'dernière activité réelle : commit, commentaire ou review',
     stampTitle: 'dernier fetch — rafraîchissement automatique toutes les {every}',
+    warning_one: 'Données incomplètes : {sources} n’a pas répondu. Le reste est à jour.',
+    warning_many: 'Données incomplètes : {sources} n’ont pas répondu. Le reste est à jour.',
     themeTitle: 'Thème clair / sombre',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
@@ -483,6 +517,8 @@ const I18N = {
     ago: '{v} ago',
     agoTitle: 'real last activity: a commit, a comment or a review',
     stampTitle: 'last fetch — auto-refresh every {every}',
+    warning_one: 'Incomplete data: {sources} did not answer. The rest is up to date.',
+    warning_many: 'Incomplete data: {sources} did not answer. The rest is up to date.',
     themeTitle: 'Light / dark theme',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
@@ -600,7 +636,7 @@ function applyStampTitle() {
   el('stamp').title = t('stampTitle', { every });
 }
 
-// L'intervalle vient du serveur (PR_RADAR_REFRESH_SECONDS) : on le (re)cale au vol.
+// The interval comes from the server (PR_RADAR_REFRESH_SECONDS); re-tune it on the fly.
 function scheduleRefresh(seconds) {
   const intervalMs = Math.max(15, seconds || 300) * 1000;
   if (state.intervalMs === intervalMs) return;
@@ -673,7 +709,7 @@ function whoHtml(pr) {
 
   const names = shown.map(person => escapeHtml(person.login)).join(', ');
 
-  return `<span class="sep">|</span><span class="who" title="${escapeHtml(people.map(p => p.login).join(' → '))}">`
+  return `<span class="sep who" title="${escapeHtml(people.map(p => p.login).join(' → '))}">`
     + `<span class="stack">${faces}</span>`
     + `<span>${names}${hidden ? ` +${hidden}` : ''}</span></span>`;
 }
@@ -717,7 +753,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   const count = threadsToShow.length;
 
   return `
-    <div class="card ${pr.bucket}${open}" data-id="${pr.id}">
+    <div class="card ${pr.bucket}${pr.approved ? ' approved' : ''}${open}" data-id="${pr.id}">
       <div class="card-top">
         <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -729,14 +765,13 @@ function cardHtml(pr, threadsToShow, extraPills) {
         ${ciPill(pr)}
         ${pr.side === 'mine' && pr.mergeable === 'CONFLICTING' ? pill('alert', t('pillConflicts')) : ''}
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
-        <span class="sep">|</span>
-        <span title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
+        <span class="sep" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
       </div>
       ${pr.displayReasons.length
         ? `<div class="reasons">${pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}</div>`).join('')}</div>`
         : ''}
-      ${count ? `<span class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</span>` : ''}
+      ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : ''}
       ${count ? `<div class="threads">${threadsToShow.map(threadHtml).join('')}</div>` : ''}
     </div>`;
 }
@@ -744,15 +779,17 @@ function cardHtml(pr, threadsToShow, extraPills) {
 function resolveMine(pr) {
   const toFix = visibleThreads(pr.toFix);
   const waiting = visibleThreads(pr.waitingOnThem);
-  // Les remarques sont recomptées ici : le filtre « sans les bots » peut vider la liste.
+  // Remarks are recounted here: the "hide bots" filter can empty the list.
   const kept = pr.reasons.filter(r => r.kind !== 'threads');
   const needsAction = kept.length > 0 || toFix.length > 0;
 
-  // Les pills disent déjà le nombre de remarques, la CI et les conflits : seul le nom
-  // du relecteur qui a demandé des changements apporte une information absente ailleurs.
+  // The pills already say the remark count, the CI and the conflicts: only the name of
+  // the reviewer who requested changes adds something found nowhere else.
   const displayReasons = kept
     .filter(r => r.kind === 'changes-requested')
     .map(r => t('reasonChangesRequested', { authors: r.authors.join(', ') }));
+
+  const bucket = needsAction ? 'action' : waiting.length ? 'waiting' : 'idle';
 
   return {
     ...pr,
@@ -760,7 +797,9 @@ function resolveMine(pr) {
     waiting,
     displayReasons,
     needsAction,
-    bucket: needsAction ? 'action' : waiting.length ? 'waiting' : 'idle',
+    bucket,
+    // Green means "signed off and settled": on my own PR, approved and nothing left.
+    approved: bucket === 'idle' && pr.reviewDecision === 'APPROVED',
   };
 }
 
@@ -772,6 +811,8 @@ function resolveReview(pr) {
   const toReview = pr.reasons.some(r => r.kind === 'to-review');
   const needsAction = toReview || answered.length > 0 || toRecheck;
 
+  const bucket = needsAction ? 'action' : awaitingFix ? 'waiting' : 'idle';
+
   return {
     ...pr,
     answered,
@@ -779,14 +820,15 @@ function resolveReview(pr) {
     displayReasons: toRecheck ? [t('reasonRecheck')] : [],
     needsAction,
     awaitingFix,
-    bucket: needsAction ? 'action' : awaitingFix ? 'waiting' : 'idle',
+    bucket,
+    approved: bucket === 'idle' && pr.myLatestVerdict === 'APPROVED',
   };
 }
 
 function mineCard(pr) {
   const pills = [];
-  // Une PR ouverte par quelqu'un d'autre n'atterrit ici que parce que j'en ai repris
-  // la main : sans le dire, sa présence dans « mes PRs » est incompréhensible.
+  // A PR opened by someone else only lands here because I took it over: unsaid, its
+  // presence in "my PRs" is unexplainable.
   if (pr.author !== state.data.me) pills.push(pill('', t('pillTakenOver', { author: pr.author })));
   if (pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
   if (pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
@@ -801,14 +843,14 @@ function reviewCard(pr) {
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
   if (pr.myLatestVerdict === 'CHANGES_REQUESTED') pills.push(pill('pending', t('pillIRequested')));
   if (pr.myLatestVerdict === 'APPROVED') pills.push(pill('good', t('pillIApproved')));
-  // Quand la carte porte déjà la ligne « nouveaux commits… », le pill ne fait que répéter.
+  // When the card already carries the "new commits…" line, the pill merely repeats it.
   if (pr.pushedSinceMyFeedback && !pr.displayReasons.length) pills.push(pill('', t('pillPushed')));
   return cardHtml(pr, [...pr.answered, ...pr.awaiting], pills);
 }
 
-// Cliquer un compteur isole son ensemble : la colonne concernée passe pleine largeur,
-// l'autre disparaît. Un seul actif à la fois — ce sont des vues concurrentes du même
-// tableau, pas des filtres qui se cumulent.
+// Clicking a counter isolates its set: the relevant column goes full width, the other
+// disappears. One at a time — these are competing views of the same board, not filters
+// that stack.
 const FOCUS = {
   mineAction: { column: 'mine', bucket: 'action' },
   reviewAction: { column: 'reviews', bucket: 'action' },
@@ -818,8 +860,8 @@ const FOCUS = {
 function filterList(list) {
   let filtered = list;
   if (el('hideDrafts').checked) filtered = filtered.filter(pr => !pr.isDraft);
-  // Le focus l'emporte sur la case « à traiter » : les deux combinés pourraient se
-  // contredire (focus sur « en attente » + cases cochée = liste toujours vide).
+  // Focus wins over the "needs work" checkbox: combined they could contradict each
+  // other (focusing "awaiting" with the box ticked = a permanently empty list).
   if (!state.focus && el('onlyAction').checked) filtered = filtered.filter(pr => pr.needsAction);
   return filtered;
 }
@@ -844,7 +886,7 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
 const counter = (key, kind, value, label) => {
   const active = state.focus === key;
   const classes = ['counter', kind, value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
-  // Un compteur à zéro ne filtre que du vide : autant ne pas le proposer.
+  // A counter at zero would only filter to nothing: better not to offer it.
   return `<button type="button" class="${classes.join(' ')}" data-focus="${key}"`
     + `${value ? '' : ' disabled'}`
     + `${value ? ` title="${t(active ? 'focusClear' : 'focusHint')}"` : ''}>`
@@ -871,17 +913,29 @@ function render() {
     counter('reviewWaiting', 'pending', waitingFix, t('counterWaiting')),
   ].join('');
 
-  // Sans attribut href, le CSS masque le lien : une URL vide le retire du header.
+  // With no href the CSS hides the link: an empty URL removes it from the header.
   if (data.gitdeckUrl) el('gitdeck').href = data.gitdeckUrl;
   else el('gitdeck').removeAttribute('href');
+
+  const warnings = data.warnings ?? [];
+  el('warning').hidden = warnings.length === 0;
+  if (warnings.length) {
+    const sources = [...new Set(warnings.map(w => w.source))];
+    el('warning').textContent = tn('warning', sources.length, { sources: sources.join(', ') });
+  }
 
   const hidden = data.counts.hiddenStale;
   el('stale').textContent = hidden ? tn('stale', hidden, { days: data.maxAgeDays }) : '';
 
   document.title = total ? `(${total}) PR Radar` : 'PR Radar';
   applyStampTitle();
-  el('stamp').textContent = new Date(data.fetchedAt)
-    .toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+  const fetchedAt = new Date(data.fetchedAt);
+  el('stamp').textContent = fetchedAt.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+  // A failed fetch raises the banner; a merely late one would age in silence.
+  el('stamp').classList.toggle(
+    'aged',
+    Date.now() - fetchedAt > (data.refreshSeconds ?? 300) * 2000,
+  );
 
   const focus = FOCUS[state.focus];
   document.querySelector('main').dataset.focus = focus ? focus.column : '';
@@ -938,6 +992,12 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || !state.focus) return;
   state.focus = null;
   render();
+});
+
+// A laptop waking from sleep leaves setInterval far behind: without this you read
+// forty-minute-old data believing it is fresh. The server cache absorbs the extra call.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') load(false);
 });
 
 el('refresh').addEventListener('click', () => load(true));

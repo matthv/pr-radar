@@ -10,6 +10,7 @@ const execFile = promisify(require('node:child_process').execFile);
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
 const PR_BATCH_SIZE = 6;
 const ID_BATCH_SIZE = 25;
+const MERGEABLE_RETRY_MS = 1500;
 const PR_CONCURRENCY = 4;
 
 const BOT_LOGINS = new Set([
@@ -93,8 +94,8 @@ async function gh(args) {
   }
 }
 
-// `gh api --input -` ne reçoit pas correctement un body piped depuis Node (gh <= 2.7) :
-// la requête part malformée et GitHub la coupe. On passe donc par un fichier.
+// `gh api --input -` does not correctly receive a body piped from Node (gh <= 2.7):
+// the request goes out malformed and GitHub cuts it off. Hence the temporary file.
 async function ghGraphql(body) {
   const file = path.join(os.tmpdir(), `pr-radar-${process.pid}-${randomUUID()}.json`);
   await fs.writeFile(file, body);
@@ -115,8 +116,8 @@ async function graphql(query, variables) {
   return payload.data;
 }
 
-// La search GraphQL time out (HTTP 499) sur une org d'une certaine taille ;
-// la search REST, elle, répond, et son node_id est directement l'id GraphQL du PullRequest.
+// The GraphQL search times out (HTTP 499) on an org of any size; the REST search
+// answers, and its node_id is directly the PullRequest's GraphQL id.
 async function searchPullRequests(query) {
   const endpoint = `/search/issues?q=${encodeURIComponent(query)}&per_page=100&sort=updated&order=desc`;
   const payload = JSON.parse(await gh(['api', endpoint]));
@@ -135,10 +136,9 @@ const EVENT_TYPES = new Set([
 
 const SAFE_REPO = /^[A-Za-z0-9._-]+$/;
 
-// L'index de recherche GitHub oublie des PRs : un commentaire posté depuis trois jours
-// peut rester invisible à `commenter:` et à `involves:`. Le flux d'événements du compte
-// ne passe pas par cet index et rattrape ces trous — au prix d'une fenêtre courte
-// (300 événements, 90 jours max).
+// GitHub's search index misses PRs: a three-day-old comment can stay invisible to both
+// `commenter:` and `involves:`. The account's event feed does not go through that index
+// and plugs those holes — at the cost of a short window (300 events, 90 days max).
 async function recentlyTouchedPullRequests(org, me) {
   const pages = await Promise.all(
     [1, 2, 3].map(page => gh(['api', `/users/${me}/events?per_page=100&page=${page}`])),
@@ -152,7 +152,7 @@ async function recentlyTouchedPullRequests(org, me) {
 
     for (const event of events) {
       if (!EVENT_TYPES.has(event.type)) continue;
-      // Les IssueCommentEvent couvrent aussi les vraies issues.
+      // IssueCommentEvent also covers actual issues.
       if (event.type === 'IssueCommentEvent' && !event.payload?.issue?.pull_request) continue;
 
       const number = event.payload?.issue?.number ?? event.payload?.pull_request?.number;
@@ -203,15 +203,21 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-async function fetchPullRequests(ids) {
+// A failing batch must cost only its 6 PRs, not the whole board.
+async function fetchPullRequests(ids, warnings) {
   const batches = [];
   for (let i = 0; i < ids.length; i += PR_BATCH_SIZE) {
     batches.push(ids.slice(i, i + PR_BATCH_SIZE));
   }
 
-  const responses = await mapWithConcurrency(batches, PR_CONCURRENCY, batch =>
-    graphql(PR_QUERY, { ids: batch }),
-  );
+  const responses = await mapWithConcurrency(batches, PR_CONCURRENCY, async batch => {
+    try {
+      return await graphql(PR_QUERY, { ids: batch });
+    } catch (error) {
+      warnings.push({ source: 'details', message: error.message, lost: batch.length });
+      return { nodes: [] };
+    }
+  });
 
   const byId = new Map();
   for (const response of responses) {
@@ -222,8 +228,42 @@ async function fetchPullRequests(ids) {
   return byId;
 }
 
-// Les bots (qlty, macroscope…) postent du HTML et du markdown échappé :
-// sans nettoyage l'extrait affiche des balises brutes.
+// GitHub computes `mergeable` lazily and answers UNKNOWN meanwhile. Without this
+// second pass, that non-answer reads as "no conflict" and the pill vanishes while
+// nothing changed on the PR.
+const MERGEABLE_QUERY = `
+query($ids: [ID!]!) {
+  nodes(ids: $ids) { ... on PullRequest { id mergeable } }
+}`;
+
+async function settleMergeable(nodes, warnings) {
+  const pending = [...nodes.values()].filter(node => node.mergeable === 'UNKNOWN');
+  if (!pending.length) return;
+
+  await new Promise(resolve => setTimeout(resolve, MERGEABLE_RETRY_MS));
+
+  const batches = [];
+  for (let i = 0; i < pending.length; i += ID_BATCH_SIZE) {
+    batches.push(pending.slice(i, i + ID_BATCH_SIZE).map(node => node.id));
+  }
+
+  const responses = await mapWithConcurrency(batches, PR_CONCURRENCY, async batch => {
+    try {
+      return await graphql(MERGEABLE_QUERY, { ids: batch });
+    } catch (error) {
+      warnings.push({ source: 'mergeable', message: error.message });
+      return { nodes: [] };
+    }
+  });
+
+  for (const response of responses) {
+    for (const node of response.nodes) {
+      if (node?.id && nodes.has(node.id)) nodes.get(node.id).mergeable = node.mergeable;
+    }
+  }
+}
+
+// Bots post HTML and escaped markdown: without cleaning, the excerpt shows raw tags.
 function cleanExcerpt(body) {
   return (body || '')
     .replace(/```[\s\S]*?```/g, ' ')
@@ -265,9 +305,9 @@ function analyzeThread(thread, me) {
   };
 }
 
-// `updatedAt` de GitHub bouge pour un label posé, un mergeable recalculé ou une CI
-// relancée : une PR sans le moindre commit depuis 200 jours s'y déclare fraîche. On
-// datte donc l'activité par ce qu'un humain a réellement fait.
+// GitHub's `updatedAt` moves for a label, a recomputed mergeable or a CI re-run: a PR
+// with no commit for 200 days still claims to be fresh. Activity is therefore dated by
+// what a human actually did.
 function lastActivity(pr) {
   const dates = [
     pr.createdAt,
@@ -282,9 +322,9 @@ function lastActivity(pr) {
   return dates.sort().pop();
 }
 
-// Un retour de review ne vit pas forcément dans un thread inline : beaucoup de
-// relecteurs écrivent dans la conversation principale de la PR. On la replie en un
-// thread synthétique pour que tout le reste du classement la traite à l'identique.
+// Review feedback does not necessarily live in an inline thread: plenty of reviewers
+// write in the PR's main conversation. It is folded into a synthetic thread so the rest
+// of the classification treats it identically.
 function conversationThread(pr, me) {
   const comments = pr.comments.nodes.filter(c => c?.author && c.author.__typename !== 'Bot');
   if (!comments.length) return null;
@@ -312,8 +352,7 @@ function conversationThread(pr, me) {
   };
 }
 
-// Auteur de la PR d'abord, puis les auteurs de commits dans l'ordre chronologique :
-// c'est l'ordre dans lequel les gens sont entrés dans la PR.
+// PR author first, then commit authors chronologically: the order people entered the PR.
 function contributorsOf(pr) {
   const people = new Map();
 
@@ -389,8 +428,8 @@ function decorateMine(pr) {
   const waitingOnThem = unresolved.filter(t => t.lastByMe);
   const changesRequested = latestReviewPerAuthor(pr.reviews).filter(r => r.state === 'CHANGES_REQUESTED');
 
-  // Les raisons ne portent qu'un `kind` : la phrase est rendue côté client, qui seul
-  // connaît la langue choisie.
+  // Reasons carry only a `kind`: the sentence is rendered client-side, the only place
+  // that knows the chosen language.
   const reasons = [];
   if (toFix.length) reasons.push({ kind: 'threads', count: toFix.length });
   if (changesRequested.length) {
@@ -417,7 +456,6 @@ function decorateReview(pr, me, requestedFromMe) {
   const myThreads = pr.threads.filter(t => t.iParticipated);
   const myUnresolved = myThreads.filter(t => !t.isResolved);
   const awaitingAuthor = myUnresolved.filter(t => t.lastByMe);
-  const answeredToMe = myUnresolved.filter(t => !t.lastByMe);
 
   const myReviews = pr.reviews.filter(r => r.author === me);
   const myLastActivity = [
@@ -428,8 +466,17 @@ function decorateReview(pr, me, requestedFromMe) {
     .sort()
     .pop();
 
-  // Un commit de moi n'est pas quelque chose à re-vérifier : sans ce garde-fou, une PR
-  // dont j'ai repris la main me demande de contrôler mon propre travail.
+  // A reply only calls for my attention if it landed after my last move, and a review
+  // submission is a move: approving is a reviewer's terminal act, so it settles replies
+  // that came before it. Comparing a reply against my last comment *in that thread*
+  // alone left an approval unable to close anything out.
+  const answeredToMe = myUnresolved.filter(
+    thread =>
+      !thread.lastByMe && (!myLastActivity || new Date(thread.lastAt) > new Date(myLastActivity)),
+  );
+
+  // My own commit is not something to re-check: without this guard, a PR I have taken
+  // over asks me to review my own work.
   const pushedSinceMyFeedback = Boolean(
     myLastActivity &&
       pr.lastCommitAt &&
@@ -472,11 +519,15 @@ const byActionThenFreshness = (a, b) =>
 
 async function fetchDashboard({ org, maxAgeDays }) {
   const scope = `org:${org} is:pr is:open`;
-  // `reviewed-by:` ne matche qu'une review formellement soumise : une PR où l'on a
-  // seulement commenté n'y apparaît pas. `commenter:` couvre ce cas.
+  // `reviewed-by:` only matches a formally submitted review: a PR where you merely
+  // commented never shows up there. `commenter:` covers that case.
   const me = (await gh(['api', '/user', '--jq', '.login'])).trim();
 
-  const [mineFound, reviewedFound, requestedFound, commentedFound, touchedRefs] = await Promise.all([
+  // Five independent sources: with `Promise.all`, a timeout on one would wipe out the
+  // four valid answers and leave an empty screen. Keep what answered and report the
+  // gaps — a silent `author` would otherwise read as "you have no open PRs".
+  const warnings = [];
+  const settled = await Promise.allSettled([
     searchPullRequests(`${scope} author:@me`),
     searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
     searchPullRequests(`${scope} review-requested:@me -author:@me`),
@@ -484,11 +535,31 @@ async function fetchDashboard({ org, maxAgeDays }) {
     recentlyTouchedPullRequests(org, me),
   ]);
 
+  const SOURCES = ['author', 'reviewed-by', 'review-requested', 'commenter', 'events'];
+  const sourceOf = (index, fallback) => {
+    const result = settled[index];
+    if (result.status === 'fulfilled') return result.value;
+    warnings.push({ source: SOURCES[index], message: String(result.reason?.message ?? result.reason) });
+    return fallback;
+  };
+
+  const [mineFound, reviewedFound, requestedFound, commentedFound, touchedRefs] = [
+    sourceOf(0, []),
+    sourceOf(1, []),
+    sourceOf(2, []),
+    sourceOf(3, []),
+    sourceOf(4, []),
+  ];
+
+  if (warnings.length === settled.length) {
+    throw new Error(`Aucune source GitHub n'a répondu : ${warnings[0].message}`);
+  }
+
   const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
 
-  // Pré-filtre volontairement large : `updatedAt` sur-estime la fraîcheur, donc il ne
-  // sert qu'à ne pas charger les PRs mortes de façon certaine. Le vrai tri se fait
-  // ensuite sur `lastActivityAt`, qui demande les détails.
+  // Deliberately loose pre-filter: `updatedAt` overstates freshness, so it only avoids
+  // loading PRs that are dead for certain. The real cut happens on `lastActivityAt`,
+  // which needs the details.
   const maybeFresh = item => new Date(item.updatedAt).getTime() >= cutoff;
   const found = [...mineFound, ...reviewedFound, ...requestedFound, ...commentedFound];
   const stale = new Set(found.filter(item => !maybeFresh(item)).map(item => item.id));
@@ -498,13 +569,19 @@ async function fetchDashboard({ org, maxAgeDays }) {
   const requestedSet = ids(requestedFound);
   const reviewSet = new Set([...ids(reviewedFound), ...ids(commentedFound), ...requestedSet]);
 
-  // Les PRs venues du flux d'événements n'ont pas traversé la search : ni leur état ni
-  // leur auteur ne sont garantis. On les charge, puis on répartit sur l'auteur réel.
-  const touchedIds = await resolvePullRequestIds(touchedRefs);
+  // PRs from the event feed never went through the search: neither their state nor
+  // their author is guaranteed. Load them, then split on the real author.
+  let touchedIds = [];
+  try {
+    touchedIds = await resolvePullRequestIds(touchedRefs);
+  } catch (error) {
+    warnings.push({ source: 'events-resolve', message: error.message });
+  }
   const known = new Set([...mineSet, ...reviewSet]);
   const extraIds = touchedIds.filter(id => !known.has(id));
 
-  const byId = await fetchPullRequests([...known, ...extraIds]);
+  const byId = await fetchPullRequests([...known, ...extraIds], warnings);
+  await settleMergeable(byId, warnings);
 
   const shapes = new Map();
   for (const [id, node] of byId) {
@@ -520,9 +597,9 @@ async function fetchDashboard({ org, maxAgeDays }) {
     (shaped.author === me ? mineSet : reviewSet).add(id);
   }
 
-  // Reprendre la main sur la PR de quelqu'un d'autre, c'est en devenir responsable :
-  // le prochain geste est le mien, donc elle passe côté « mes PRs ». Dès que l'auteur
-  // repousse, le commit de tête change et elle repart côté review — c'est réversible.
+  // Taking over someone else's PR means owning it: the next move is mine, so it goes to
+  // "my PRs". As soon as the author pushes again the head commit changes and it returns
+  // to the review side — the rule reverses on its own.
   for (const [id, shaped] of shapes) {
     if (!reviewSet.has(id) || shaped.headCommitAuthor !== me) continue;
     reviewSet.delete(id);
@@ -545,13 +622,14 @@ async function fetchDashboard({ org, maxAgeDays }) {
     me,
     org,
     maxAgeDays,
+    warnings,
     fetchedAt: new Date().toISOString(),
     mine,
     reviews,
     counts: {
       hiddenStale: stale.size,
-      // PRs réellement prises en compte : affichées + écartées par la fenêtre d'âge.
-      // Les PRs mergées venues du flux d'événements n'en font pas partie.
+      // PRs actually considered: displayed + dropped by the age window. Merged PRs from
+      // the event feed are not part of it.
       seenTotal: shapes.size + stale.size,
       mineTotal: mine.length,
       mineAction: mine.filter(p => p.needsAction).length,
@@ -562,4 +640,16 @@ async function fetchDashboard({ org, maxAgeDays }) {
   };
 }
 
-module.exports = { fetchDashboard };
+// The pure functions are exported for the tests: every classification bug hit so far
+// lived here, not in the network calls.
+module.exports = {
+  fetchDashboard,
+  baseShape,
+  decorateMine,
+  decorateReview,
+  lastActivity,
+  contributorsOf,
+  conversationThread,
+  cleanExcerpt,
+  isBot,
+};

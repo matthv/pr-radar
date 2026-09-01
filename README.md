@@ -98,6 +98,34 @@ The coarse pre-filter on `updated_at` is kept, but deliberately loose: it only
 avoids fetching the details of PRs that are dead for certain. The number of
 dropped PRs stays visible in the header so the filter is never silent.
 
+## When GitHub only half answers
+
+The five discovery sources are independent, so one timing out no longer wipes the
+other four: what answered is kept and an amber banner names what is missing. That
+matters most for `author` — a silent gap there would read as "you have no open PRs".
+A failing detail batch costs only its six PRs. Only a total outage raises an error.
+
+`mergeable` gets a second pass. GitHub computes it lazily and answers `UNKNOWN`
+meanwhile, which the code used to read as "no conflict" — the conflict pill vanished
+while nothing had changed on the PR. Pending PRs are re-queried after a short delay.
+
+The timestamp in the header turns amber past twice the refresh interval: a failed
+fetch raises the banner, but a merely late one would otherwise age in silence. And
+the page refetches when the tab becomes visible again — a laptop waking from sleep
+leaves `setInterval` far behind.
+
+## Tests
+
+```bash
+yarn test          # or: node --test
+```
+
+Node's built-in runner, no dependency. The suite covers the classification logic,
+which is where every bug so far has lived: `updated_at` overstating freshness, bot
+comments faking activity, feedback left in the PR conversation, commits you pushed
+yourself being flagged as needing your re-check, and a superseded changes-requested
+still counting as the latest verdict.
+
 ## Notifications
 
 - The tab title shows the number of pending actions: `(4) PR Radar`.

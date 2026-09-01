@@ -5,7 +5,8 @@
   "description": "Dashboard local des PRs GitHub : celles que j'ai ouvertes et celles que je review",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"

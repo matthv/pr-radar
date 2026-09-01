@@ -4,11 +4,11 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-// Les variables déjà exportées dans le shell gardent la priorité sur le fichier.
+// Variables already exported in the shell keep precedence over the file.
 try {
   process.loadEnvFile(path.join(__dirname, '.env'));
 } catch {
-  /* pas de .env : on reste sur les valeurs par défaut */
+  /* no .env: fall back to the defaults */
 }
 
 const { fetchDashboard } = require('./github');
@@ -18,8 +18,8 @@ const ORG = process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
-// Moitié de l'intervalle : sinon un poll tombe sur un cache tout juste valide et
-// sert des données presque deux fois plus vieilles que l'intervalle annoncé.
+// Half the interval: otherwise a poll lands on a barely-valid cache and serves data
+// almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
