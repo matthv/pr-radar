@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" data-theme="light">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -372,6 +372,49 @@
   }
   .expander:hover { color: var(--link); }
   .expander:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 4px; }
+
+  /* Bottom row: threads on the left, snooze on the right. The row exists even with no
+     thread to expand, so the anchor never moves. */
+  .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+  /* Offered on every card. Visible on hover, and permanently once snoozed — otherwise
+     nothing would say which card is asleep while they are revealed. */
+  .snooze {
+    display: flex; align-items: center; gap: 6px;
+    flex: none; margin-top: 11px;
+    font: inherit; font-size: 11.5px; line-height: 1.2; color: var(--text-faint);
+    background: none; border: 0; padding: 3px 7px; border-radius: 7px;
+    cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
+  }
+  .card:hover .snooze, .snooze:focus-visible { opacity: 1; }
+  .snooze:hover { background: var(--hairline); color: var(--text-soft); }
+  .snooze:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .card.snoozed .snooze { opacity: 1; background: var(--hairline); color: var(--text-soft); }
+  .card.snoozed { opacity: .55; }
+  .card.snoozed:hover { opacity: 1; }
+
+  /* A set of PRs that one click reveals: the same species as the counters, so it takes
+     the same tile rather than a third pattern. Neutral, because a snooze is not a
+     priority. The secondary action only appears once the set is revealed. */
+  .snoozed-note { display: flex; align-items: center; gap: 6px; }
+  .counter.asleep { color: var(--text-faint); }
+  .counter.asleep b { color: var(--text-soft); }
+  .glyph { width: 8px; height: 10px; flex: none; opacity: .75; }
+  .counter.asleep.on { background: var(--hairline); border-color: var(--border-strong, var(--border)); }
+  /* Same family as the tiles — radius, padding — but transparent at rest, so it reads
+     as subordinate to the one it belongs to rather than as bare floating text. */
+  .wake {
+    display: flex; align-items: center; gap: 6px;
+    font: inherit; font-size: 12px; color: var(--text-faint); cursor: pointer;
+    background: none; border: 1px solid transparent; border-radius: 10px;
+    padding: 6px 10px;
+    transition: color .15s, background .15s, border-color .15s;
+  }
+  .wake:hover {
+    color: var(--indigo); background: var(--indigo-soft);
+    border-color: color-mix(in srgb, var(--indigo) 30%, transparent);
+  }
+  .wake:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
   .threads { margin-top: 11px; border-top: 1px solid var(--hairline); display: none; }
   .card.open .threads { display: block; }
   .thread { padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: 12.5px; }
@@ -459,6 +502,7 @@
       <div class="picker-list" id="repoList" role="listbox"></div>
     </div>
   </div>
+  <span class="snoozed-note" id="snoozedNote"></span>
   <span class="stale" id="stale"></span>
 </div>
 <main>
@@ -487,6 +531,8 @@ const state = {
   repoOpen: false,
   repoQuery: '',
   repoActive: 0,
+  snoozed: new Set(),
+  revealSnoozed: false,
 };
 
 const el = id => document.getElementById(id);
@@ -496,6 +542,47 @@ const store = {
     return raw === null ? fallback : raw;
   },
   set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
+};
+
+// Snoozing records the activity timestamp seen at the time. A PR stays hidden only
+// while that timestamp holds: any new commit, comment or review brings it straight
+// back. "Hide" therefore means "not until something moves", never "forget this".
+//
+// Any card can be snoozed, actionable ones included — an explicit product decision.
+// The activity check is then the only thing bringing it back, so a snoozed PR that
+// asks something of you stays hidden until someone touches it. The count in the
+// summary band is what keeps that visible.
+const snoozes = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem('pr-radar:snoozed') ?? '{}');
+    } catch {
+      return {};
+    }
+  },
+  write(map) {
+    localStorage.setItem('pr-radar:snoozed', JSON.stringify(map));
+  },
+  add(pr) {
+    const map = snoozes.read();
+    map[pr.id] = pr.lastActivityAt;
+    snoozes.write(map);
+  },
+  clear() {
+    localStorage.removeItem('pr-radar:snoozed');
+  },
+  // Prunes entries whose PR has moved on, so the store cannot drift out of sync.
+  applicable(all) {
+    const map = snoozes.read();
+    const live = new Set();
+    for (const pr of all) {
+      if (map[pr.id] === pr.lastActivityAt) live.add(pr.id);
+    }
+    if (Object.keys(map).length !== live.size) {
+      snoozes.write(Object.fromEntries([...live].map(id => [id, map[id]])));
+    }
+    return live;
+  },
 };
 
 const I18N = {
@@ -514,6 +601,11 @@ const I18N = {
     themeTitle: 'Thème clair / sombre',
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
+    snooze: 'mettre en veille jusqu’au prochain mouvement',
+    snoozedShow: 'afficher',
+    snoozedHide: 'masquer',
+    snoozedWake: 'réveiller tout',
+    snoozedBadge: 'en veille',
     noProject: 'Aucun projet ne correspond',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
@@ -584,6 +676,11 @@ const I18N = {
     themeTitle: 'Light / dark theme',
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
+    snooze: 'snooze until something moves',
+    snoozedShow: 'show',
+    snoozedHide: 'hide',
+    snoozedWake: 'wake all',
+    snoozedBadge: 'snoozed',
     noProject: 'No matching project',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
@@ -644,7 +741,7 @@ const I18N = {
 const PLURAL = { fr: n => (n > 1 ? 'many' : 'one'), en: n => (n === 1 ? 'one' : 'many') };
 const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
-let lang = I18N[store.get('lang', 'fr')] ? store.get('lang', 'fr') : 'fr';
+let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 
 const t = (key, vars) =>
   String(I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars?.[name] ?? '');
@@ -761,6 +858,12 @@ const pill = (kind, label, title) =>
 const MAX_FACES = 4;
 const MAX_BOT_PILLS = 3;
 
+// Drawn rather than typed: a crescent would collide with the theme toggle, and a glyph's
+// rendering depends on the font. Two bars say "on hold" without either problem.
+const PAUSE = '<svg class="glyph" viewBox="0 0 10 12" aria-hidden="true">'
+  + '<rect x="1" y="1" width="3" height="10" rx="1.2" fill="currentColor"/>'
+  + '<rect x="6" y="1" width="3" height="10" rx="1.2" fill="currentColor"/></svg>';
+
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
   if (!people.length) return '';
@@ -822,7 +925,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   const count = threadsToShow.length;
 
   return `
-    <div class="card ${pr.bucket}${pr.approved ? ' approved' : ''}${open}" data-id="${pr.id}">
+    <div class="card ${pr.bucket}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${open}" data-id="${pr.id}">
       <div class="card-top">
         <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -840,7 +943,10 @@ function cardHtml(pr, threadsToShow, extraPills) {
       ${pr.displayReasons.length
         ? `<div class="reasons">${pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}</div>`).join('')}</div>`
         : ''}
-      ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : ''}
+      <div class="card-foot">
+        ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : '<span></span>'}
+        <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+      </div>
       ${count ? `<div class="threads">${threadsToShow.map(threadHtml).join('')}</div>` : ''}
     </div>`;
 }
@@ -953,6 +1059,7 @@ const FOCUS = {
 
 function filterList(list) {
   let filtered = list;
+  if (!state.revealSnoozed) filtered = filtered.filter(pr => !state.snoozed.has(pr.id));
   if (state.repo) filtered = filtered.filter(pr => pr.repo === state.repo);
   if (el('hideDrafts').checked) filtered = filtered.filter(pr => !pr.isDraft);
   // Focus wins over the "needs work" checkbox: combined they could contradict each
@@ -1056,6 +1163,10 @@ function render() {
 
   const mine = data.mine.map(resolveMine);
   const reviews = data.reviews.map(resolveReview);
+  // Judged on the resolved list, so the rule and the button agree on what "asks for
+  // action" means — the raw payload's needsAction ignores the "hide bots" filter.
+  state.snoozed = snoozes.applicable([...mine, ...reviews]);
+
   const mineAction = filterList(mine).filter(pr => pr.needsAction).length;
   const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
   const waitingFix = filterList(reviews).filter(pr => pr.bucket === 'waiting').length;
@@ -1077,6 +1188,17 @@ function render() {
     const sources = [...new Set(warnings.map(w => w.source))];
     el('warning').textContent = tn('warning', sources.length, { sources: sources.join(', ') });
   }
+
+  const asleep = state.snoozed.size;
+  el('snoozedNote').innerHTML = asleep
+    ? `<button type="button" class="counter asleep${state.revealSnoozed ? ' on' : ''}" data-reveal`
+      + ` title="${t(state.revealSnoozed ? 'snoozedHide' : 'snoozedShow')}">`
+      + `${PAUSE}<b>${asleep}</b> ${t('snoozedBadge')}`
+      + `<span class="go">${state.revealSnoozed ? '×' : '›'}</span></button>`
+      + (state.revealSnoozed
+        ? `<button type="button" class="wake" data-wake>${t('snoozedWake')}</button>`
+        : '')
+    : '';
 
   const hidden = data.counts.hiddenStale;
   el('stale').textContent = hidden ? tn('stale', hidden, { days: data.maxAgeDays }) : '';
@@ -1138,6 +1260,34 @@ async function load(force) {
 }
 
 document.addEventListener('click', event => {
+  const snoozeButton = event.target.closest('.snooze');
+  if (snoozeButton) {
+    const { snooze } = snoozeButton.dataset;
+    const pr = [...state.data.mine, ...state.data.reviews].find(entry => entry.id === snooze);
+    if (state.snoozed.has(snooze)) {
+      const map = snoozes.read();
+      delete map[snooze];
+      snoozes.write(map);
+    } else if (pr) {
+      snoozes.add(pr);
+    }
+    render();
+    return;
+  }
+
+  if (event.target.closest('[data-reveal]')) {
+    state.revealSnoozed = !state.revealSnoozed;
+    render();
+    return;
+  }
+
+  if (event.target.closest('[data-wake]')) {
+    snoozes.clear();
+    state.revealSnoozed = false;
+    render();
+    return;
+  }
+
   const option = event.target.closest('.picker-option');
   if (option) {
     pickRepo(option.dataset.repo);

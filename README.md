@@ -172,7 +172,7 @@ filtered board, with no memory of having filtered it, would look like empty colu
   It is a single global link rather than one per card, because gitdeck keeps the
   selected repo in internal state rather than in the URL, so there is nothing to
   deep-link to.
-- `FR` / `EN` toggles the interface language (French by default, remembered).
+- `FR` / `EN` toggles the interface language (English by default, remembered).
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.
 
