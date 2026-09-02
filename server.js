@@ -17,6 +17,7 @@ const PORT = Number(process.env.PORT || 4321);
 const ORG = process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
+const MERGED_HOURS = Number(process.env.PR_RADAR_MERGED_HOURS || 12);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 // Half the interval: otherwise a poll lands on a barely-valid cache and serves data
 // almost twice as old as the advertised interval.
@@ -37,7 +38,7 @@ async function dashboard(force) {
   if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
   if (inFlight) return inFlight;
 
-  inFlight = fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS })
+  inFlight = fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS, mergedHours: MERGED_HOURS })
     .then(payload => {
       cache = {
         at: Date.now(),
@@ -96,7 +97,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · refresh ${REFRESH_SECONDS}s`,
+      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges watched ${MERGED_HOURS}h · refresh ${REFRESH_SECONDS}s`,
   );
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });

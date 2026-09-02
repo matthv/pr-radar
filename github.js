@@ -40,6 +40,9 @@ query($ids: [ID!]!) {
       url
       state
       isDraft
+      merged
+      mergedAt
+      mergeCommit { oid statusCheckRollup { state } }
       createdAt
       updatedAt
       mergeable
@@ -48,7 +51,7 @@ query($ids: [ID!]!) {
       deletions
       changedFiles
       author { login avatarUrl }
-      repository { nameWithOwner }
+      repository { nameWithOwner latestRelease { tagName url publishedAt } }
       labels(first: 10) { nodes { name color } }
       head: commits(last: 1) {
         nodes {
@@ -412,6 +415,16 @@ function truncationOf(pr) {
   return over.length ? over.join(', ') : null;
 }
 
+// The newest release of the repo, when it landed after this merge. It is a correlation,
+// not a fact GitHub states: two merges minutes apart could both point at the same tag,
+// which is why the label says "latest release since the merge" rather than "this one's".
+function releaseAfterMerge(pr) {
+  const latest = pr.repository.latestRelease;
+  if (!pr.merged || !latest?.publishedAt) return null;
+  if (new Date(latest.publishedAt) < new Date(pr.mergedAt)) return null;
+  return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt };
+}
+
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
   const conversation = conversationThread(pr, me);
@@ -424,6 +437,12 @@ function baseShape(pr, me) {
     repo: pr.repository.nameWithOwner,
     state: pr.state,
     isDraft: pr.isDraft,
+    merged: pr.merged,
+    mergedAt: pr.mergedAt,
+    // The rollup on the merge commit, not on the PR head: it is the release pipeline
+    // that runs after the squash, and the only part still worth watching.
+    mergePipeline: pr.mergeCommit?.statusCheckRollup?.state ?? null,
+    release: releaseAfterMerge(pr),
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,
     lastActivityAt: lastActivity(pr),
@@ -477,18 +496,35 @@ function decorateMine(pr) {
   // Reasons carry only a `kind`: the sentence is rendered client-side, the only place
   // that knows the chosen language.
   const reasons = [];
-  if (toFix.length) reasons.push({ kind: 'threads', count: toFix.length });
-  if (changesRequested.length) {
-    reasons.push({ kind: 'changes-requested', authors: changesRequested.map(r => r.author) });
+
+  // Once merged, unaddressed remarks, head CI and conflicts are all history — they were
+  // about getting it merged. The release is the only thing that can still ask anything.
+  if (pr.merged) {
+    if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') {
+      reasons.push({ kind: 'merge-pipeline' });
+    }
+  } else {
+    if (toFix.length) reasons.push({ kind: 'threads', count: toFix.length });
+    if (changesRequested.length) {
+      reasons.push({ kind: 'changes-requested', authors: changesRequested.map(r => r.author) });
+    }
+    if (pr.ciState === 'FAILURE' || pr.ciState === 'ERROR') reasons.push({ kind: 'ci' });
+    if (pr.mergeable === 'CONFLICTING') reasons.push({ kind: 'conflict' });
   }
-  if (pr.ciState === 'FAILURE' || pr.ciState === 'ERROR') reasons.push({ kind: 'ci' });
-  if (pr.mergeable === 'CONFLICTING') reasons.push({ kind: 'conflict' });
 
   const needsAction = reasons.length > 0;
 
   // A freshly opened PR asks nothing of me, but I am blocked on a review — "nothing to
   // report" undersells that. A draft is waiting on no one, and an approved PR is done.
-  const awaitingReview = !pr.isDraft && pr.reviewDecision !== 'APPROVED';
+  const awaitingReview = !pr.merged && !pr.isDraft && pr.reviewDecision !== 'APPROVED';
+
+  const bucket = needsAction
+    ? 'action'
+    : pr.merged
+      ? 'merged'
+      : waitingOnThem.length || awaitingReview
+        ? 'waiting'
+        : 'idle';
 
   return {
     ...pr,
@@ -499,7 +535,7 @@ function decorateMine(pr) {
     reasons,
     needsAction,
     awaitingReview,
-    bucket: needsAction ? 'action' : waitingOnThem.length || awaitingReview ? 'waiting' : 'idle',
+    bucket,
   };
 }
 
@@ -580,7 +616,7 @@ const byActionThenFreshness = (a, b) =>
   Number(b.needsAction) - Number(a.needsAction) ||
   new Date(b.lastActivityAt) - new Date(a.lastActivityAt);
 
-async function fetchDashboard({ org, maxAgeDays }) {
+async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
   const scope = `org:${org} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
   // commented never shows up there. `commenter:` covers that case.
@@ -596,10 +632,12 @@ async function fetchDashboard({ org, maxAgeDays }) {
     () => searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
     () => searchPullRequests(`${scope} review-requested:@me -author:@me`),
     () => searchPullRequests(`${scope} commenter:@me -author:@me`),
+    // Merged PRs are searched separately: `scope` pins `is:open`.
+    () => searchPullRequests(`org:${org} is:pr is:merged author:@me`),
     () => recentlyTouchedPullRequests(org, me),
   ]);
 
-  const SOURCES = ['author', 'reviewed-by', 'review-requested', 'commenter', 'events'];
+  const SOURCES = ['author', 'reviewed-by', 'review-requested', 'commenter', 'merged', 'events'];
   const sourceOf = (index, fallback) => {
     const result = settled[index];
     if (result.status === 'fulfilled') return result.value;
@@ -607,12 +645,13 @@ async function fetchDashboard({ org, maxAgeDays }) {
     return fallback;
   };
 
-  const [mineFound, reviewedFound, requestedFound, commentedFound, touchedRefs] = [
+  const [mineFound, reviewedFound, requestedFound, commentedFound, mergedFound, touchedRefs] = [
     sourceOf(0, []),
     sourceOf(1, []),
     sourceOf(2, []),
     sourceOf(3, []),
     sourceOf(4, []),
+    sourceOf(5, []),
   ];
 
   if (warnings.length === settled.length) {
@@ -626,10 +665,20 @@ async function fetchDashboard({ org, maxAgeDays }) {
   // which needs the details.
   const maybeFresh = item => new Date(item.updatedAt).getTime() >= cutoff;
   const found = [...mineFound, ...reviewedFound, ...requestedFound, ...commentedFound];
+
+  // A merge is worth watching while its release pipeline can still bite. The window is
+  // what bounds it — see PR_RADAR_MERGED_HOURS.
+  const mergedCutoff = Date.now() - mergedHours * 60 * 60 * 1000;
+  const mergedIds = new Set(
+    mergedFound
+      .filter(item => new Date(item.updatedAt).getTime() >= mergedCutoff)
+      .map(item => item.id),
+  );
   const stale = new Set(found.filter(item => !maybeFresh(item)).map(item => item.id));
 
   const ids = items => new Set(items.filter(maybeFresh).map(item => item.id));
   const mineSet = ids(mineFound);
+  mergedIds.forEach(id => mineSet.add(id));
   const requestedSet = ids(requestedFound);
   const reviewSet = new Set([...ids(reviewedFound), ...ids(commentedFound), ...requestedSet]);
 
@@ -650,6 +699,23 @@ async function fetchDashboard({ org, maxAgeDays }) {
   const shapes = new Map();
   for (const [id, node] of byId) {
     const shaped = baseShape(node, me);
+
+    // Only my own merges are worth watching — the release I set off is mine to see
+    // through; someone else's is their business. Without this the relaxed state filter
+    // let any merged PR through, and the review side reported "a reply for you" on a
+    // closed one.
+    if (shaped.merged) {
+      // "Mine" in the same sense the board already uses: opened by me, or taken over by
+      // me. A second definition of ownership would classify a taken-over merge one way
+      // and colour it another.
+      const mine = shaped.author === me || shaped.headCommitAuthor === me;
+      const fresh = new Date(shaped.mergedAt).getTime() >= mergedCutoff;
+      // Kept whatever the outcome: dropping it on success would make "it passed"
+      // indistinguishable from "I never saw it".
+      if (mine && fresh) shapes.set(id, shaped);
+      continue;
+    }
+
     if (shaped.state !== 'OPEN') continue;
     if (new Date(shaped.lastActivityAt).getTime() >= cutoff) shapes.set(id, shaped);
     else stale.add(id);
@@ -696,6 +762,7 @@ async function fetchDashboard({ org, maxAgeDays }) {
     me,
     org,
     maxAgeDays,
+    mergedHours,
     warnings,
     fetchedAt: new Date().toISOString(),
     mine,

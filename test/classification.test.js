@@ -33,6 +33,9 @@ function node(overrides = {}) {
     createdAt: ago(10),
     updatedAt: ago(10),
     mergeable: 'MERGEABLE',
+    merged: false,
+    mergedAt: null,
+    mergeCommit: null,
     reviewDecision: null,
     additions: 1,
     deletions: 1,
@@ -388,4 +391,67 @@ test('reviewing: a changes-requested still awaits a fix, approval or not', () =>
   assert.equal(decorated.myLatestVerdict, 'CHANGES_REQUESTED');
   assert.equal(decorated.awaitingFix, true);
   assert.equal(decorated.bucket, 'waiting');
+});
+
+test('my PR: once merged, only the release pipeline can still ask anything', () => {
+  // Head CI, conflicts and open threads are all about getting it merged.
+  const base = {
+    merged: true,
+    mergedAt: ago(0.1),
+    mergeable: 'CONFLICTING',
+    reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(2)]] })] },
+    head: { nodes: [{ commit: { committedDate: ago(1), author: { user: user(ME) }, statusCheckRollup: { state: 'FAILURE' } } }] },
+  };
+
+  const green = decorateMine(baseShape(node({ ...base, mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } } }), ME));
+  assert.equal(green.needsAction, false, 'a published release asks nothing');
+  assert.equal(green.bucket, 'merged');
+  assert.equal(green.awaitingReview, false, 'a merged PR waits on no reviewer');
+
+  const red = decorateMine(baseShape(node({ ...base, mergeCommit: { oid: 'x', statusCheckRollup: { state: 'FAILURE' } } }), ME));
+  assert.equal(red.needsAction, true);
+  assert.equal(red.bucket, 'action');
+  assert.deepEqual(red.reasons.map(r => r.kind), ['merge-pipeline']);
+});
+
+test('my PR: a running release keeps it watched without demanding anything', () => {
+  const pr = node({ merged: true, mergedAt: ago(0.1), mergeCommit: { oid: 'x', statusCheckRollup: { state: 'PENDING' } } });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.mergePipeline, 'PENDING');
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.bucket, 'merged');
+});
+
+test('a merge I took over is mine to watch, by the board\'s own notion of ownership', () => {
+  const takenOver = baseShape(node({
+    author: user('someone'),
+    merged: true,
+    mergedAt: ago(0.1),
+    head: { nodes: [{ commit: { committedDate: ago(0.2), author: { user: user(ME) }, statusCheckRollup: null } }] },
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+  }), ME);
+
+  assert.notEqual(takenOver.author, ME);
+  assert.equal(takenOver.headCommitAuthor, ME, 'the head commit is what makes it mine');
+});
+
+test('a merge by someone else is not mine to watch', () => {
+  // The relaxed state filter that lets my merges through must not let theirs in: the
+  // review side has no notion of "merged" and would report a reply on a closed PR.
+  const theirs = baseShape(node({
+    author: user('someone'),
+    merged: true,
+    mergedAt: ago(0.1),
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'FAILURE' } },
+    comments: { nodes: [issueComment([ME, ago(3)]), issueComment(['someone', ago(1)])] },
+  }), ME);
+
+  assert.equal(theirs.merged, true);
+  assert.notEqual(theirs.author, ME, 'the fixture is authored by someone else');
+
+  // decorateReview would happily claim a reply is waiting for me, which is why the
+  // filtering has to happen upstream, on the author.
+  const decorated = decorateReview(theirs, ME, false);
+  assert.equal(decorated.answeredToMe.length, 1, 'hence the upstream guard in fetchDashboard');
 });

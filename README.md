@@ -43,6 +43,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_ORG` | — | GitHub org to scan (**required**) |
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
+| `PR_RADAR_MERGED_HOURS` | `12` | How long a merge of yours stays watched |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
@@ -125,6 +126,30 @@ which is where every bug so far has lived: `updated_at` overstating freshness, b
 comments faking activity, feedback left in the PR conversation, commits you pushed
 yourself being flagged as needing your re-check, and a superseded changes-requested
 still counting as the latest verdict.
+
+## Watching a merge
+
+A PR leaves the board the moment it is merged — which is the moment its release
+pipeline starts. Merges of yours therefore stay in a **Recently merged** group for
+`PR_RADAR_MERGED_HOURS`, carrying the status of the **merge commit**, not of the PR
+head: what runs after a squash is the release job on the base branch.
+
+The outcome paints the whole card, because after a merge it is the only thing left to
+know. Amber while it runs — the outcome is unknown, and green would announce a success
+that has not happened — with the card breathing to say the decision is live. Green with
+the version tag once published, red and back on your plate if it failed.
+
+The version comes from the repo's latest release, kept only when it was published after
+the merge. It is a correlation, not something GitHub states: two merges minutes apart
+would point at the same tag, hence the "latest release since the merge" wording and the
+plain "released" fallback for repos that do not tag every merge.
+
+"Mine" means the same here as everywhere on the board: opened by you, or taken over by
+you. A colleague's merge is their business — and letting theirs through once had the
+review side claiming a reply was waiting for you on a closed PR.
+
+A merged card, like any other, can be dropped with the snooze control: no further
+activity will wake it, so there it amounts to dismissing it.
 
 ## Notifications
 

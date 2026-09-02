@@ -278,16 +278,18 @@
   .group-label:first-of-type { margin-top: 18px; }
   .group-label .gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
-  .group-label.waiting .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
+  .group-label.waiting .gdot,
+  .group-label.merged .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
   .group-label.idle .gdot { background: var(--border); }
   .group-label.action { color: var(--indigo); }
-  .group-label.waiting { color: var(--amber); }
+  .group-label.waiting, .group-label.merged { color: var(--amber); }
   .group-label .gcount {
     font-size: 10.5px; letter-spacing: 0; padding: 1px 6px; border-radius: 20px;
     background: var(--hairline); color: var(--text-faint);
   }
   .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
-  .group-label.waiting .gcount { background: var(--amber-soft); color: var(--amber); }
+  .group-label.waiting .gcount,
+  .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
   .card {
     position: relative; overflow: hidden;
@@ -301,9 +303,31 @@
   }
   .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
   .card.action::before { background: linear-gradient(180deg, var(--indigo), var(--indigo-2)); }
-  .card.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
+  .card.waiting::before,
+  .card.merged::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
-  .card.waiting { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
+  .card.waiting,
+  .card.merged { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
+
+  /* The release outcome paints the whole card, not just a pill: after a merge it is the
+     only thing left to know. Amber while it runs — the outcome is not known yet, and
+     green would announce a success that has not happened. */
+  .card.pipeline-done { background: linear-gradient(100deg, var(--emerald-soft) -10%, var(--surface) 45%); }
+  .card.pipeline-done::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
+  .card.pipeline-failed { background: linear-gradient(100deg, var(--rose-soft) -10%, var(--surface) 45%); }
+  .card.pipeline-failed::before { background: linear-gradient(180deg, var(--rose), var(--rose-2)); }
+  .card.pipeline-failed .reason { color: var(--rose); }
+
+  /* A gradient's stops cannot be animated, so the breathing lives on an overlay whose
+     opacity can. Content is lifted above it. */
+  .card.pipeline-running::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+    background: linear-gradient(100deg, var(--amber-soft) -10%, transparent 55%);
+  }
+  .card > * { position: relative; z-index: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .card.pipeline-running::after { animation: breathe 1.8s ease-in-out infinite; }
+  }
   .card.idle { background: var(--sunken); border-color: transparent; box-shadow: none; padding-left: 16px; }
   /* Green only once nothing is left to do. On a card that still asks something, it
      would overwrite the "your move" signal in the very channel that carries it — and
@@ -367,12 +391,17 @@
   .pill.pending { background: var(--amber-soft); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent); }
   .pill.good { background: var(--emerald-soft); color: var(--emerald); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--emerald) 18%, transparent); }
   .pill.alert { background: var(--rose-soft); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 18%, transparent); }
+  /* A running pipeline breathes: the card is a live thing until the verdict lands. */
+  @media (prefers-reduced-motion: no-preference) {
+    .pill.running { animation: breathe 1.8s ease-in-out infinite; }
+  }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
   .reasons { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
   .reason { font-size: 12.5px; font-weight: 500; color: var(--text-soft); display: flex; gap: 8px; }
   .reason::before { content: ""; flex: none; width: 3px; border-radius: 2px; background: currentColor; opacity: .4; }
   .card.action .reason { color: var(--indigo); }
-  .card.waiting .reason { color: var(--amber); }
+  .card.waiting .reason, .card.merged .reason { color: var(--amber); }
 
   .expander {
     font: inherit; font-size: 12px; font-weight: 520; color: var(--text-faint);
@@ -449,13 +478,12 @@
   @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 
   /* The button that triggered it carries the wait, and an auto-refresh shows there too:
-     what it says is "a fetch is in flight", which is true either way. */
-  #refresh.busy { color: transparent; position: relative; }
-  #refresh.busy::after {
-    content: ""; position: absolute; inset: 0; margin: auto;
-    width: 11px; height: 11px; border-radius: 50%;
-    border: 2px solid #ffffff55; border-top-color: #fff;
-    animation: spin .7s linear infinite;
+     what it says is "a fetch is in flight", which is true either way. The glyph is a
+     rotation already, so it spins rather than being swapped for a separate spinner. */
+  #refresh { display: inline-flex; align-items: center; gap: 7px; }
+  #refresh .ic { width: 14px; height: 14px; flex: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    #refresh.busy .ic { animation: spin .8s linear infinite; }
   }
 
   .empty {
@@ -518,7 +546,7 @@
     </a>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
-    <button id="refresh"></button>
+    <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
   </div>
 </header>
 <div id="error" class="error" hidden></div>
@@ -657,6 +685,14 @@ const I18N = {
     stale_one: '{n} PR sans activité depuis {days} j, ignorée',
     stale_many: '{n} PRs sans activité depuis {days} j, ignorées',
     groupMineAction: 'À traiter de mon côté',
+    groupMineMerged: 'Fusionnées récemment',
+    releaseTag: 'dernière release depuis le merge',
+    dismiss: 'retirer cette carte du tableau',
+    pillMergedAgo: 'fusionnée il y a {v}',
+    pipelineRunning: 'release en cours',
+    pipelineDone: 'release publiée',
+    pipelineFailed: 'release en échec',
+    reasonMergePipeline: 'la release a échoué après le merge',
     groupMineWaiting: 'En attente des relecteurs',
     groupReviewAction: 'À faire de mon côté',
     groupReviewWaiting: 'J’attends un fix de l’auteur',
@@ -733,6 +769,14 @@ const I18N = {
     stale_one: '{n} PR inactive for over {days} days, ignored',
     stale_many: '{n} PRs inactive for over {days} days, ignored',
     groupMineAction: 'On my plate',
+    groupMineMerged: 'Recently merged',
+    releaseTag: 'latest release since the merge',
+    dismiss: 'drop this card from the board',
+    pillMergedAgo: 'merged {v} ago',
+    pipelineRunning: 'release running',
+    pipelineDone: 'released',
+    pipelineFailed: 'release failed',
+    reasonMergePipeline: 'the release failed after the merge',
     groupMineWaiting: 'Waiting on the reviewers',
     groupReviewAction: 'On my plate',
     groupReviewWaiting: 'Waiting on the author',
@@ -812,7 +856,7 @@ function applyLang(next) {
   el('theme').title = t('themeTitle');
   el('gitdeck').title = t('gitdeckTitle');
   applyStampTitle();
-  el('refresh').textContent = t('refresh');
+  el('refreshLabel').textContent = t('refresh');
   el('lblOnlyAction').textContent = t('filterAction');
   el('lblHideBots').textContent = t('filterBots');
   el('lblHideDrafts').textContent = t('filterDrafts');
@@ -960,12 +1004,21 @@ function threadHtml(thread) {
     </div>`;
 }
 
+// On a merged PR the release outcome owns the card's colour, overriding the bucket:
+// the bucket says whose move it is, but here what matters is whether the release landed.
+function pipelineClass(pr) {
+  if (!pr.merged) return '';
+  if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') return ' pipeline-failed';
+  if (pr.mergePipeline === 'SUCCESS') return ' pipeline-done';
+  return ' pipeline-running';
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
 
   return `
-    <div class="card ${pr.bucket}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${open}" data-id="${pr.id}">
+    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${open}" data-id="${pr.id}">
       <div class="card-top">
         <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -996,7 +1049,8 @@ function resolveMine(pr) {
   const waiting = visibleThreads(pr.waitingOnThem);
   // Remarks are recounted here: the "hide bots" filter can empty the list.
   const kept = pr.reasons.filter(r => r.kind !== 'threads');
-  const needsAction = kept.length > 0 || toFix.length > 0;
+  // On a merged PR the open threads are history; only the release still counts.
+  const needsAction = kept.length > 0 || (!pr.merged && toFix.length > 0);
 
   // The pills already say the remark count, the CI and the conflicts: only the name of
   // the reviewer who requested changes adds something found nowhere else.
@@ -1004,7 +1058,13 @@ function resolveMine(pr) {
     .filter(r => r.kind === 'changes-requested')
     .map(r => t('reasonChangesRequested', { authors: r.authors.join(', ') }));
 
-  const bucket = needsAction ? 'action' : waiting.length || pr.awaitingReview ? 'waiting' : 'idle';
+  const bucket = needsAction
+    ? 'action'
+    : pr.merged
+      ? 'merged'
+      : waiting.length || pr.awaitingReview
+        ? 'waiting'
+        : 'idle';
 
   return {
     ...pr,
@@ -1059,12 +1119,28 @@ function resolveReview(pr) {
 
 function mineCard(pr) {
   const pills = [];
+  if (pr.merged) {
+    pills.push(pill('', t('pillMergedAgo', { v: ago(pr.mergedAt) })));
+    // Three outcomes, three readings: still running, published, broken.
+    if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') {
+      pills.push(pill('alert', t('pipelineFailed')));
+    } else if (pr.mergePipeline === 'SUCCESS') {
+      pills.push(
+        pr.release
+          ? `<a class="pill good" href="${escapeHtml(pr.release.url)}" target="_blank" rel="noopener"`
+            + ` title="${escapeHtml(t('releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
+          : pill('good', t('pipelineDone')),
+      );
+    } else {
+      pills.push(`<span class="pill pending running">${t('pipelineRunning')}</span>`);
+    }
+  }
   // A PR opened by someone else only lands here because I took it over: unsaid, its
   // presence in "my PRs" is unexplainable.
   if (pr.author !== state.data.me) pills.push(pill('', t('pillTakenOver', { author: pr.author })));
-  if (pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
-  if (pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
-  if (pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
+  if (!pr.merged && pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
+  if (!pr.merged && pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
+  if (!pr.merged && pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
   return cardHtml(pr, [...pr.toFix, ...pr.waiting], pills);
 }
 
@@ -1114,7 +1190,7 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
     return;
   }
-  target.innerHTML = ['action', 'waiting', 'idle']
+  target.innerHTML = ['action', 'merged', 'waiting', 'idle']
     .map(bucket => {
       const group = filtered.filter(pr => pr.bucket === bucket);
       if (!group.length) return '';
@@ -1270,6 +1346,7 @@ function render() {
 
   renderColumn(el('mine'), mine, mineCard, {
     action: t('groupMineAction'),
+    merged: t('groupMineMerged'),
     waiting: t('groupMineWaiting'),
     idle: t('groupIdle'),
   }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
