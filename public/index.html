@@ -107,6 +107,9 @@
   /* The counters left the header: this is a summary of the content, not a control of
      the tool. Sitting above the columns they summarise, they may carry a container
      again — now that they filter, the box no longer lies. */
+  /* Hidden until the first payload: the project picker rendered as an empty box, and
+     an empty control is worse than no control. */
+  .summary[hidden] { display: none; }
   .summary {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
     padding: 20px 28px 0;
@@ -341,14 +344,20 @@
   .meta .sep::before { content: "|"; color: var(--border); margin-right: 9px; }
   .who { display: flex; align-items: center; gap: 6px; }
   .stack { display: flex; flex: none; }
-  .avatar {
-    width: 18px; height: 18px; border-radius: 50%; flex: none;
+  .face {
+    display: block; position: relative;
+    width: 18px; height: 18px; border-radius: 50%; flex: none; overflow: hidden;
     background: var(--hairline); border: 1.5px solid var(--surface);
+    transition: box-shadow .15s, transform .15s;
   }
-  /* Overlap: the avatars read as a queue, the original author in front. */
-  .stack .avatar + .avatar { margin-left: -6px; }
-  .card.action .avatar { border-color: var(--surface); }
-  .card.idle .avatar { border-color: var(--sunken); }
+  .face img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  /* Overlap: the faces read as a queue, the original author in front. */
+  .stack .face + .face { margin-left: -6px; }
+  /* Raised on hover so the growing face is not clipped under the next one. */
+  .face:hover { box-shadow: 0 0 0 2px var(--indigo); transform: scale(1.12); z-index: 1; }
+  .face:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; z-index: 1; }
+  .card.action .face { border-color: var(--surface); }
+  .card.idle .face { border-color: var(--sunken); }
 
   .pill {
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
@@ -427,6 +436,28 @@
   }
   .thread-body { color: var(--text-soft); margin-top: 4px; }
 
+  /* Same sweep as gitdeck uses for a pane awaiting content, so the two tools read
+     alike while they wait. */
+  .card.skeleton {
+    height: 92px; border-color: transparent; box-shadow: none;
+    background:
+      linear-gradient(90deg, transparent, color-mix(in srgb, var(--indigo) 7%, transparent), transparent)
+      0 0 / 40% 100% no-repeat var(--sunken);
+    animation: sweep 1.1s ease-in-out infinite;
+  }
+  .card.skeleton::before { background: none; }
+  @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+  /* The button that triggered it carries the wait, and an auto-refresh shows there too:
+     what it says is "a fetch is in flight", which is true either way. */
+  #refresh.busy { color: transparent; position: relative; }
+  #refresh.busy::after {
+    content: ""; position: absolute; inset: 0; margin: auto;
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid #ffffff55; border-top-color: #fff;
+    animation: spin .7s linear infinite;
+  }
+
   .empty {
     color: var(--text-faint); font-size: 13px; padding: 26px;
     border: 1px dashed var(--border); border-radius: 13px; text-align: center; margin-top: 18px;
@@ -492,7 +523,7 @@
 </header>
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
-<div class="summary">
+<div class="summary" id="summary" hidden>
   <div class="counters" id="counters"></div>
   <div class="picker" id="picker">
     <button type="button" class="picker-trigger" id="repoTrigger"
@@ -601,6 +632,7 @@ const I18N = {
     themeTitle: 'Thème clair / sombre',
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
+    openProfile: 'ouvrir le profil de {login}',
     snooze: 'mettre en veille jusqu’au prochain mouvement',
     snoozedShow: 'afficher',
     snoozedHide: 'masquer',
@@ -676,6 +708,7 @@ const I18N = {
     themeTitle: 'Light / dark theme',
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
+    openProfile: 'open {login}’s profile',
     snooze: 'snooze until something moves',
     snoozedShow: 'show',
     snoozedHide: 'hide',
@@ -870,12 +903,19 @@ function whoHtml(pr) {
 
   const shown = people.slice(0, MAX_FACES);
   const hidden = people.length - shown.length;
+  // Same behaviour as gitdeck: the face links to the GitHub profile. Every contributor
+  // here has a login by construction — `contributorsOf` skips users without one — so
+  // the link can never point at a page that does not exist.
   const faces = shown
-    .map(person =>
-      person.avatarUrl
-        ? `<img class="avatar" src="${escapeHtml(person.avatarUrl)}&s=48" alt=""
-             title="${escapeHtml(person.login)}" loading="lazy">`
-        : `<span class="avatar" title="${escapeHtml(person.login)}"></span>`,
+    .map(
+      person =>
+        `<a class="face" href="https://github.com/${encodeURIComponent(person.login)}"`
+        + ` target="_blank" rel="noopener"`
+        + ` title="${escapeHtml(t('openProfile', { login: person.login }))}">`
+        + (person.avatarUrl
+          ? `<img src="${escapeHtml(person.avatarUrl)}&s=48" alt="" loading="lazy">`
+          : '')
+        + '</a>',
     )
     .join('');
 
@@ -1244,18 +1284,32 @@ function render() {
   state.lastActionCount = total;
 }
 
+function renderSkeleton() {
+  el('mine').innerHTML = '<div class="card skeleton"></div>'.repeat(3);
+  el('reviews').innerHTML = '<div class="card skeleton"></div>'.repeat(2);
+}
+
 async function load(force) {
+  el('refresh').classList.add('busy');
   try {
     const response = await fetch('/api/prs' + (force ? '?force=1' : ''));
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || response.statusText);
     el('error').hidden = true;
     state.data = payload;
+    el('summary').hidden = false;
     scheduleRefresh(payload.refreshSeconds);
     render();
   } catch (error) {
     el('error').hidden = false;
     el('error').textContent = t('error', { message: error.message });
+    // A first load that fails must not leave a sweeping skeleton pretending to work.
+    if (!state.data) {
+      el('mine').innerHTML = '';
+      el('reviews').innerHTML = '';
+    }
+  } finally {
+    el('refresh').classList.remove('busy');
   }
 }
 
@@ -1357,6 +1411,7 @@ el('repoSearch').addEventListener('keydown', event => {
 
 el('refresh').addEventListener('click', () => load(true));
 applyLang(lang);
+renderSkeleton();
 load(false);
 </script>
 </body>
