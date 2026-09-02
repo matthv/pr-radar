@@ -612,8 +612,14 @@ function decorateReview(pr, me, requestedFromMe) {
   };
 }
 
+// A landed release is the one thing on the board that is finished, so it goes last
+// among equals. Freshness alone only correlates with "still running" — a merge whose
+// pipeline finished fast would otherwise outrank one still in flight.
+const settledRank = pr => (pr.merged && pr.mergePipeline === 'SUCCESS' ? 1 : 0);
+
 const byActionThenFreshness = (a, b) =>
   Number(b.needsAction) - Number(a.needsAction) ||
+  settledRank(a) - settledRank(b) ||
   new Date(b.lastActivityAt) - new Date(a.lastActivityAt);
 
 async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
@@ -785,6 +791,7 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  byActionThenFreshness,
   baseShape,
   decorateMine,
   decorateReview,

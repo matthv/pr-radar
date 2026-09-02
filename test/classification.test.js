@@ -12,6 +12,7 @@ const {
   conversationThread,
   cleanExcerpt,
   isBot,
+  byActionThenFreshness,
 } = require('../github');
 
 const ME = 'me';
@@ -454,4 +455,23 @@ test('a merge by someone else is not mine to watch', () => {
   // filtering has to happen upstream, on the author.
   const decorated = decorateReview(theirs, ME, false);
   assert.equal(decorated.answeredToMe.length, 1, 'hence the upstream guard in fetchDashboard');
+});
+
+test('within the merged group, a running release outranks a landed one', () => {
+  // Freshness alone would not guarantee it: a pipeline that finished fast can be more
+  // recent than one still in flight.
+  const running = decorateMine(baseShape(node({
+    merged: true, mergedAt: ago(2), lastActivityAt: ago(2),
+    mergeCommit: { oid: 'a', statusCheckRollup: { state: 'PENDING' } },
+    head: { nodes: [{ commit: { committedDate: ago(2), author: { user: user(ME) }, statusCheckRollup: null } }] },
+  }), ME));
+
+  const landed = decorateMine(baseShape(node({
+    merged: true, mergedAt: ago(0.1),
+    mergeCommit: { oid: 'b', statusCheckRollup: { state: 'SUCCESS' } },
+    head: { nodes: [{ commit: { committedDate: ago(0.1), author: { user: user(ME) }, statusCheckRollup: null } }] },
+  }), ME));
+
+  const sorted = [landed, running].sort(byActionThenFreshness);
+  assert.equal(sorted[0].mergePipeline, 'PENDING', 'the running one comes first');
 });
