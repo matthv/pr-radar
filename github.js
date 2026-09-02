@@ -141,14 +141,15 @@ const SAFE_REPO = /^[A-Za-z0-9._-]+$/;
 // `commenter:` and `involves:`. The account's event feed does not go through that index
 // and plugs those holes — at the cost of a short window (300 events, 90 days max).
 async function recentlyTouchedPullRequests(org, me) {
-  const pages = await Promise.all(
-    [1, 2, 3].map(page => gh(['api', `/users/${me}/events?per_page=100&page=${page}`])),
+  const pages = await sequentially(
+    [1, 2, 3].map(page => () => gh(['api', `/users/${me}/events?per_page=100&page=${page}`])),
   );
 
   const refs = new Map();
 
   for (const page of pages) {
-    const events = JSON.parse(page);
+    if (page.status !== 'fulfilled') continue;
+    const events = JSON.parse(page.value);
     if (!Array.isArray(events)) continue;
 
     for (const event of events) {
@@ -189,6 +190,35 @@ async function resolvePullRequestIds(refs) {
       .map(entry => entry?.pullRequest?.id)
       .filter(Boolean),
   );
+}
+
+// GitHub's secondary rate limit triggers on bursts of concurrent requests, regardless
+// of the quota — which is why it fires while /rate_limit still reads 30/30. Its own
+// guidance is to send requests one after another, so REST calls are serialised and a
+// refusal is retried once after a pause. At a five-minute refresh, latency is free.
+const RATE_LIMIT_PAUSE_MS = 20_000;
+
+const isSecondaryRateLimit = error => /secondary rate limit/i.test(error.message);
+
+async function sequentially(tasks) {
+  const results = [];
+  for (const task of tasks) {
+    try {
+      results.push({ status: 'fulfilled', value: await task() });
+    } catch (error) {
+      if (!isSecondaryRateLimit(error)) {
+        results.push({ status: 'rejected', reason: error });
+        continue;
+      }
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_PAUSE_MS));
+      try {
+        results.push({ status: 'fulfilled', value: await task() });
+      } catch (retryError) {
+        results.push({ status: 'rejected', reason: retryError });
+      }
+    }
+  }
+  return results;
 }
 
 async function mapWithConcurrency(items, limit, worker) {
@@ -556,16 +586,17 @@ async function fetchDashboard({ org, maxAgeDays }) {
   // commented never shows up there. `commenter:` covers that case.
   const me = (await gh(['api', '/user', '--jq', '.login'])).trim();
 
-  // Five independent sources: with `Promise.all`, a timeout on one would wipe out the
-  // four valid answers and leave an empty screen. Keep what answered and report the
-  // gaps — a silent `author` would otherwise read as "you have no open PRs".
+  // Five independent sources, run one at a time. With `Promise.all`, a timeout on one
+  // would wipe out the four valid answers and leave an empty screen; keep what answered
+  // and report the gaps — a silent `author` would otherwise read as "you have no open
+  // PRs". Running them in a burst is also what triggered the secondary rate limit.
   const warnings = [];
-  const settled = await Promise.allSettled([
-    searchPullRequests(`${scope} author:@me`),
-    searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
-    searchPullRequests(`${scope} review-requested:@me -author:@me`),
-    searchPullRequests(`${scope} commenter:@me -author:@me`),
-    recentlyTouchedPullRequests(org, me),
+  const settled = await sequentially([
+    () => searchPullRequests(`${scope} author:@me`),
+    () => searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
+    () => searchPullRequests(`${scope} review-requested:@me -author:@me`),
+    () => searchPullRequests(`${scope} commenter:@me -author:@me`),
+    () => recentlyTouchedPullRequests(org, me),
   ]);
 
   const SOURCES = ['author', 'reviewed-by', 'review-requested', 'commenter', 'events'];
