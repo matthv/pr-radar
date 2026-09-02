@@ -283,6 +283,9 @@
   .group-label.idle .gdot { background: var(--border); }
   .group-label.action { color: var(--indigo); }
   .group-label.waiting, .group-label.merged { color: var(--amber); }
+  .group-label.merged.settled { color: var(--emerald); }
+  .group-label.merged.settled .gdot { background: linear-gradient(135deg, var(--emerald), var(--emerald-2)); }
+  .group-label.merged.settled .gcount { background: var(--emerald-soft); color: var(--emerald); }
   .group-label .gcount {
     font-size: 10.5px; letter-spacing: 0; padding: 1px 6px; border-radius: 20px;
     background: var(--hairline); color: var(--text-faint);
@@ -523,12 +526,7 @@
   </div>
   <div class="spacer"></div>
   <div class="controls">
-    <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>
-    <label class="toggle"><input type="checkbox" id="hideBots"> <span id="lblHideBots"></span></label>
-    <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>
-    <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>
-    <span id="stamp"></span>
-    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
+    <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>    <label class="toggle"><input type="checkbox" id="hideBots"> <span id="lblHideBots"></span></label>    <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>    <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>    <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>    <button id="theme">☾</button>    <span id="stamp"></span>    <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
       <svg class="gitdeck-logo" viewBox="0 0 32 32" aria-hidden="true">
         <defs>
           <linearGradient id="gdGrad" x1="0" y1="1" x2="1" y2="0">
@@ -543,11 +541,7 @@
         <circle cx="17" cy="20" r="2.6" fill="url(#gdGrad)" opacity=".55"/>
       </svg>
       <span>gitdeck</span>
-    </a>
-    <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
-    <button id="theme">☾</button>
-    <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
-  </div>
+    </a>  </div>
 </header>
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
@@ -1194,7 +1188,12 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
     .map(bucket => {
       const group = filtered.filter(pr => pr.bucket === bucket);
       if (!group.length) return '';
-      return `<div class="group-label ${bucket}"><span class="gdot"></span>${groupLabels[bucket]}`
+      // A summary reports the state that still needs attention: the merged group turns
+      // green only once every release in it has landed. A failed one is not here — it
+      // moves to the action group.
+      const settled = bucket === 'merged' && group.every(pr => pr.mergePipeline === 'SUCCESS');
+      return `<div class="group-label ${bucket}${settled ? ' settled' : ''}">`
+        + `<span class="gdot"></span>${groupLabels[bucket]}`
         + `<span class="gcount">${group.length}</span></div>`
         + group.map(cardFn).join('');
     })
