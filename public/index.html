@@ -1184,7 +1184,10 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
     return;
   }
-  target.innerHTML = ['action', 'merged', 'waiting', 'idle']
+  // Ordered by what each state asks of you: your move, then waiting on someone, then a
+  // merge to glance at, then nothing. A merge sat second before, which ranked a
+  // published release above a PR actually blocked on a reviewer.
+  target.innerHTML = ['action', 'waiting', 'merged', 'idle']
     .map(bucket => {
       const group = filtered.filter(pr => pr.bucket === bucket);
       if (!group.length) return '';
