@@ -110,10 +110,20 @@ A failing detail batch costs only its six PRs. Only a total outage raises an err
 meanwhile, which the code used to read as "no conflict" — the conflict pill vanished
 while nothing had changed on the PR. Pending PRs are re-queried after a short delay.
 
+## When the open page is behind
+
+Refresh fetches data, it does not reload the page, so a tab left open keeps running
+the assets it booted with. Every response carries an `X-PR-Radar-Version` header
+hashed from the asset mtimes; when it stops matching the one seen at boot, a
+**Reload** button appears in the header. Nothing reloads on its own — you may be
+mid-read.
+
 The timestamp in the header turns amber past twice the refresh interval: a failed
-fetch raises the banner, but a merely late one would otherwise age in silence. And
-the page refetches when the tab becomes visible again — a laptop waking from sleep
-leaves `setInterval` far behind.
+fetch raises the banner, but a merely late one would otherwise age in silence. It is
+re-checked on its own clock rather than at render time, since a render follows its
+fetch by milliseconds and the mark would never show. And the page refetches when the
+tab becomes visible again — a laptop waking from sleep leaves `setInterval` far
+behind.
 
 ## Tests
 
@@ -151,10 +161,28 @@ review side claiming a reply was waiting for you on a closed PR.
 A merged card, like any other, can be dropped with the snooze control: no further
 activity will wake it, so there it amounts to dismissing it.
 
+## Snoozing a card
+
+Any card can be snoozed, actionable ones included. Snoozing records the last
+activity timestamp seen at that moment, and the card stays hidden only while that
+timestamp holds: a new commit, comment or review brings it straight back. It means
+*not until something moves*, never *forget this*.
+
+That the guard is activity and not a delay is what makes it safe to offer on a card
+that asks something of you: nothing else would bring it back. So the count sits in
+the summary band, next to the counters, with the snoozed cards one click away and a
+**wake all** next to them. Entries whose PR has moved on are pruned on every render,
+so the store cannot drift out of sync with the board.
+
 ## Notifications
 
 - The tab title shows the number of pending actions: `(4) PR Radar`.
-- A chime plays when that number goes up (**sound** checkbox, remembered).
+- A chime plays when that number goes up (**sound** checkbox, remembered). It
+  follows the counter, not activity: a PR you just opened yourself lands in
+  *waiting on the reviewers* and asks nothing of you, so it stays silent — you came
+  from `gh pr create` and know it exists. It rings when a reviewer turns it into
+  your move. The first render after opening the page is silent too, or every reload
+  would chime.
 - Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
   in the header, the exact interval on hover.
 
@@ -170,6 +198,12 @@ scrolls away with what it describes.
 goes full width and the other collapses. Click it again, or press `Escape`, to go
 back. Only one at a time — these are competing views of the same board, not filters
 that stack. A counter at zero is disabled: it would only ever filter to nothing.
+
+Next to them, a **project picker** narrows the board to a single repository. It is a
+searchable list holding only the projects actually on the board, each with its card
+count, so it can never offer an empty result. It filters rather than sorts: with a
+dozen repositories in play, grouping them still leaves you scrolling past the ones
+you are not working on.
 
 A counter takes precedence over the **needs work** checkbox, which could otherwise
 contradict it — focusing "awaiting a fix" with that box ticked would show an empty
@@ -187,9 +221,11 @@ filtered board, with no memory of having filtered it, would look like empty colu
 - **hide drafts**.
 - `☾` / `☀` toggles light / dark (light by default, remembered).
 - A **gitdeck** button in the header opens the local web git client, carrying
-  gitdeck's own branch mark so it is recognisable at a glance. The button itself
-  stays neutral like the other controls: gitdeck now shares this indigo, so
-  tinting it would make it read as an action of PR Radar competing with Refresh.
+  gitdeck's own branch mark so it is recognisable at a glance. It is the mirror of
+  PR Radar's own button over there: each tool points at the other with the same
+  soft-tinted pill in the host's accent, and the whole toolbar shares gitdeck's
+  metrics — one height for every control, so alignment never depends on what a
+  control contains.
   It points at `PR_RADAR_GITDECK_URL`; leave that empty and the button disappears,
   so there is no dead control for anyone who does not run gitdeck. No separate
   boolean flag: the URL already carries both the destination and whether to show
@@ -201,7 +237,10 @@ filtered board, with no memory of having filtered it, would look like empty colu
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.
 
-Click `▸ N open threads` to read the comments without leaving the page.
+Click `▸ N open threads` to read the comments without leaving the page. An excerpt
+stops at 320 characters, and the ellipsis then carries a **read the rest** link
+pointing at the comment anchor rather than the PR, so you land where the excerpt
+stopped.
 
 Both columns show who is involved, as a stack of overlapping avatars followed by
 the names, comma-separated: the PR author first, then whoever pushed commits, in
