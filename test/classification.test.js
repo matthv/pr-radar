@@ -293,7 +293,7 @@ test('bots are detected by type, not only by a login list', () => {
 
 test('excerpts drop the HTML and escaped markdown that bots post', () => {
   const raw = 'Function with many parameters \\(count = 4\\)<i>[qlty]</i><a href="http://x">doc</a>';
-  const clean = cleanExcerpt(raw);
+  const { text: clean } = cleanExcerpt(raw);
 
   assert.equal(clean.includes('<'), false);
   assert.equal(clean.includes('\\('), false);
@@ -474,4 +474,19 @@ test('within the merged group, a running release outranks a landed one', () => {
 
   const sorted = [landed, running].sort(byActionThenFreshness);
   assert.equal(sorted[0].mergePipeline, 'PENDING', 'the running one comes first');
+});
+
+test('a truncated excerpt says so, and does not cut mid-word', () => {
+  const { text, truncated } = cleanExcerpt(`${'word '.repeat(200)}end`);
+
+  assert.equal(truncated, true);
+  assert.ok(text.endsWith('…'), 'the ellipsis is what tells a summary from a bug');
+  assert.ok(text.length <= 321, `expected at most 321 chars, got ${text.length}`);
+  assert.equal(/\s…$/.test(text), false, 'no dangling space before the ellipsis');
+  assert.equal(text.replace('…', '').endsWith('word'), true, 'cut on a word boundary');
+});
+
+test('an excerpt that fits is left exactly as it is', () => {
+  const short = 'A short remark about a field.';
+  assert.deepEqual(cleanExcerpt(short), { text: short, truncated: false });
 });

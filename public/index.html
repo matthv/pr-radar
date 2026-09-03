@@ -469,6 +469,8 @@
     color: var(--cyan); background: var(--cyan-soft); padding: 1px 6px; border-radius: 5px;
   }
   .thread-body { color: var(--text-soft); margin-top: 4px; }
+  .thread-more { color: var(--cyan); white-space: nowrap; }
+  .thread-more:hover { text-decoration: underline; }
 
   /* Same sweep as gitdeck uses for a pane awaiting content, so the two tools read
      alike while they wait. */
@@ -730,6 +732,7 @@ const I18N = {
     files: '{n} fichiers',
     outdated: 'obsolète',
     conversation: 'conversation',
+    readRest: 'lire la suite',
     messages: '{n} messages',
     lastWord: 'dernier mot : {who}, {ago}',
     me: 'moi',
@@ -816,6 +819,7 @@ const I18N = {
     files: '{n} files',
     outdated: 'outdated',
     conversation: 'conversation',
+    readRest: 'read the rest',
     messages: '{n} messages',
     lastWord: 'last word: {who}, {ago}',
     me: 'me',
@@ -1014,7 +1018,11 @@ function threadHtml(thread) {
           ago: since(thread.lastAt),
         })}</span>
       </div>
-      <div class="thread-body">${escapeHtml(thread.excerpt)}</div>
+      <div class="thread-body">${escapeHtml(thread.excerpt)}${
+        thread.excerptTruncated
+          ? ` <a class="thread-more" href="${escapeHtml(thread.url)}" target="_blank" rel="noopener">${t('readRest')}</a>`
+          : ''
+      }</div>
     </div>`;
 }
 

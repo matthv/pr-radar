@@ -298,16 +298,24 @@ async function settleMergeable(nodes, warnings) {
 }
 
 // Bots post HTML and escaped markdown: without cleaning, the excerpt shows raw tags.
+const EXCERPT_LIMIT = 320;
+
 function cleanExcerpt(body) {
-  return (body || '')
+  const text = (body || '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\\([\\`*_{}[\]()#+\-.!])/g, '$1')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 320);
+    .trim();
+
+  if (text.length <= EXCERPT_LIMIT) return { text, truncated: false };
+
+  const cut = text.slice(0, EXCERPT_LIMIT);
+  const lastSpace = cut.lastIndexOf(' ');
+  const kept = lastSpace > EXCERPT_LIMIT * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return { text: `${kept.replace(/[\s,;:.–—-]+$/, '')}…`, truncated: true };
 }
 
 const isBot = author =>
@@ -318,6 +326,8 @@ function analyzeThread(thread, me) {
   const first = comments[0];
   const last = comments[comments.length - 1];
   if (!first || !last) return null;
+
+  const excerpt = cleanExcerpt(first.body);
 
   return {
     id: thread.id,
@@ -334,7 +344,8 @@ function analyzeThread(thread, me) {
     lastByMe: last.author?.login === me,
     lastAt: last.createdAt,
     myLastAt: comments.filter(c => c.author?.login === me).map(c => c.createdAt).sort().pop() ?? null,
-    excerpt: cleanExcerpt(first.body),
+    excerpt: excerpt.text,
+    excerptTruncated: excerpt.truncated,
     commentCount: thread.comments.totalCount,
   };
 }
@@ -365,6 +376,7 @@ function conversationThread(pr, me) {
 
   const first = comments[0];
   const last = comments[comments.length - 1];
+  const excerpt = cleanExcerpt(last.body);
 
   return {
     id: `conversation:${pr.id}`,
@@ -381,7 +393,8 @@ function conversationThread(pr, me) {
     lastByMe: last.author.login === me,
     lastAt: last.createdAt,
     myLastAt: comments.filter(c => c.author.login === me).map(c => c.createdAt).sort().pop() ?? null,
-    excerpt: cleanExcerpt(last.body),
+    excerpt: excerpt.text,
+    excerptTruncated: excerpt.truncated,
     commentCount: comments.length,
   };
 }
