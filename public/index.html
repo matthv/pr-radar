@@ -163,6 +163,8 @@
   .controls { display: flex; align-items: center; gap: 15px; font-size: 12.5px; color: var(--text-soft); }
   label.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
   label.toggle input { accent-color: var(--indigo); margin: 0; }
+  #reload { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
+  #reload:hover { color: var(--amber); border-color: var(--amber); }
   #stamp { color: var(--text-faint); font-variant-numeric: tabular-nums; }
   #stamp.aged { color: var(--amber); font-weight: 600; }
   #stamp.aged::after { content: " ⚠"; }
@@ -239,12 +241,12 @@
   @keyframes blip { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .seg { display: flex; gap: 3px; padding: 3px; }
   .seg span {
-    padding: 3px 7px; border-radius: 6px; font-size: 11.5px; font-weight: 620;
+    padding: 3px 9px; border-radius: 6px; font-size: 12.5px; font-weight: 620;
     letter-spacing: .3px; color: var(--text-faint); transition: color .15s, background .15s;
   }
   .seg span.on { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); color: #fff; }
   .seg:hover { border-color: var(--indigo); }
-  #refresh { color: #fff; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
+  #refresh { color: #fff; font-weight: 620; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
   #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
 
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 22px 28px 70px; align-items: start; }
@@ -526,7 +528,16 @@
   </div>
   <div class="spacer"></div>
   <div class="controls">
-    <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>    <label class="toggle"><input type="checkbox" id="hideBots"> <span id="lblHideBots"></span></label>    <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>    <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>    <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>    <button id="theme">☾</button>    <span id="stamp"></span>    <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
+    <label class="toggle"><input type="checkbox" id="onlyAction"> <span id="lblOnlyAction"></span></label>
+    <label class="toggle"><input type="checkbox" id="hideBots"> <span id="lblHideBots"></span></label>
+    <label class="toggle"><input type="checkbox" id="hideDrafts"> <span id="lblHideDrafts"></span></label>
+    <label class="toggle"><input type="checkbox" id="sound" checked> <span id="lblSound"></span></label>
+    <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
+    <button id="theme">☾</button>
+    <button id="reload" hidden></button>
+    <span id="stamp"></span>
+    <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
+    <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
       <svg class="gitdeck-logo" viewBox="0 0 32 32" aria-hidden="true">
         <defs>
           <linearGradient id="gdGrad" x1="0" y1="1" x2="1" y2="0">
@@ -541,7 +552,8 @@
         <circle cx="17" cy="20" r="2.6" fill="url(#gdGrad)" opacity=".55"/>
       </svg>
       <span>gitdeck</span>
-    </a>  </div>
+    </a>
+  </div>
 </header>
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
@@ -572,6 +584,8 @@
 <script>
 // `focus` is not persisted: reopening on an already filtered board, with no memory of
 // having filtered it, would look like empty columns.
+let bootVersion = null;
+
 const state = {
   data: null,
   lastActionCount: null,
@@ -666,6 +680,8 @@ const I18N = {
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
     refresh: 'Rafraîchir',
+    reload: 'Recharger',
+    reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     filterAction: 'à traiter',
     filterBots: 'sans les bots',
     filterDrafts: 'sans les drafts',
@@ -750,6 +766,8 @@ const I18N = {
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
     refresh: 'Refresh',
+    reload: 'Reload',
+    reloadTitle: 'this page is running an older version of the tool',
     filterAction: 'needs work',
     filterBots: 'hide bots',
     filterDrafts: 'hide drafts',
@@ -851,6 +869,8 @@ function applyLang(next) {
   el('gitdeck').title = t('gitdeckTitle');
   applyStampTitle();
   el('refreshLabel').textContent = t('refresh');
+  el('reload').textContent = t('reload');
+  el('reload').title = t('reloadTitle');
   el('lblOnlyAction').textContent = t('filterAction');
   el('lblHideBots').textContent = t('filterBots');
   el('lblHideDrafts').textContent = t('filterDrafts');
@@ -1372,6 +1392,12 @@ async function load(force) {
   el('refresh').classList.add('busy');
   try {
     const response = await fetch('/api/prs' + (force ? '?force=1' : ''));
+    const version = response.headers.get('x-pr-radar-version');
+    if (version) {
+      bootVersion ??= version;
+      if (version !== bootVersion) el('reload').hidden = false;
+    }
+
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || response.statusText);
     el('error').hidden = true;
@@ -1488,6 +1514,7 @@ el('repoSearch').addEventListener('keydown', event => {
   }
 });
 
+el('reload').addEventListener('click', () => location.reload());
 el('refresh').addEventListener('click', () => load(true));
 applyLang(lang);
 renderSkeleton();

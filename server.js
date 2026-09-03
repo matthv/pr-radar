@@ -3,6 +3,7 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 // Variables already exported in the shell keep precedence over the file.
 try {
@@ -23,6 +24,16 @@ const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 // almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Refresh fetches data, it does not reload the page: without this token a tab left
+// open keeps running the old assets after the files change.
+async function assetVersion() {
+  const names = (await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)).sort();
+  const stamps = await Promise.all(
+    names.map(async name => `${name}:${(await fs.stat(path.join(PUBLIC_DIR, name))).mtimeMs}`),
+  );
+  return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -53,10 +64,13 @@ async function dashboard(force) {
   return inFlight;
 }
 
-function json(res, status, body) {
-  const raw = JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(raw);
+function json(res, status, body, version) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...(version ? { 'X-PR-Radar-Version': version } : {}),
+  });
+  res.end(JSON.stringify(body));
 }
 
 async function serveStatic(res, urlPath) {
@@ -83,10 +97,11 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   if (url.pathname === '/api/prs') {
+    const version = await assetVersion();
     try {
-      json(res, 200, await dashboard(url.searchParams.get('force') === '1'));
+      json(res, 200, await dashboard(url.searchParams.get('force') === '1'), version);
     } catch (error) {
-      json(res, 502, { error: error.message });
+      json(res, 502, { error: error.message }, version);
     }
     return;
   }
