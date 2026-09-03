@@ -73,6 +73,9 @@
   }
 
   * { box-sizing: border-box; }
+  /* Controls set their own `display`, which would otherwise beat the UA rule and show
+     an empty button before the first payload. */
+  [hidden] { display: none !important; }
 
   body {
     margin: 0;
@@ -109,7 +112,6 @@
      again — now that they filter, the box no longer lies. */
   /* Hidden until the first payload: the project picker rendered as an empty box, and
      an empty control is worse than no control. */
-  .summary[hidden] { display: none; }
   .summary {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
     padding: 20px 28px 0;
@@ -160,14 +162,19 @@
   .counter[disabled] .go { display: none; }
 
   .spacer { flex: 1 1 auto; }
-  .controls { display: flex; align-items: center; gap: 15px; font-size: 12.5px; color: var(--text-soft); }
-  label.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .controls { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--text-soft); }
+  .controls > * { height: 31px; }
+  /* The filters are not controls of the tool: they keep the wider spacing so the seam
+     between the two families stays readable at the tighter toolbar gap. */
+  label.toggle { display: flex; align-items: center; gap: 6px; margin-right: 6px; cursor: pointer; user-select: none; }
   label.toggle input { accent-color: var(--indigo); margin: 0; }
   #reload { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
   #reload:hover { color: var(--amber); border-color: var(--amber); }
-  #stamp { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  #stamp { display: inline-flex; align-items: center; font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  #stamp:empty { display: none; }
+  #stamp:not(:empty) { margin-left: 4px; }
   #stamp.aged { color: var(--amber); font-weight: 600; }
-  #stamp.aged::after { content: " ⚠"; }
+  #stamp.aged::after { content: " ⚠"; margin-left: 3px; }
   .stale { font-size: 12.5px; color: var(--text-faint); margin-left: auto; }
   /* Interactive, so it gets a container — same rule as the toolbar controls. Its
      options live outside `.controls`, so they do not inherit that boxed look. */
@@ -215,33 +222,35 @@
      counters, expanders — are not controls of the tool and used to inherit that box by
      accident. */
   .controls button {
+    display: inline-flex; align-items: center; gap: 6px;
     font: inherit; font-size: 12.5px; font-weight: 520; cursor: pointer; color: var(--text-soft);
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 9px; padding: 6px 12px; box-shadow: var(--shadow-sm);
+    border-radius: 9px; padding: 0 12px; box-shadow: var(--shadow-sm);
     transition: color .15s, border-color .15s, transform .15s;
   }
   .controls button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
-  #theme { padding: 6px 10px; }
-  /* gitdeck now shares PR Radar's indigo: tinting it would make it read as an action of
-     PR Radar competing with Refresh. The button stays neutral like the other controls,
-     and its mark does the identifying. */
+  #theme { width: 32px; padding: 0; justify-content: center; font-size: 13px; }
+  /* The mirror of PR Radar's own button on gitdeck: each tool points at the other with a
+     soft-tinted pill in the host's accent, so the pair reads as one family. */
   a.link-out {
-    display: none; align-items: center; gap: 7px;
-    font-size: 12.5px; font-weight: 520; color: var(--text-soft);
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 9px; padding: 6px 11px; box-shadow: var(--shadow-sm);
+    display: none; align-items: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; color: var(--indigo);
+    background: var(--indigo-soft);
+    border: 1px solid color-mix(in srgb, var(--indigo) 28%, transparent);
+    border-radius: 9px; padding: 0 12px; box-shadow: var(--shadow-sm);
     transition: color .15s, border-color .15s, transform .15s;
   }
   a.link-out[href] { display: inline-flex; }
-  a.link-out:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
-  a.link-out svg { width: 15px; height: 15px; flex: none; }
+  a.link-out:hover { border-color: var(--indigo); transform: translateY(-1px); }
+  a.link-out svg { width: 14px; height: 14px; flex: none; }
   @media (prefers-reduced-motion: no-preference) {
     a.link-out:hover .branch-tip { animation: blip 1.6s ease-in-out infinite; }
   }
   @keyframes blip { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-  .seg { display: flex; gap: 3px; padding: 3px; }
+  .controls button.seg { display: flex; align-items: stretch; gap: 3px; padding: 3px; }
   .seg span {
-    padding: 3px 9px; border-radius: 6px; font-size: 12.5px; font-weight: 620;
+    display: flex; align-items: center;
+    padding: 3px 9px; border-radius: 6px; font-size: 11.5px; font-weight: 620;
     letter-spacing: .3px; color: var(--text-faint); transition: color .15s, background .15s;
   }
   .seg span.on { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); color: #fff; }
@@ -487,7 +496,6 @@
   /* The button that triggered it carries the wait, and an auto-refresh shows there too:
      what it says is "a fetch is in flight", which is true either way. The glyph is a
      rotation already, so it spins rather than being swapped for a separate spinner. */
-  #refresh { display: inline-flex; align-items: center; gap: 7px; }
   #refresh .ic { width: 14px; height: 14px; flex: none; }
   @media (prefers-reduced-motion: no-preference) {
     #refresh.busy .ic { animation: spin .8s linear infinite; }
@@ -895,6 +903,18 @@ function applyStampTitle() {
   el('stamp').title = t('stampTitle', { every });
 }
 
+// A failed fetch raises the banner; a merely late one would age in silence. Computed only
+// at render time the mark would never show, a render following its fetch by milliseconds,
+// so it runs on its own clock.
+function renderStampAge() {
+  const fetchedAt = state.data && new Date(state.data.fetchedAt).getTime();
+  el('stamp').classList.toggle(
+    'aged',
+    Boolean(fetchedAt) && Date.now() - fetchedAt > (state.data.refreshSeconds ?? 300) * 2000,
+  );
+}
+setInterval(renderStampAge, 30_000);
+
 // The interval comes from the server (PR_RADAR_REFRESH_SECONDS); re-tune it on the fly.
 function scheduleRefresh(seconds) {
   const intervalMs = Math.max(15, seconds || 300) * 1000;
@@ -904,19 +924,25 @@ function scheduleRefresh(seconds) {
   state.timer = setInterval(() => load(false), intervalMs);
 }
 
+let audio = null;
+
 function beep() {
   if (!el('sound').checked) return;
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const now = ctx.currentTime;
+  // One context for the page: a document may only hold a handful, and a tool left open all
+  // day would beep its way past the cap.
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  // A tab nobody has touched has never granted audio, so the context starts suspended.
+  audio.resume().catch(() => {});
+  const now = audio.currentTime;
   [660, 880].forEach((freq, index) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
     osc.type = 'sine';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, now + index * 0.15);
     gain.gain.linearRampToValueAtTime(0.1, now + index * 0.15 + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.15 + 0.14);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(audio.destination);
     osc.start(now + index * 0.15);
     osc.stop(now + index * 0.15 + 0.15);
   });
@@ -1353,11 +1379,7 @@ function render() {
   applyStampTitle();
   const fetchedAt = new Date(data.fetchedAt);
   el('stamp').textContent = fetchedAt.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
-  // A failed fetch raises the banner; a merely late one would age in silence.
-  el('stamp').classList.toggle(
-    'aged',
-    Date.now() - fetchedAt > (data.refreshSeconds ?? 300) * 2000,
-  );
+  renderStampAge();
 
   // Only the projects actually on the board, so the list never offers an empty result.
   const all = [...data.mine, ...data.reviews];
