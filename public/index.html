@@ -258,6 +258,69 @@
   #refresh { color: #fff; font-weight: 620; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
   #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
 
+  .notes-btn .ic { width: 13px; height: 13px; flex: none; }
+  /* Not the Refresh spin: rotating three horizontal lines turns them into diagonals and
+     means nothing. They light up in sequence instead, like text being written. */
+  @media (prefers-reduced-motion: no-preference) {
+    .notes-btn.busy .ic path { animation: writing 1.3s ease-in-out infinite; }
+    .notes-btn.busy .ic path:nth-child(2) { animation-delay: .18s; }
+    .notes-btn.busy .ic path:nth-child(3) { animation-delay: .36s; }
+  }
+  @keyframes writing { 0%, 100% { opacity: .2; } 45% { opacity: 1; } }
+  .notes-panel {
+    margin: 14px 28px 0; padding: 13px 16px 15px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-sm);
+  }
+  .notes-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11.5px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase;
+    color: var(--text-faint); margin-bottom: 10px;
+  }
+  /* Text sits with the title on the left; the glyph pair stays together on the right. */
+  .notes-scope {
+    height: 22px; padding: 0 8px; font: inherit; font-size: 11px; font-weight: 600;
+    letter-spacing: .2px; text-transform: none; color: var(--cyan);
+    background: var(--cyan-soft); border: 1px solid transparent;
+    border-radius: 6px; cursor: pointer; transition: border-color .15s;
+  }
+  .notes-scope:hover { border-color: var(--cyan); }
+
+  .notes-act {
+    display: flex; align-items: center; justify-content: center;
+    margin-left: auto; width: 24px; height: 24px; padding: 0;
+    font: inherit; font-size: 14px; line-height: 1; color: var(--text-soft);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  .notes-act:hover { color: var(--indigo); border-color: var(--indigo); }
+  .notes-act svg { width: 13px; height: 13px; display: block; }
+  #notesClose { margin-left: 0; }
+  .notes-act.done { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 45%, transparent); }
+
+  #notesBody { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  #notesBody li { display: flex; gap: 9px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+  /* No filter knows what you will actually mention: the last cut is made by hand. */
+  #notesBody .drop {
+    flex: none; margin-left: auto; width: 18px; height: 18px; padding: 0;
+    font: inherit; font-size: 13px; line-height: 1; color: var(--text-faint);
+    background: none; border: 0; border-radius: 5px; cursor: pointer;
+    opacity: 0; transition: opacity .15s, color .15s, background .15s;
+  }
+  #notesBody li:hover .drop, .drop:focus-visible { opacity: 1; }
+  #notesBody .drop:hover { color: var(--rose); background: var(--rose-soft); }
+  #notesBody .notes-group {
+    display: block; margin: 6px 0 1px; font-size: 11px; font-weight: 650;
+    letter-spacing: .4px; text-transform: uppercase; color: var(--text-faint);
+  }
+  #notesBody .notes-group:first-child { margin-top: 0; }
+  #notesBody .num {
+    flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    color: var(--cyan); padding-top: 1px;
+  }
+  #notesBody .num:hover { text-decoration: underline; }
+
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 22px 28px 70px; align-items: start; }
   @media (max-width: 1100px) { main { grid-template-columns: 1fr; gap: 26px; } }
   /* An active counter isolates its column: full width, the other collapsed. */
@@ -577,8 +640,18 @@
       <div class="picker-list" id="repoList" role="listbox"></div>
     </div>
   </div>
+  <button type="button" class="picker-trigger notes-btn" id="notes" hidden></button>
   <span class="snoozed-note" id="snoozedNote"></span>
   <span class="stale" id="stale"></span>
+</div>
+<div class="notes-panel" id="notesPanel" hidden>
+  <div class="notes-head">
+    <span id="notesTitle"></span>
+    <button type="button" class="notes-scope" id="notesScope"></button>
+    <button type="button" class="notes-act" id="notesCopy"></button>
+    <button type="button" class="notes-act" id="notesClose" aria-label="close">×</button>
+  </div>
+  <ul id="notesBody"></ul>
 </div>
 <main>
   <section class="col-mine">
@@ -610,6 +683,9 @@ const state = {
   repoActive: 0,
   snoozed: new Set(),
   revealSnoozed: false,
+  visibleMine: [],
+  visibleReviews: [],
+  notesText: null,
 };
 
 const el = id => document.getElementById(id);
@@ -741,6 +817,20 @@ const I18N = {
     outdated: 'obsolète',
     conversation: 'conversation',
     readRest: 'lire la suite',
+    notes: 'Notes de daily',
+    notesTitle: 'résumer mes PRs affichées en une phrase chacune',
+    notesBusy: 'Rédaction…',
+    notesMine: 'mes PRs ({n})',
+    notesReviews: 'PRs que je review ({n})',
+    notesCopy: 'copier',
+    notesCopied: 'copié',
+    notesEmpty: 'Aucune PR affichée à résumer.',
+    notesNothing: 'rien à résumer',
+    scopeDay: 'depuis {date}',
+    scopeAll: 'tout le board',
+    scopeTitle: 'changer la période résumée',
+    dropLine: 'retirer cette ligne',
+    notesError: 'Résumé impossible : {message}',
     messages: '{n} messages',
     lastWord: 'dernier mot : {who}, {ago}',
     me: 'moi',
@@ -828,6 +918,20 @@ const I18N = {
     outdated: 'outdated',
     conversation: 'conversation',
     readRest: 'read the rest',
+    notes: 'Standup notes',
+    notesTitle: 'summarise the PRs on screen, one sentence each',
+    notesBusy: 'Writing…',
+    notesMine: 'my PRs ({n})',
+    notesReviews: 'PRs I review ({n})',
+    notesCopy: 'copy',
+    notesCopied: 'copied',
+    notesEmpty: 'No PR on screen to summarise.',
+    notesNothing: 'nothing to summarise',
+    scopeDay: 'since {date}',
+    scopeAll: 'the whole board',
+    scopeTitle: 'change the window being summarised',
+    dropLine: 'drop this line',
+    notesError: 'Could not summarise: {message}',
     messages: '{n} messages',
     lastWord: 'last word: {who}, {ago}',
     me: 'me',
@@ -843,6 +947,7 @@ const PLURAL = { fr: n => (n > 1 ? 'many' : 'one'), en: n => (n === 1 ? 'one' : 
 const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
+let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
 
 const t = (key, vars) =>
   String(I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars?.[name] ?? '');
@@ -883,6 +988,10 @@ function applyLang(next) {
   el('refreshLabel').textContent = t('refresh');
   el('reload').textContent = t('reload');
   el('reload').title = t('reloadTitle');
+  el('notes').innerHTML = `${NOTES_ICON}<span id="notesLabel">${t('notes')}</span>`;
+  el('notes').title = t('notesTitle');
+  applyScopeLabel();
+  restoreCopy();
   el('lblOnlyAction').textContent = t('filterAction');
   el('lblHideBots').textContent = t('filterBots');
   el('lblHideDrafts').textContent = t('filterDrafts');
@@ -890,6 +999,10 @@ function applyLang(next) {
   el('titleMine').textContent = t('titleMine');
   el('titleReviews').textContent = t('titleReviews');
   render();
+
+  // The notes are prose from a model, not labels: only a rewrite translates them. The
+  // per-language cache makes a switch back instant.
+  if (!el('notesPanel').hidden) writeNotes();
 }
 el('lang').addEventListener('click', () => applyLang(lang === 'fr' ? 'en' : 'fr'));
 
@@ -1232,19 +1345,23 @@ function filterList(list) {
   return filtered;
 }
 
+// Ordered by what each state asks of you: your move, then waiting on someone, then a
+// merge to glance at, then nothing. A merge sat second before, which ranked a published
+// release above a PR actually blocked on a reviewer.
+const BUCKET_ORDER = ['action', 'waiting', 'merged', 'idle'];
+
 function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket) {
   const filtered = filterList(list).filter(pr => !onlyBucket || pr.bucket === onlyBucket);
   if (!filtered.length) {
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
-    return;
+    return [];
   }
-  // Ordered by what each state asks of you: your move, then waiting on someone, then a
-  // merge to glance at, then nothing. A merge sat second before, which ranked a
-  // published release above a PR actually blocked on a reviewer.
-  target.innerHTML = ['action', 'waiting', 'merged', 'idle']
-    .map(bucket => {
-      const group = filtered.filter(pr => pr.bucket === bucket);
-      if (!group.length) return '';
+  const groups = BUCKET_ORDER
+    .map(bucket => [bucket, filtered.filter(pr => pr.bucket === bucket)])
+    .filter(([, group]) => group.length);
+
+  target.innerHTML = groups
+    .map(([bucket, group]) => {
       // A summary reports the state that still needs attention: the merged group turns
       // green only once every release in it has landed. A failed one is not here — it
       // moves to the action group.
@@ -1255,6 +1372,8 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
         + group.map(cardFn).join('');
     })
     .join('');
+
+  return groups.flatMap(([, group]) => group);
 }
 
 function repoOptions() {
@@ -1396,18 +1515,25 @@ function render() {
   const focus = FOCUS[state.focus];
   document.querySelector('main').dataset.focus = focus ? focus.column : '';
 
-  renderColumn(el('mine'), mine, mineCard, {
+  const shownMine = renderColumn(el('mine'), mine, mineCard, {
     action: t('groupMineAction'),
     merged: t('groupMineMerged'),
     waiting: t('groupMineWaiting'),
     idle: t('groupIdle'),
   }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
 
-  renderColumn(el('reviews'), reviews, reviewCard, {
+  // The notes summarise what is on screen, so the project picker and the filters double
+  // as their scope.
+  state.visibleMine = shownMine.map(pr => pr.id);
+  el('notes').hidden = !data.digestAvailable;
+
+  const shownReviews = renderColumn(el('reviews'), reviews, reviewCard, {
     action: t('groupReviewAction'),
     waiting: t('groupReviewWaiting'),
     idle: t('groupIdle'),
   }, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
+
+  state.visibleReviews = shownReviews.map(pr => pr.id);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
   state.lastActionCount = total;
@@ -1545,6 +1671,225 @@ el('repoSearch').addEventListener('keydown', event => {
 });
 
 el('reload').addEventListener('click', () => location.reload());
+
+const NOTES_ICON = '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor"'
+  + ' stroke-width="1.5" stroke-linecap="round" aria-hidden="true">'
+  + '<path d="M3 4h10"/><path d="M3 8h10"/><path d="M3 12h6"/></svg>';
+
+const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<rect x="5.6" y="5.6" width="8" height="8" rx="1.8"/>'
+  + '<path d="M10.4 3.4A1.4 1.4 0 0 0 9 2H3.9A1.9 1.9 0 0 0 2 3.9V9a1.4 1.4 0 0 0 1.4 1.4"/></svg>';
+
+const CHECK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M3 8.4l3.1 3.1L13 4.6"/></svg>';
+
+// A daily reports the previous working day, so Monday looks back to Friday rather than
+// to an empty Sunday.
+function lastWorkingDay() {
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  do {
+    since.setDate(since.getDate() - 1);
+  } while (since.getDay() === 0 || since.getDay() === 6);
+  return since;
+}
+
+function scopeLabel() {
+  return notesWindow === 'all'
+    ? t('scopeAll')
+    : t('scopeDay', {
+        date: lastWorkingDay().toLocaleDateString(LOCALE[lang], {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        }),
+      });
+}
+
+function applyScopeLabel() {
+  el('notesScope').textContent = scopeLabel();
+  el('notesScope').title = t('scopeTitle');
+}
+
+// An icon needs its meaning somewhere: the label the button used to carry becomes its
+// tooltip and its accessible name.
+function restoreCopy() {
+  const button = el('notesCopy');
+  button.innerHTML = COPY_ICON;
+  button.title = t('notesCopy');
+  button.setAttribute('aria-label', t('notesCopy'));
+  button.classList.remove('done');
+}
+
+// The model emits fixed `## MINE` / `## REVIEWS` markers; the headings shown and copied
+// are built here, so they follow the interface language.
+function splitSections(text) {
+  const sections = [];
+  for (const line of text.split('\n').map(l => l.trim()).filter(Boolean)) {
+    const marker = line.match(/^#{1,3}\s*(MINE|REVIEWS)\b/i);
+    if (marker) {
+      sections.push({ group: marker[1].toUpperCase(), lines: [] });
+      continue;
+    }
+    if (!sections.length) sections.push({ group: null, lines: [] });
+    sections[sections.length - 1].lines.push(line);
+  }
+  return sections.filter(section => section.lines.length);
+}
+
+// On screen the PR number becomes a link to the PR it summarises; the clipboard gets
+// plain markdown, which is what pastes into a standup note.
+function showNotes(text, counts) {
+  applyScopeLabel();
+  const urls = new Map(
+    [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].map(pr => [
+      String(pr.number),
+      pr.url,
+    ]),
+  );
+  const heading = group =>
+    group === 'REVIEWS'
+      ? t('notesReviews', { n: counts?.reviews ?? 0 })
+      : t('notesMine', { n: counts?.mine ?? 0 });
+
+  const sections = splitSections(text);
+  const copied = [];
+
+  el('notesBody').innerHTML = sections
+    .map(section => {
+      const items = section.lines.map(line => {
+        const bullet = line.match(/^[-*•]\s*#(\d+)\s+(.*)$/);
+        const plain = bullet ? `#${bullet[1]} ${bullet[2]}` : line.replace(/^[-*•]\s*/, '');
+        const drop = `<button type="button" class="drop" title="${t('dropLine')}"`
+          + ` aria-label="${t('dropLine')}">×</button>`;
+        copied.push(`- ${plain}`);
+
+        if (!bullet) {
+          return `<li data-copy="${escapeHtml(plain)}"><span>${escapeHtml(plain)}</span>${drop}</li>`;
+        }
+        const [, number, rest] = bullet;
+        const url = urls.get(number);
+        return `<li data-copy="${escapeHtml(plain)}">`
+          + (url
+            ? `<a class="num" href="${escapeHtml(url)}" target="_blank" rel="noopener">#${number}</a>`
+            : `<span class="num">#${number}</span>`)
+          + `<span>${escapeHtml(rest)}</span>${drop}</li>`;
+      });
+
+      if (!section.group) return items.join('');
+      copied.splice(copied.length - items.length, 0, `**${heading(section.group)}**`);
+      return `<li class="notes-group" data-heading="${escapeHtml(heading(section.group))}">`
+        + `${escapeHtml(heading(section.group))}</li>` + items.join('');
+    })
+    .join('');
+
+  state.notesText = copied.join('\n');
+  el('notesTitle').textContent = t('notes');
+  restoreCopy();
+  el('notesPanel').hidden = false;
+}
+
+// The model call takes half a minute on a full board, so the wait is carried by the
+// button that started it rather than by a blocking overlay: the board stays readable.
+// The window narrows what is sent, not what the board shows: the board answers "what
+// needs me now", and hiding a card that asks something of you would break that.
+function withinWindow(ids) {
+  if (notesWindow === 'all') return ids;
+  const since = lastWorkingDay().getTime();
+  const activity = new Map(
+    [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].map(pr => [
+      pr.id,
+      new Date(pr.lastActivityAt).getTime(),
+    ]),
+  );
+  return ids.filter(id => (activity.get(id) ?? 0) >= since);
+}
+
+// A model call runs for a minute and a half; the server kills its own after three. The
+// client had no limit at all, so a response that never arrived would strand the button.
+const NOTES_TIMEOUT_MS = 200_000;
+
+async function writeNotes() {
+  const mine = withinWindow(state.visibleMine);
+  const reviews = withinWindow(state.visibleReviews);
+  if (!mine.length && !reviews.length) return showNotes(t('notesEmpty'), null);
+
+  const button = el('notes');
+  button.classList.add('busy');
+  button.disabled = true;
+  el('notesLabel').textContent = t('notesBusy');
+
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), NOTES_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('/api/digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mine, reviews, lang }),
+      signal: abort.signal,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || response.statusText);
+    showNotes(payload.text || t('notesEmpty'), payload.counts);
+  } catch (error) {
+    showNotes(t('notesError', { message: error.message }), null);
+  } finally {
+    clearTimeout(timer);
+    button.classList.remove('busy');
+    button.disabled = false;
+    el('notesLabel').textContent = t('notes');
+  }
+}
+
+el('notes').addEventListener('click', writeNotes);
+
+el('notesScope').addEventListener('click', () => {
+  notesWindow = notesWindow === 'all' ? 'day' : 'all';
+  store.set('notesWindow', notesWindow);
+  applyScopeLabel();
+  writeNotes();
+});
+
+// Dropping a line rebuilds the clipboard from what is left, headings included, so a
+// section emptied by hand stops being announced.
+el('notesBody').addEventListener('click', event => {
+  const drop = event.target.closest('.drop');
+  if (!drop) return;
+  drop.closest('li').remove();
+
+  const lines = [];
+  for (const item of el('notesBody').children) {
+    if (item.classList.contains('notes-group')) {
+      const next = item.nextElementSibling;
+      if (next && !next.classList.contains('notes-group')) lines.push(`**${item.dataset.heading}**`);
+      continue;
+    }
+    lines.push(`- ${item.dataset.copy}`);
+  }
+  for (const heading of [...el('notesBody').querySelectorAll('.notes-group')]) {
+    const next = heading.nextElementSibling;
+    if (!next || next.classList.contains('notes-group')) heading.remove();
+  }
+  state.notesText = lines.join('\n');
+});
+el('notesClose').addEventListener('click', () => {
+  el('notesPanel').hidden = true;
+});
+
+el('notesCopy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(state.notesText ?? '');
+    el('notesCopy').innerHTML = CHECK_ICON;
+    el('notesCopy').title = t('notesCopied');
+    el('notesCopy').classList.add('done');
+    setTimeout(restoreCopy, 1600);
+  } catch {
+    restoreCopy();
+  }
+});
 el('refresh').addEventListener('click', () => load(true));
 applyLang(lang);
 renderSkeleton();

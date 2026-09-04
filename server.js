@@ -13,6 +13,7 @@ try {
 }
 
 const { fetchDashboard } = require('./github');
+const digest = require('./digest');
 
 const PORT = Number(process.env.PORT || 4321);
 const ORG = process.env.PR_RADAR_ORG;
@@ -44,6 +45,7 @@ const MIME = {
 
 let cache = { at: 0, payload: null };
 let inFlight = null;
+let digestAvailable = false;
 
 async function dashboard(force) {
   if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
@@ -53,7 +55,12 @@ async function dashboard(force) {
     .then(payload => {
       cache = {
         at: Date.now(),
-        payload: { ...payload, refreshSeconds: REFRESH_SECONDS, gitdeckUrl: GITDECK_URL },
+        payload: {
+          ...payload,
+          refreshSeconds: REFRESH_SECONDS,
+          gitdeckUrl: GITDECK_URL,
+          digestAvailable,
+        },
       };
       return cache.payload;
     })
@@ -71,6 +78,51 @@ function json(res, status, body, version) {
     ...(version ? { 'X-PR-Radar-Version': version } : {}),
   });
   res.end(JSON.stringify(body));
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 64_000) throw new Error('body too large');
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+}
+
+// What a PR I review is waiting for. The board says it with colour and pills; the model
+// only ever sees text, so the bucket is spelled out for it.
+const SITUATION = {
+  action: 'the reader has not reviewed it yet, or has replies waiting for them',
+  waiting: 'the reader has given feedback and waits for the author to push a fix',
+  merged: 'merged',
+  idle: 'nothing pending on either side',
+};
+
+// The client sends what it has on screen, but the ids are honoured only if the board
+// already knows them: the endpoint summarises the board, it is not a way to read
+// arbitrary nodes through the session.
+async function digestFor(body) {
+  const board = await dashboard(false);
+  const known = new Map([...board.mine, ...board.reviews].map(pr => [pr.id, pr]));
+
+  const pick = (ids, describe) =>
+    (Array.isArray(ids) ? ids : [])
+      .map(id => known.get(id))
+      .filter(Boolean)
+      .map(pr => ({
+        id: pr.id,
+        repo: pr.repo,
+        number: pr.number,
+        lastActivityAt: pr.lastActivityAt,
+        ...(describe ? { situation: SITUATION[pr.bucket] } : {}),
+      }));
+
+  return digest.standupNotes(
+    { mine: pick(body.mine, false), reviews: pick(body.reviews, true) },
+    body.lang === 'fr' ? 'fr' : 'en',
+  );
 }
 
 async function serveStatic(res, urlPath) {
@@ -106,13 +158,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/digest' && req.method === 'POST') {
+    try {
+      json(res, 200, await digestFor(await readJsonBody(req)));
+    } catch (error) {
+      json(res, 502, { error: error.message });
+    }
+    return;
+  }
+
   await serveStatic(res, url.pathname);
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
+  digestAvailable = await digest.available();
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges watched ${MERGED_HOURS}h · refresh ${REFRESH_SECONDS}s`,
+      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges watched ${MERGED_HOURS}h · refresh ${REFRESH_SECONDS}s\n` +
+      `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}`,
   );
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });

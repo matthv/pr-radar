@@ -174,6 +174,47 @@ the summary band, next to the counters, with the snoozed cards one click away an
 **wake all** next to them. Entries whose PR has moved on are pruned on every render,
 so the store cannot drift out of sync with the board.
 
+## Standup notes
+
+A button in the summary band turns the board into notes you can read out at a standup:
+one bullet per pull request, in two sections — your own, then the ones you review, where
+the second sentence says where each stands so you know what to say about it.
+
+The model is reached through the **`claude` CLI**, so the tool holds no model key — the
+same reason GitHub access goes through `gh`. Without that CLI on the PATH the button
+never appears rather than failing on click. Summarising needs no tools, no MCP server and
+no project context, and loading them cost more than the model call itself, so they are
+switched off and the CLI runs from the temp directory.
+
+**One call for the whole board**, not one per pull request: it costs a single wait, and
+the model sees the set, so pull requests that are part of one effort read as one. The
+description and file list it works from are fetched only then — putting them in the
+board's own query would weigh on every refresh for something read once a morning.
+
+Expect **30 to 100 seconds** cold. The answer is cached in `.digest-cache.json`, keyed on
+the last activity of every pull request in the set, the language, and the prompt itself: a
+board that moved earns fresh notes, a second click the same morning is free, and rewording
+the prompt invalidates everything, since stored notes would answer a question no longer
+being asked.
+
+The notes are prose, not labels, so the `FR` / `EN` toggle rewrites them rather than
+translating strings — instantly on the way back, from the per-language cache.
+
+Two ways to narrow what they cover, because they answer different problems:
+
+- **the window**, shown and remembered next to the title, covers the previous working day
+  by default — Monday looks back to Friday, and the weekend is included, so nothing pushed
+  on a Saturday goes unmentioned. It narrows what is *sent*, never what the board shows:
+  the board answers "what needs me now", and hiding a card that asks something of you
+  because it is a day old would break that. It knows nothing of public holidays or
+  time off; one click widens it to the whole board.
+- **dropping a line by hand**, since no filter knows what you will actually mention. The
+  clipboard is rebuilt from what is left, and a section emptied that way stops being
+  announced.
+
+Copying gives plain markdown with the headings; on screen each PR number links to the
+pull request it summarises.
+
 ## Notifications
 
 - The tab title shows the number of pending actions: `(4) PR Radar`.

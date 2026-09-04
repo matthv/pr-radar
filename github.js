@@ -120,6 +120,32 @@ async function graphql(query, variables) {
   return payload.data;
 }
 
+const DIGEST_QUERY = `
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      number
+      title
+      body
+      repository { nameWithOwner }
+      files(first: 20) { nodes { path } }
+    }
+  }
+}`;
+
+// The board's own query deliberately leaves out the description and the file list: they
+// are only ever read by the digest, and would weigh on every refresh for nothing.
+async function fetchDigestInputs(ids) {
+  const data = await graphql(DIGEST_QUERY, { ids });
+  return data.nodes.filter(Boolean).map(pr => ({
+    number: pr.number,
+    title: pr.title,
+    body: pr.body || '',
+    repo: pr.repository.nameWithOwner,
+    files: pr.files.nodes.map(file => file.path),
+  }));
+}
+
 // The GraphQL search times out (HTTP 499) on an org of any size; the REST search
 // answers, and its node_id is directly the PullRequest's GraphQL id.
 async function searchPullRequests(query) {
@@ -813,4 +839,5 @@ module.exports = {
   conversationThread,
   cleanExcerpt,
   isBot,
+  fetchDigestInputs,
 };
