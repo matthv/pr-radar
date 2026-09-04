@@ -104,7 +104,10 @@ const SITUATION = {
 // already knows them: the endpoint summarises the board, it is not a way to read
 // arbitrary nodes through the session.
 async function digestFor(body) {
-  const board = await dashboard(false);
+  // The last board served, expired or not, rather than a fresh one: the client is looking
+  // at that payload, so the notes describe what is on screen instead of something newer.
+  // Refetching also charged a full GitHub round trip before every digest.
+  const board = cache.payload ?? (await dashboard(false));
   const known = new Map([...board.mine, ...board.reviews].map(pr => [pr.id, pr]));
 
   const pick = (ids, describe) =>

@@ -259,9 +259,22 @@
   #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
 
   .notes-btn .ic { width: 13px; height: 13px; flex: none; }
+  /* A minute of waiting cannot rest on three 13px lines fading: the button is inert
+     meanwhile, and a white one among white controls still looks clickable. Same sweep as
+     the loading skeletons, which already means "content is on its way" here. */
+  .notes-btn.busy {
+    color: var(--indigo);
+    border-color: color-mix(in srgb, var(--indigo) 35%, transparent);
+    background:
+      linear-gradient(90deg, transparent, color-mix(in srgb, var(--indigo) 13%, transparent), transparent)
+      0 0 / 40% 100% no-repeat var(--indigo-soft);
+    cursor: default;
+  }
   /* Not the Refresh spin: rotating three horizontal lines turns them into diagonals and
-     means nothing. They light up in sequence instead, like text being written. */
+     means nothing. They light up in sequence instead, like text being written — on the
+     sweep's own tempo, so the two read as one rhythm rather than beating against it. */
   @media (prefers-reduced-motion: no-preference) {
+    .notes-btn.busy { animation: sweep 1.3s ease-in-out infinite; }
     .notes-btn.busy .ic path { animation: writing 1.3s ease-in-out infinite; }
     .notes-btn.busy .ic path:nth-child(2) { animation-delay: .18s; }
     .notes-btn.busy .ic path:nth-child(3) { animation-delay: .36s; }
@@ -277,14 +290,18 @@
     font-size: 11.5px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase;
     color: var(--text-faint); margin-bottom: 10px;
   }
-  /* Text sits with the title on the left; the glyph pair stays together on the right. */
+  /* Refresh's own fill: it carries the window being summarised, which is the one thing
+     about these notes worth reading before the notes themselves. Not cyan — that means a
+     location here (the repo badge, a thread's path, the PR numbers below). */
   .notes-scope {
-    height: 22px; padding: 0 8px; font: inherit; font-size: 11px; font-weight: 600;
-    letter-spacing: .2px; text-transform: none; color: var(--cyan);
-    background: var(--cyan-soft); border: 1px solid transparent;
-    border-radius: 6px; cursor: pointer; transition: border-color .15s;
+    height: 24px; padding: 0 10px;
+    font: inherit; font-size: 11px; font-weight: 620; letter-spacing: .2px;
+    text-transform: none; color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--indigo-2));
+    border: 1px solid transparent; border-radius: 7px; cursor: pointer;
+    transition: filter .15s;
   }
-  .notes-scope:hover { border-color: var(--cyan); }
+  .notes-scope:hover { filter: brightness(1.07); }
 
   .notes-act {
     display: flex; align-items: center; justify-content: center;
@@ -299,7 +316,8 @@
   #notesClose { margin-left: 0; }
   .notes-act.done { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 45%, transparent); }
 
-  #notesBody { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .notes-panel.stale #notesBody { opacity: .35; }
+  #notesBody { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; transition: opacity .2s; }
   #notesBody li { display: flex; gap: 9px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
   /* No filter knows what you will actually mention: the last cut is made by hand. */
   #notesBody .drop {
@@ -640,7 +658,7 @@
       <div class="picker-list" id="repoList" role="listbox"></div>
     </div>
   </div>
-  <button type="button" class="picker-trigger notes-btn" id="notes" hidden></button>
+  <button type="button" class="picker-trigger notes-btn" id="notes" aria-expanded="false" hidden></button>
   <span class="snoozed-note" id="snoozedNote"></span>
   <span class="stale" id="stale"></span>
 </div>
@@ -1789,6 +1807,16 @@ function showNotes(text, counts) {
   el('notesTitle').textContent = t('notes');
   restoreCopy();
   el('notesPanel').hidden = false;
+  el('notesPanel').classList.remove('stale');
+  // Same open-state look as the project filter: the control says whether its panel is up.
+  el('notes').classList.add('on');
+  el('notes').setAttribute('aria-expanded', 'true');
+}
+
+function closeNotes() {
+  el('notesPanel').hidden = true;
+  el('notes').classList.remove('on');
+  el('notes').setAttribute('aria-expanded', 'false');
 }
 
 // The model call takes half a minute on a full board, so the wait is carried by the
@@ -1811,6 +1839,17 @@ function withinWindow(ids) {
 // client had no limit at all, so a response that never arrived would strand the button.
 const NOTES_TIMEOUT_MS = 200_000;
 
+// The other language is written straight after, in the background. Switching then costs
+// a cache read instead of another minute — and nothing on screen waits for it, so the
+// first answer is not slowed down to pay for a language you may never ask for.
+function writeOtherLanguage(mine, reviews) {
+  fetch('/api/digest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mine, reviews, lang: lang === 'fr' ? 'en' : 'fr' }),
+  }).catch(() => {});
+}
+
 async function writeNotes() {
   const mine = withinWindow(state.visibleMine);
   const reviews = withinWindow(state.visibleReviews);
@@ -1820,6 +1859,10 @@ async function writeNotes() {
   button.classList.add('busy');
   button.disabled = true;
   el('notesLabel').textContent = t('notesBusy');
+
+  // What is on screen belongs to the previous answer until the new one lands, and a
+  // rewrite runs for a minute: left at full strength it reads as the current notes.
+  if (!el('notesPanel').hidden) el('notesPanel').classList.add('stale');
 
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), NOTES_TIMEOUT_MS);
@@ -1834,6 +1877,7 @@ async function writeNotes() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || response.statusText);
     showNotes(payload.text || t('notesEmpty'), payload.counts);
+    if (payload.text) writeOtherLanguage(mine, reviews);
   } catch (error) {
     showNotes(t('notesError', { message: error.message }), null);
   } finally {
@@ -1844,7 +1888,12 @@ async function writeNotes() {
   }
 }
 
-el('notes').addEventListener('click', writeNotes);
+// The button that opened the panel closes it. Rewriting the notes on a second click
+// would charge a fresh generation for what reads as a dismissal.
+el('notes').addEventListener('click', () => {
+  if (el('notesPanel').hidden) return writeNotes();
+  closeNotes();
+});
 
 el('notesScope').addEventListener('click', () => {
   notesWindow = notesWindow === 'all' ? 'day' : 'all';
@@ -1875,9 +1924,7 @@ el('notesBody').addEventListener('click', event => {
   }
   state.notesText = lines.join('\n');
 });
-el('notesClose').addEventListener('click', () => {
-  el('notesPanel').hidden = true;
-});
+el('notesClose').addEventListener('click', closeNotes);
 
 el('notesCopy').addEventListener('click', async () => {
   try {

@@ -191,14 +191,20 @@ the model sees the set, so pull requests that are part of one effort read as one
 description and file list it works from are fetched only then — putting them in the
 board's own query would weigh on every refresh for something read once a morning.
 
-Expect **30 to 100 seconds** cold. The answer is cached in `.digest-cache.json`, keyed on
+Expect **30 to 100 seconds** cold, and nothing at all afterwards: a digest reads the last
+board already served rather than refetching one, so it describes what is on screen instead
+of something newer, and costs no GitHub round trip. The answer is cached in `.digest-cache.json`, keyed on
 the last activity of every pull request in the set, the language, and the prompt itself: a
 board that moved earns fresh notes, a second click the same morning is free, and rewording
 the prompt invalidates everything, since stored notes would answer a question no longer
 being asked.
 
 The notes are prose, not labels, so the `FR` / `EN` toggle rewrites them rather than
-translating strings — instantly on the way back, from the per-language cache.
+translating strings. The other language is written in the background as soon as the first
+answer is on screen, which is why switching is instant: generating both at once would
+have doubled the wait you actually sit through, for a language you may never ask for.
+While a rewrite is in flight the panel dims, since what is on screen still belongs to the
+previous answer.
 
 Two ways to narrow what they cover, because they answer different problems:
 

@@ -159,15 +159,7 @@ function cacheKey(groups, lang) {
     .slice(0, 16);
 }
 
-async function standupNotes({ mine = [], reviews = [] }, lang) {
-  const groups = { mine: mine.slice(0, MAX_PRS), reviews: reviews.slice(0, MAX_PRS) };
-  const counts = { mine: groups.mine.length, reviews: groups.reviews.length };
-  if (!counts.mine && !counts.reviews) return { text: '', cached: false, counts };
-
-  const key = cacheKey(groups, lang);
-  const cache = await readCache();
-  if (cache[key]) return { text: cache[key].text, cached: true, counts };
-
+async function generate(groups, counts, lang, key) {
   // One request for both groups: the ids come back in the order they were asked for.
   const all = [...groups.mine, ...groups.reviews];
   const inputs = await fetchDigestInputs(all.map(pr => pr.id));
@@ -177,18 +169,37 @@ async function standupNotes({ mine = [], reviews = [] }, lang) {
   const described = inputs.map(pr => ({ ...pr, situation: situations.get(pr.number) }));
   const text = await claude(
     promptFor(
-      {
-        mine: described.slice(0, counts.mine),
-        reviews: described.slice(counts.mine),
-      },
+      { mine: described.slice(0, counts.mine), reviews: described.slice(counts.mine) },
       lang,
     ),
   );
 
+  const cache = await readCache();
   cache[key] = { text, at: Date.now() };
   await writeCache(cache);
+  return text;
+}
 
-  return { text, cached: false, counts };
+// Two tabs, or a click landing on the language being written ahead: one generation per
+// key is enough, and a second `claude` for the same work would also race the cache write.
+const pending = new Map();
+
+async function standupNotes({ mine = [], reviews = [] }, lang) {
+  const groups = { mine: mine.slice(0, MAX_PRS), reviews: reviews.slice(0, MAX_PRS) };
+  const counts = { mine: groups.mine.length, reviews: groups.reviews.length };
+  if (!counts.mine && !counts.reviews) return { text: '', cached: false, counts };
+
+  const key = cacheKey(groups, lang);
+  const cache = await readCache();
+  if (cache[key]) return { text: cache[key].text, cached: true, counts };
+
+  if (!pending.has(key)) {
+    pending.set(
+      key,
+      generate(groups, counts, lang, key).finally(() => pending.delete(key)),
+    );
+  }
+  return { text: await pending.get(key), cached: false, counts };
 }
 
 module.exports = { available, standupNotes, MAX_PRS };
