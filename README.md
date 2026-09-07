@@ -26,12 +26,16 @@ follows reality without any manual step.
 ```bash
 cd pr-radar
 ./pr-radar          # starts the server and opens the browser
-# or: yarn start / node server.js
+# or: node server.js
 ```
 
-No dependencies to install. Authentication reuses your `gh` session
-(`gh auth status` must be green). A `GITHUB_TOKEN` in the environment takes
-precedence over `gh` if you prefer.
+No dependencies to install, and nothing to install them with: **use `node`, not
+`yarn`**. Yarn 4 refuses to run a script without a lockfile, so `yarn start` would
+first want an install — a lockfile, a `.yarnrc.yml`, a `.yarn/` — to manage no
+packages at all. `npm test` and `npm start` do work, npm not asking for one.
+
+Authentication reuses your `gh` session (`gh auth status` must be green). A
+`GITHUB_TOKEN` in the environment takes precedence over `gh` if you prefer.
 
 ## Configuration
 
@@ -128,7 +132,7 @@ behind.
 ## Tests
 
 ```bash
-yarn test          # or: node --test
+node --test         # or: npm test
 ```
 
 Node's built-in runner, no dependency. The suite covers the classification logic,
