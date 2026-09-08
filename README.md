@@ -49,6 +49,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_MERGED_HOURS` | `12` | How long a merge of yours stays watched |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
+| `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
@@ -239,37 +240,44 @@ pull request it summarises.
 
 ## The summary band
 
-Above the two columns sit three counters — your PRs to fix, reviews to handle, PRs
-awaiting a fix — and the count of PRs the age window dropped. They live in the body
-rather than the header on purpose: they summarise the content below, they are not
-controls of the tool. The header stays a toolbar and stays pinned; the summary
-scrolls away with what it describes.
+**Standup notes** comes first, cut off from the rest by a rule: it writes something,
+where everything to its right narrows what is already there. Then the **project
+picker**, a searchable list holding only the projects actually on the board, each with
+its card count, so it can never offer an empty result — it filters rather than sorts,
+since with a dozen repositories in play, grouping them still leaves you scrolling past
+the ones you are not working on. Then the count of snoozed cards, then three counters —
+your PRs to fix, reviews to handle, PRs awaiting a fix — and the count of PRs the age
+window dropped.
 
-**Each counter is a filter.** Clicking one isolates its set: the relevant column
-goes full width and the other collapses. Click it again, or press `Escape`, to go
-back. Only one at a time — these are competing views of the same board, not filters
-that stack. A counter at zero is disabled: it would only ever filter to nothing.
+The counters **report, they are not controls**. Two of them used to filter, and both
+were the `needs work` checkbox with one column collapsed: server-side a PR's `action`
+bucket *is* its `needsAction`, so they filtered on the same condition, one column at a
+time where the checkbox does both. The third, "awaiting a fix", showed the opposite —
+cards that ask nothing of you — and combining it with that checkbox gave a permanently
+empty list, which needed a precedence rule to arbitrate. Two controls needing an
+arbiter to stop contradicting each other is the sign one of them is surplus.
 
-Next to them, a **project picker** narrows the board to a single repository. It is a
-searchable list holding only the projects actually on the board, each with its card
-count, so it can never offer an empty result. It filters rather than sorts: with a
-dozen repositories in play, grouping them still leaves you scrolling past the ones
-you are not working on.
-
-A counter takes precedence over the **needs work** checkbox, which could otherwise
-contradict it — focusing "awaiting a fix" with that box ticked would show an empty
-list forever.
-
-The filter is deliberately not remembered: reopening the tool on an already
-filtered board, with no memory of having filtered it, would look like empty columns.
+They still earn their place unclicked: they are the same numbers as the tab title and
+the chime, the answer to "is there anything for me" without reading a column. They sit
+in the body rather than the header because of that — they summarise the content below,
+they are not controls of the tool. The header stays a toolbar and stays pinned; the
+summary scrolls away with what it describes.
 
 ## Filters and display
 
-- **needs work** — keep only the cards that ask something of you.
-- **hide bots** — ignore threads opened by review bots. The counts, the ordering
-  and each card's group are recomputed accordingly: a PR flagged only by a bot
-  falls back to "nothing to report".
-- **hide drafts**.
+The board's own controls live in the summary band; the header holds the tool's, and
+nothing else. Three checkboxes used to sit there and were removed rather than moved:
+
+- **needs work** duplicated the grouping. Actionable cards are already gathered at the
+  top of each column, so filtering to them only collapsed the groups underneath.
+- **hide bots** ignored threads opened by review bots, recomputing each card's group so
+  a PR flagged only by a bot fell back to "nothing to report". It was the last reason
+  the browser reclassified anything — dropping it let the render layer stop keeping a
+  second copy of the server's rules.
+- **hide drafts** became `PR_RADAR_HIDE_DRAFTS`: whether drafts belong on the board is
+  decided once, not per session.
+
+- 🔊 mutes the chime (remembered).
 - `☾` / `☀` toggles light / dark (light by default, remembered).
 - A **gitdeck** button in the header opens the local web git client, carrying
   gitdeck's own branch mark so it is recognisable at a glance. It is the mirror of

@@ -21,6 +21,9 @@ const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const MERGED_HOURS = Number(process.env.PR_RADAR_MERGED_HOURS || 12);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
+// A standing policy, not a per-session toggle: whether drafts belong on the board is
+// decided once, so it lives with the other settings rather than in the toolbar.
+const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
 // Half the interval: otherwise a poll lands on a barely-valid cache and serves data
 // almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
@@ -59,6 +62,7 @@ async function dashboard(force) {
           ...payload,
           refreshSeconds: REFRESH_SECONDS,
           gitdeckUrl: GITDECK_URL,
+          hideDrafts: HIDE_DRAFTS,
           digestAvailable,
         },
       };
@@ -178,6 +182,7 @@ server.listen(PORT, async () => {
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
       `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges watched ${MERGED_HOURS}h · refresh ${REFRESH_SECONDS}s\n` +
+      `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}`,
   );
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
