@@ -138,6 +138,13 @@
     border-color: color-mix(in srgb, var(--indigo) 45%, transparent);
   }
   button.counter:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .counter.pending.on {
+    background: var(--amber-soft);
+    border-color: color-mix(in srgb, var(--amber) 50%, transparent);
+  }
+  button.counter.pending:hover { border-color: color-mix(in srgb, var(--amber) 45%, transparent); }
+  .counter[disabled] { cursor: default; background: transparent; box-shadow: none; transform: none; }
+  .counter[disabled] .go { display: none; }
   .counter.zero { background: transparent; box-shadow: none; }
   .counter b {
     font-size: 16px; font-weight: 680; letter-spacing: -.4px; line-height: 1;
@@ -254,6 +261,58 @@
     letter-spacing: .3px; color: var(--text-faint); transition: color .15s, background .15s;
   }
   .seg span.on { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); color: #fff; }
+  #view span { display: flex; align-items: center; padding: 3px 8px; }
+  #view svg { width: 13px; height: 13px; display: block; fill: currentColor; }
+
+  /* One hub per author, its PRs on a ring around it. A fixed radial layout, not a physics
+     simulation: the same board must land in the same shape every time, or there is no
+     learning where anything is. */
+  #orbits { padding: 26px 28px 70px; }
+  .orbit-legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 22px;
+    font-size: 11.5px; color: var(--text-faint);
+  }
+  .orbit-legend span { display: flex; align-items: center; gap: 7px; }
+  .orbit-legend i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .orbit-grid {
+    display: grid; gap: 8px 20px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: start;
+  }
+  .orbit { margin: 0; position: relative; display: flex; flex-direction: column; align-items: center; }
+  /* Scaled by its track rather than measured in JS: the drawing is in viewBox units, so
+     the numbers and the rings grow together with no second source of truth for size. */
+  .orbit svg { display: block; width: 100%; height: auto; max-width: 520px; }
+  .orbit figcaption { margin-top: -4px; font-size: 13px; font-weight: 600; color: var(--text); }
+  .orbit figcaption em { font-style: normal; font-weight: 450; color: var(--text-faint); }
+  .hub { cursor: pointer; }
+  .hub-ring { fill: none; stroke: var(--border); stroke-width: 2; transition: stroke .15s; }
+  .hub:hover .hub-ring { stroke: var(--indigo); stroke-width: 3; }
+  .hub:focus-visible { outline: 2px solid var(--indigo); outline-offset: 3px; border-radius: 50%; }
+  .spoke { stroke-dasharray: 3 4; stroke-width: 1.4; }
+  .sat circle { stroke-width: 1.5; transition: transform .15s; }
+  .sat text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+    font-weight: 650; text-anchor: middle; dominant-baseline: central; pointer-events: none;
+  }
+  .sat { cursor: pointer; }
+  .sat:hover circle { stroke-width: 3; }
+  .sat:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 50%; }
+
+  /* A bubble says which state, never which PR. Hovering turns it into the line the board
+     would have shown, positioned where the bubble sits. */
+  .orbit-peek {
+    position: absolute; z-index: 5; width: 300px; padding: 10px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 11px; box-shadow: var(--shadow-md);
+    pointer-events: none; opacity: 0; transition: opacity .12s;
+  }
+  .orbit-peek.on { opacity: 1; }
+  .orbit-peek .peek-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+  .orbit-peek .peek-title {
+    font-size: 13px; font-weight: 620; line-height: 1.35; color: var(--text);
+  }
+  .orbit-peek .meta { margin-top: 0; }
   .seg:hover { border-color: var(--indigo); }
   #refresh { color: #fff; font-weight: 620; background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); border-color: transparent; }
   #refresh:hover { color: #fff; border-color: transparent; filter: brightness(1.07); }
@@ -352,6 +411,9 @@
   }
   #notesBody .num:hover { text-decoration: underline; }
 
+  /* An active counter isolates its column: full width, the other collapsed. */
+  main[data-focus="mine"], main[data-focus="reviews"] { grid-template-columns: minmax(0, 1fr); }
+  main[data-focus="mine"] .col-review, main[data-focus="reviews"] .col-mine { display: none; }
   main { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 22px 28px 70px; align-items: start; }
   @media (max-width: 1100px) { main { grid-template-columns: 1fr; gap: 26px; } }
 
@@ -639,6 +701,10 @@
   <div class="spacer"></div>
   <div class="controls">
     <button type="button" id="sound" aria-pressed="true"></button>
+    <button class="seg" id="view">
+      <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
+      <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
+    </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
     <button id="reload" hidden></button>
@@ -688,6 +754,7 @@
   </div>
   <ul id="notesBody"></ul>
 </div>
+<div id="orbits" hidden></div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -710,6 +777,7 @@ const state = {
   open: new Set(),
   timer: null,
   intervalMs: null,
+  focus: null,
   repo: null,
   repos: [],
   repoOpen: false,
@@ -800,6 +868,15 @@ const I18N = {
     refresh: 'Rafraîchir',
     reload: 'Recharger',
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
+    focusHint: 'cliquer pour n’afficher que ces PRs',
+    focusClear: 'cliquer (ou Échap) pour retirer le filtre',
+    viewTitle: 'vue tableau / vue par auteur',
+    orbitPrs_one: '{n} PR',
+    orbitPrs_many: '{n} PRs',
+    orbit_action: 'à traiter',
+    orbit_waiting: 'en attente',
+    orbit_merged: 'fusionnée',
+    orbit_idle: 'rien à signaler',
     soundOn: 'carillon activé — cliquer pour couper',
     soundOff: 'carillon coupé — cliquer pour activer',
     titleMine: 'Mes PRs',
@@ -898,6 +975,15 @@ const I18N = {
     refresh: 'Refresh',
     reload: 'Reload',
     reloadTitle: 'this page is running an older version of the tool',
+    focusHint: 'click to show only these PRs',
+    focusClear: 'click (or Esc) to clear the filter',
+    viewTitle: 'board view / by author',
+    orbitPrs_one: '{n} PR',
+    orbitPrs_many: '{n} PRs',
+    orbit_action: 'on my plate',
+    orbit_waiting: 'waiting',
+    orbit_merged: 'merged',
+    orbit_idle: 'nothing to report',
     soundOn: 'chime on — click to mute',
     soundOff: 'chime muted — click to unmute',
     titleMine: 'My PRs',
@@ -976,6 +1062,7 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
+let view = store.get('view', 'board') === 'orbits' ? 'orbits' : 'board';
 
 const t = (key, vars) =>
   String(I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars?.[name] ?? '');
@@ -990,6 +1077,20 @@ const SOUND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" s
   + '<path class="wave" d="M11 5.6a3.4 3.4 0 0 1 0 4.8"/>'
   + '<path class="wave" d="M13 3.6a6.2 6.2 0 0 1 0 8.8"/>'
   + '<path class="muted" d="M11 6l4 4M15 6l-4 4"/></svg>';
+
+// A view is a preference, unlike a filter: reopening on the one left behind is what you
+// asked for, where reopening on a filtered board would look like an empty one.
+function applyView(next) {
+  view = next;
+  store.set('view', next);
+  for (const span of el('view').querySelectorAll('span')) {
+    span.classList.toggle('on', span.dataset.view === next);
+  }
+  document.querySelector('main').hidden = next !== 'board';
+  el('orbits').hidden = next !== 'orbits';
+}
+
+el('view').addEventListener('click', () => applyView(view === 'board' ? 'orbits' : 'board'));
 
 function applySound(next) {
   soundOn = next;
@@ -1033,6 +1134,8 @@ function applyLang(next) {
   restoreCopy();
   el('sound').innerHTML = SOUND_ICON;
   applySound(soundOn);
+  applyView(view);
+  el('view').title = t('viewTitle');
   el('titleMine').textContent = t('titleMine');
   el('titleReviews').textContent = t('titleReviews');
   render();
@@ -1279,7 +1382,9 @@ function resolveReview(pr) {
   };
 }
 
-function mineCard(pr) {
+// The pills a card wears, extracted so the orbit view's hover card cannot drift from
+// them: one PR, one set of pills, whichever view is drawing it.
+function minePills(pr) {
   const pills = [];
   if (pr.merged) {
     // An age, like "opened" and "active": the pill beside it owns the state, and that
@@ -1309,10 +1414,14 @@ function mineCard(pr) {
   if (!pr.merged && pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
   if (!pr.merged && pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
   if (!pr.merged && pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
-  return cardHtml(pr, [...pr.toFix, ...pr.waiting], pills);
+  return pills;
 }
 
-function reviewCard(pr) {
+function mineCard(pr) {
+  return cardHtml(pr, [...pr.toFix, ...pr.waiting], minePills(pr));
+}
+
+function reviewPills(pr) {
   const pills = [];
   if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
@@ -1329,7 +1438,11 @@ function reviewCard(pr) {
       tn('pillBotTitle', bot.count, { login: bot.login }),
     ));
   }
-  return cardHtml(pr, [...pr.answered, ...pr.awaiting], pills);
+  return pills;
+}
+
+function reviewCard(pr) {
+  return cardHtml(pr, [...pr.answered, ...pr.awaiting], reviewPills(pr));
 }
 
 // Clicking a counter isolates its set: the relevant column goes full width, the other
@@ -1343,13 +1456,19 @@ function filterList(list) {
   return filtered;
 }
 
+const FOCUS = {
+  mineAction: { column: 'mine', bucket: 'action' },
+  reviewAction: { column: 'reviews', bucket: 'action' },
+  reviewWaiting: { column: 'reviews', bucket: 'waiting' },
+};
+
 // Ordered by what each state asks of you: your move, then waiting on someone, then a
 // merge to glance at, then nothing. A merge sat second before, which ranked a published
 // release above a PR actually blocked on a reviewer.
 const BUCKET_ORDER = ['action', 'waiting', 'merged', 'idle'];
 
-function renderColumn(target, list, cardFn, groupLabels, emptyLabel) {
-  const filtered = filterList(list);
+function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket) {
+  const filtered = filterList(list).filter(pr => !onlyBucket || pr.bucket === onlyBucket);
   if (!filtered.length) {
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
     return [];
@@ -1433,9 +1552,18 @@ function pickRepo(repo) {
   render();
 }
 
-const counter = (kind, value, label) =>
-  `<div class="${['counter', kind, value ? '' : 'zero'].filter(Boolean).join(' ')}">`
-  + `<span class="dot"></span><b>${value}</b> ${label}</div>`;
+// They report and they filter. The control they used to duplicate — the "needs work"
+// checkbox — is gone, so this is now the only way to narrow the board by state.
+const counter = (key, kind, value, label) => {
+  const active = state.focus === key;
+  const classes = ['counter', kind, value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
+  // A counter at zero would only filter to nothing: better not to offer it.
+  return `<button type="button" class="${classes.join(' ')}" data-focus="${key}"`
+    + `${value ? '' : ' disabled'}`
+    + `${value ? ` title="${t(active ? 'focusClear' : 'focusHint')}"` : ''}>`
+    + `<span class="dot"></span><b>${value}</b> ${label}`
+    + `<span class="go">${active ? '×' : '›'}</span></button>`;
+};
 
 function render() {
   const data = state.data;
@@ -1457,9 +1585,9 @@ function render() {
   const total = mineAction + reviewAction;
 
   el('counters').innerHTML = [
-    counter('todo', mineAction, t('counterMine')),
-    counter('todo', reviewAction, tn('counterReviews', reviewAction)),
-    counter('pending', waitingFix, t('counterWaiting')),
+    counter('mineAction', 'todo', mineAction, t('counterMine')),
+    counter('reviewAction', 'todo', reviewAction, tn('counterReviews', reviewAction)),
+    counter('reviewWaiting', 'pending', waitingFix, t('counterWaiting')),
   ].join('');
 
   // With no href the CSS hides the link: an empty URL removes it from the header.
@@ -1505,12 +1633,15 @@ function render() {
   renderRepoTrigger();
   if (state.repoOpen) renderRepoList();
 
+  const focus = FOCUS[state.focus];
+  document.querySelector('main').dataset.focus = focus ? focus.column : '';
+
   const shownMine = renderColumn(el('mine'), mine, mineCard, {
     action: t('groupMineAction'),
     merged: t('groupMineMerged'),
     waiting: t('groupMineWaiting'),
     idle: t('groupIdle'),
-  }, t('emptyMine'));
+  }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
 
   // The notes summarise what is on screen, so the project picker and the filters double
   // as their scope.
@@ -1521,9 +1652,10 @@ function render() {
     action: t('groupReviewAction'),
     waiting: t('groupReviewWaiting'),
     idle: t('groupIdle'),
-  }, t('emptyReviews'));
+  }, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
+  renderOrbits([...shownMine, ...shownReviews]);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
   state.lastActionCount = total;
@@ -1603,6 +1735,14 @@ document.addEventListener('click', event => {
   const insidePicker = event.composedPath().some(node => node.id === 'picker');
   if (state.repoOpen && !insidePicker) openRepoPicker(false);
 
+  const focusButton = event.target.closest('.counter[data-focus]');
+  if (focusButton) {
+    const { focus } = focusButton.dataset;
+    state.focus = state.focus === focus ? null : focus;
+    render();
+    return;
+  }
+
   const expander = event.target.closest('.expander');
   if (!expander) return;
   const { id } = expander.closest('.card').dataset;
@@ -1612,9 +1752,15 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || !state.repoOpen) return;
-  openRepoPicker(false);
-  el('repoTrigger').focus();
+  if (event.key !== 'Escape') return;
+  if (state.repoOpen) {
+    openRepoPicker(false);
+    el('repoTrigger').focus();
+    return;
+  }
+  if (!state.focus) return;
+  state.focus = null;
+  render();
 });
 
 // A laptop waking from sleep leaves setInterval far behind: without this you read
@@ -1698,6 +1844,152 @@ function restoreCopy() {
   button.setAttribute('aria-label', t('notesCopy'));
   button.classList.remove('done');
 }
+
+// The bucket already means something everywhere else on the board; a satellite wears the
+// same colour as the card it stands for.
+const ORBIT_COLOURS = {
+  action: ['var(--indigo)', 'var(--indigo-soft)'],
+  waiting: ['var(--amber)', 'var(--amber-soft)'],
+  merged: ['var(--emerald)', 'var(--emerald-soft)'],
+  idle: ['var(--text-faint)', 'var(--surface)'],
+};
+
+const HUB_R = 30;
+const SAT_R = 18;
+// Arc length each satellite needs, which is what sets the ring's radius: crowding eight
+// of them onto a fixed circle would have them overlap.
+const SAT_ARC = 52;
+
+function orbitCell(login, avatarUrl, prs) {
+  const ringR = Math.max(HUB_R + SAT_R + 14, Math.ceil((prs.length * SAT_ARC) / (2 * Math.PI)));
+  const size = (ringR + SAT_R + 12) * 2;
+  const c = size / 2;
+  const clip = `hub-${login.replace(/[^A-Za-z0-9]/g, '')}`;
+
+  const satellites = prs
+    .map((pr, index) => {
+      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / prs.length;
+      const [stroke, fill] = ORBIT_COLOURS[pr.bucket] ?? ORBIT_COLOURS.idle;
+      const x = c + ringR * Math.cos(angle);
+      const y = c + ringR * Math.sin(angle);
+      const from = [c + HUB_R * Math.cos(angle), c + HUB_R * Math.sin(angle)];
+      const to = [c + (ringR - SAT_R) * Math.cos(angle), c + (ringR - SAT_R) * Math.sin(angle)];
+
+      return `<line class="spoke" x1="${from[0].toFixed(1)}" y1="${from[1].toFixed(1)}"`
+        + ` x2="${to[0].toFixed(1)}" y2="${to[1].toFixed(1)}" stroke="${stroke}" opacity=".45"/>`
+        + `<a class="sat" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer"`
+        + ` data-peek="${escapeHtml(pr.id)}">`
+        + `<title>${escapeHtml(`${pr.repo.replace(/^.*\//, '')} #${pr.number} — ${pr.title}`)}</title>`
+        + `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${SAT_R}" fill="${fill}" stroke="${stroke}"/>`
+        + `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${stroke}">${pr.number}</text></a>`;
+    })
+    .join('');
+
+  const hub = avatarUrl
+    ? `<clipPath id="${clip}"><circle cx="${c}" cy="${c}" r="${HUB_R}"/></clipPath>`
+      + `<image href="${escapeHtml(avatarUrl)}&s=120" x="${c - HUB_R}" y="${c - HUB_R}"`
+      + ` width="${HUB_R * 2}" height="${HUB_R * 2}" clip-path="url(#${clip})"`
+      + ` preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${c}" cy="${c}" r="${HUB_R}" fill="var(--sunken)"/>`;
+
+  return `<figure class="orbit"><div class="orbit-peek"></div>`
+    + `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img"`
+    + ` aria-label="${escapeHtml(login)}">`
+    + satellites
+    // The same target as the faces on a card and the handle in the header: an avatar in
+    // this tool leads to its profile.
+    + `<a class="hub" href="https://github.com/${encodeURIComponent(login)}"`
+    + ` target="_blank" rel="noopener">`
+    + `<title>${escapeHtml(t('openProfile', { login }))}</title>`
+    + hub
+    + `<circle class="hub-ring" cx="${c}" cy="${c}" r="${HUB_R}"/>`
+    + `</a></svg>`
+    + `<figcaption>${escapeHtml(login)} <em>${tn('orbitPrs', prs.length)}</em></figcaption>`
+    + `</figure>`;
+}
+
+// Grouped by author, me first: on the review side that is how the work actually comes —
+// three PRs from one person are one conversation.
+function renderOrbits(prs) {
+  if (!prs.length) {
+    el('orbits').innerHTML = `<div class="empty">${t('emptyMine')}</div>`;
+    return;
+  }
+
+  const byAuthor = new Map();
+  for (const pr of prs) {
+    if (!byAuthor.has(pr.author)) byAuthor.set(pr.author, []);
+    byAuthor.get(pr.author).push(pr);
+  }
+
+  const me = state.data?.me;
+  const authors = [...byAuthor.entries()].sort(
+    ([a, left], [b, right]) =>
+      Number(b === me) - Number(a === me) || right.length - left.length || a.localeCompare(b),
+  );
+
+  const legend = ['action', 'waiting', 'merged', 'idle']
+    .map(
+      bucket =>
+        `<span><i style="background:${ORBIT_COLOURS[bucket][0]}"></i>${t(`orbit_${bucket}`)}</span>`,
+    )
+    .join('');
+
+  const avatarOf = (login, list) =>
+    list.flatMap(pr => pr.contributors ?? []).find(person => person.login === login)?.avatarUrl;
+
+  el('orbits').innerHTML = `<div class="orbit-legend">${legend}</div>`
+    + `<div class="orbit-grid">`
+    + authors.map(([login, list]) => orbitCell(login, avatarOf(login, list), list)).join('')
+    + `</div>`;
+}
+
+function peekHtml(pr) {
+  const pills = [
+    pr.isDraft ? pill('draft', t('pillDraft')) : '',
+    ...(pr.side === 'mine' ? minePills(pr) : reviewPills(pr)),
+    ciPill(pr),
+  ].filter(Boolean);
+
+  return `<div class="peek-top">`
+    + `<span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>`
+    + `</div>`
+    + `<div class="peek-title">${escapeHtml(pr.title)}</div>`
+    + `<div class="meta">${pills.join('')}`
+    + `<span class="sep" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>`
+    + `</div>`;
+}
+
+// Placed against the satellite and kept inside its cell: a bubble on the right edge would
+// otherwise open a card that runs off the column.
+document.addEventListener('mouseover', event => {
+  const sat = event.target.closest('.sat[data-peek]');
+  if (!sat) return;
+  const cell = sat.closest('.orbit');
+  const peek = cell.querySelector('.orbit-peek');
+  const pr = [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])]
+    .find(entry => entry.id === sat.dataset.peek);
+  if (!pr) return;
+
+  peek.innerHTML = peekHtml(pr.side === 'mine' ? resolveMine(pr) : resolveReview(pr));
+  const bubble = sat.getBoundingClientRect();
+  const box = cell.getBoundingClientRect();
+  const left = bubble.left - box.left + bubble.width / 2 - peek.offsetWidth / 2;
+  peek.style.left = `${Math.max(-40, Math.min(left, box.width + 40 - peek.offsetWidth))}px`;
+
+  // Above the bubble when it sits in the lower half: below, the card would cover the
+  // hub's own caption and the satellites either side of it.
+  const below = bubble.bottom - box.top + 8;
+  const above = bubble.top - box.top - peek.offsetHeight - 8;
+  const lower = bubble.top + bubble.height / 2 > box.top + box.height / 2;
+  peek.style.top = `${lower && above > -30 ? above : below}px`;
+  peek.classList.add('on');
+});
+
+document.addEventListener('mouseout', event => {
+  const sat = event.target.closest('.sat[data-peek]');
+  if (sat) sat.closest('.orbit').querySelector('.orbit-peek').classList.remove('on');
+});
 
 // The model emits fixed `## MINE` / `## REVIEWS` markers; the headings shown and copied
 // are built here, so they follow the interface language.
