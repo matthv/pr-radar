@@ -924,6 +924,7 @@ const I18N = {
     files: '{n} fichiers',
     outdated: 'obsolète',
     conversation: 'conversation',
+    reviewNote: 'review',
     readRest: 'lire la suite',
     notes: 'Notes de daily',
     notesTitle: 'résumer mes PRs affichées en une phrase chacune',
@@ -1031,6 +1032,7 @@ const I18N = {
     files: '{n} files',
     outdated: 'outdated',
     conversation: 'conversation',
+    reviewNote: 'review',
     readRest: 'read the rest',
     notes: 'Standup notes',
     notesTitle: 'summarise the PRs on screen, one sentence each',
@@ -1277,9 +1279,11 @@ function ciPill(pr) {
 
 function threadHtml(thread) {
   const file = thread.path ? thread.path.split('/').pop() : null;
+  // Three channels, three places a remark can live: a line of code, the review itself,
+  // or the PR conversation. Both synthetic ones have no path, so the channel says which.
   const label = file
     ? escapeHtml(file) + (thread.line ? ':' + thread.line : '')
-    : t('conversation');
+    : t(thread.channel === 'review' ? 'reviewNote' : 'conversation');
   return `
     <div class="thread">
       <div class="thread-head">

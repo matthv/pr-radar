@@ -59,12 +59,21 @@ as old as the advertised interval. The **Refresh** button bypasses the cache.
 
 ## Where your feedback is looked for
 
-Review feedback does not necessarily live in an inline thread. Three channels are
-covered, and all three feed the same classification:
+Review feedback does not necessarily live in an inline thread. Four channels are
+covered, and all four feed the same classification:
 
 1. **inline threads** — comments on a line of code;
-2. **submitted reviews** — `approve` / `request changes`, review body included;
-3. the PR's **main conversation**, folded into a synthetic thread.
+2. **the verdict of a submitted review** — `approve` / `request changes`;
+3. **a review's own body**, folded into a synthetic thread;
+4. the PR's **main conversation**, likewise folded.
+
+Channel 3 was claimed here long before it worked: the query never asked for a review's
+`body`, and `awaitingFix` only ever looked at inline threads and verdicts. A review
+saying "a few things before merge" with no inline comment therefore produced no reason
+at all, and the PR sat in "nothing to report" — seen on a real one. Both synthetic
+threads fold per PR, so whoever spoke last decides who it waits on, exactly as in a real
+thread. An **approval's** body is left out: it is a courtesy, not a request, and letting
+it in would make approving look like feedback still pending.
 
 Discovery uses four searches — `author:@me`, `reviewed-by:@me`,
 `review-requested:@me`, `commenter:@me` — plus the account's **event feed**.

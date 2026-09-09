@@ -65,7 +65,7 @@ query($ids: [ID!]!) {
       recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(last: 100) { totalCount nodes { author { __typename login } state submittedAt url } }
+      reviews(last: 100) { totalCount nodes { author { __typename login } state submittedAt url body } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
@@ -357,6 +357,7 @@ function analyzeThread(thread, me) {
 
   return {
     id: thread.id,
+    channel: 'inline',
     isResolved: thread.isResolved,
     isOutdated: thread.isOutdated,
     path: thread.path,
@@ -396,6 +397,49 @@ function lastActivity(pr) {
 // Review feedback does not necessarily live in an inline thread: plenty of reviewers
 // write in the PR's main conversation. It is folded into a synthetic thread so the rest
 // of the classification treats it identically.
+// A review's own body is feedback like any other, and it was the one channel the tool
+// never read: someone writing "a few things before merge" in the review itself, with no
+// inline comment, left nothing the board could see. Folded per PR the way the
+// conversation is, so whoever spoke last decides who it waits on.
+function reviewNoteThread(pr, me) {
+  const notes = pr.reviews.nodes.filter(
+    review =>
+      review?.author
+      && !isBot(review.author)
+      // An approval's body is a courtesy, not a request. Letting it in would make
+      // approving look like feedback still pending, which is the opposite of what it is.
+      && review.state !== 'APPROVED'
+      && (review.body ?? '').trim(),
+  );
+  if (!notes.length) return null;
+
+  const first = notes[0];
+  const last = notes[notes.length - 1];
+  const excerpt = cleanExcerpt(last.body);
+  const mine = notes.filter(review => review.author.login === me);
+
+  return {
+    id: `review-note:${pr.id}`,
+    channel: 'review',
+    isResolved: false,
+    isOutdated: false,
+    path: null,
+    line: null,
+    url: last.url,
+    author: first.author.login,
+    fromBot: false,
+    startedByMe: first.author.login === me,
+    iParticipated: mine.length > 0,
+    lastAuthor: last.author.login,
+    lastByMe: last.author.login === me,
+    lastAt: last.submittedAt,
+    myLastAt: mine.map(review => review.submittedAt).sort().pop() ?? null,
+    excerpt: excerpt.text,
+    excerptTruncated: excerpt.truncated,
+    commentCount: notes.length,
+  };
+}
+
 function conversationThread(pr, me) {
   const comments = pr.comments.nodes.filter(c => c?.author && c.author.__typename !== 'Bot');
   if (!comments.length) return null;
@@ -406,6 +450,7 @@ function conversationThread(pr, me) {
 
   return {
     id: `conversation:${pr.id}`,
+    channel: 'conversation',
     isResolved: false,
     isOutdated: false,
     path: null,
@@ -467,6 +512,7 @@ function releaseAfterMerge(pr) {
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
   const conversation = conversationThread(pr, me);
+  const reviewNote = reviewNoteThread(pr, me);
 
   return {
     id: pr.id,
@@ -499,6 +545,7 @@ function baseShape(pr, me) {
     truncated: truncationOf(pr),
     threads: [
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
+      ...(reviewNote ? [reviewNote] : []),
       ...(conversation ? [conversation] : []),
     ],
     reviews: pr.reviews.nodes.filter(Boolean).map(r => ({

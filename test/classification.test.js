@@ -179,6 +179,68 @@ test('reviewing: a review requested and not done is an action', () => {
   assert.equal(decorated.bucket, 'action');
 });
 
+// The channel the tool read nowhere: a review carrying its remarks in its own body, with
+// no inline comment. Observed on forest-rails#801, which sat in "nothing to report".
+test('reviewing: a commented review with a body awaits a fix', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: user(ME), state: 'COMMENTED', submittedAt: ago(2), url: 'u', body: 'A few things before merge' },
+      ],
+    },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.awaitingAuthor.length, 1);
+  assert.equal(decorated.awaitingFix, true);
+  assert.equal(decorated.bucket, 'waiting');
+  assert.equal(decorated.awaitingAuthor[0].channel, 'review');
+  assert.match(decorated.awaitingAuthor[0].excerpt, /A few things before merge/);
+});
+
+test('reviewing: an approval body is not pending feedback', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: user(ME), state: 'APPROVED', submittedAt: ago(2), url: 'u', body: 'LGTM, nice one' },
+      ],
+    },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.awaitingFix, false);
+  assert.equal(decorated.bucket, 'idle');
+});
+
+test('mine: a reviewer who only wrote in the review body is something to address', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: user('reviewer'), state: 'COMMENTED', submittedAt: ago(2), url: 'u', body: 'Two questions' },
+      ],
+    },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 1);
+  assert.ok(decorated.reasons.some(r => r.kind === 'threads'));
+  assert.equal(decorated.bucket, 'action');
+});
+
+test('reviewing: a bot review body is not feedback of mine', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: { __typename: 'Bot', login: 'macroscopeapp' }, state: 'COMMENTED', submittedAt: ago(2), url: 'u', body: 'scan complete' },
+      ],
+    },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.awaitingFix, false);
+  assert.equal(decorated.bucket, 'idle');
+});
+
 test('reviewing: a changes-requested with no inline comment still awaits a fix', () => {
   const pr = node({
     reviews: { nodes: [{ author: user(ME), state: 'CHANGES_REQUESTED', submittedAt: ago(4), url: 'u' }] },
