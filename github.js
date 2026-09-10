@@ -397,76 +397,69 @@ function lastActivity(pr) {
 // Review feedback does not necessarily live in an inline thread: plenty of reviewers
 // write in the PR's main conversation. It is folded into a synthetic thread so the rest
 // of the classification treats it identically.
-// A review's own body is feedback like any other, and it was the one channel the tool
-// never read: someone writing "a few things before merge" in the review itself, with no
-// inline comment, left nothing the board could see. Folded per PR the way the
-// conversation is, so whoever spoke last decides who it waits on.
-function reviewNoteThread(pr, me) {
-  const notes = pr.reviews.nodes.filter(
-    review =>
-      review?.author
-      && !isBot(review.author)
-      // An approval's body is a courtesy, not a request. Letting it in would make
-      // approving look like feedback still pending, which is the opposite of what it is.
-      && review.state !== 'APPROVED'
-      && (review.body ?? '').trim(),
-  );
-  if (!notes.length) return null;
+// GitHub shows review bodies and PR comments in one timeline, and that is what they are:
+// two forms of the same discussion, unlike an inline thread, which has its own turn and
+// its own resolution. Split into two threads, a remark answered in the other form stayed
+// pending for ever — a reviewer asking for a fix in their review body and my answer in the
+// conversation showed up as both "to fix" and "awaiting a reply", one exchange counted
+// twice.
+function discussionThread(pr, me) {
+  const messages = [
+    ...pr.reviews.nodes
+      .filter(
+        review =>
+          review?.author
+          && !isBot(review.author)
+          // An approval's body is a courtesy, not a request. Letting it in would make
+          // approving look like feedback still pending, the opposite of what it is.
+          && review.state !== 'APPROVED'
+          && (review.body ?? '').trim(),
+      )
+      .map(review => ({
+        channel: 'review',
+        login: review.author.login,
+        body: review.body,
+        at: review.submittedAt,
+        url: review.url,
+      })),
+    ...pr.comments.nodes
+      .filter(comment => comment?.author && comment.author.__typename !== 'Bot')
+      .map(comment => ({
+        channel: 'conversation',
+        login: comment.author.login,
+        body: comment.body,
+        at: comment.createdAt,
+        url: comment.url,
+      })),
+  ].sort((a, b) => new Date(a.at) - new Date(b.at));
 
-  const first = notes[0];
-  const last = notes[notes.length - 1];
+  if (!messages.length) return null;
+
+  const first = messages[0];
+  const last = messages[messages.length - 1];
   const excerpt = cleanExcerpt(last.body);
-  const mine = notes.filter(review => review.author.login === me);
+  const mine = messages.filter(message => message.login === me);
 
   return {
-    id: `review-note:${pr.id}`,
-    channel: 'review',
+    id: `discussion:${pr.id}`,
+    // Named after the form the last word took, which is the one the excerpt shows.
+    channel: last.channel,
     isResolved: false,
     isOutdated: false,
     path: null,
     line: null,
     url: last.url,
-    author: first.author.login,
+    author: first.login,
     fromBot: false,
-    startedByMe: first.author.login === me,
+    startedByMe: first.login === me,
     iParticipated: mine.length > 0,
-    lastAuthor: last.author.login,
-    lastByMe: last.author.login === me,
-    lastAt: last.submittedAt,
-    myLastAt: mine.map(review => review.submittedAt).sort().pop() ?? null,
+    lastAuthor: last.login,
+    lastByMe: last.login === me,
+    lastAt: last.at,
+    myLastAt: mine.map(message => message.at).sort().pop() ?? null,
     excerpt: excerpt.text,
     excerptTruncated: excerpt.truncated,
-    commentCount: notes.length,
-  };
-}
-
-function conversationThread(pr, me) {
-  const comments = pr.comments.nodes.filter(c => c?.author && c.author.__typename !== 'Bot');
-  if (!comments.length) return null;
-
-  const first = comments[0];
-  const last = comments[comments.length - 1];
-  const excerpt = cleanExcerpt(last.body);
-
-  return {
-    id: `conversation:${pr.id}`,
-    channel: 'conversation',
-    isResolved: false,
-    isOutdated: false,
-    path: null,
-    line: null,
-    url: last.url,
-    author: first.author.login,
-    fromBot: false,
-    startedByMe: first.author.login === me,
-    iParticipated: comments.some(c => c.author.login === me),
-    lastAuthor: last.author.login,
-    lastByMe: last.author.login === me,
-    lastAt: last.createdAt,
-    myLastAt: comments.filter(c => c.author.login === me).map(c => c.createdAt).sort().pop() ?? null,
-    excerpt: excerpt.text,
-    excerptTruncated: excerpt.truncated,
-    commentCount: comments.length,
+    commentCount: messages.length,
   };
 }
 
@@ -511,8 +504,7 @@ function releaseAfterMerge(pr) {
 
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
-  const conversation = conversationThread(pr, me);
-  const reviewNote = reviewNoteThread(pr, me);
+  const discussion = discussionThread(pr, me);
 
   return {
     id: pr.id,
@@ -545,8 +537,7 @@ function baseShape(pr, me) {
     truncated: truncationOf(pr),
     threads: [
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
-      ...(reviewNote ? [reviewNote] : []),
-      ...(conversation ? [conversation] : []),
+      ...(discussion ? [discussion] : []),
     ],
     reviews: pr.reviews.nodes.filter(Boolean).map(r => ({
       author: r.author?.login ?? '?',
@@ -883,7 +874,7 @@ module.exports = {
   decorateReview,
   lastActivity,
   contributorsOf,
-  conversationThread,
+  discussionThread,
   cleanExcerpt,
   isBot,
   fetchDigestInputs,

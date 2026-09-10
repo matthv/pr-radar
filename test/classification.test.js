@@ -9,7 +9,7 @@ const {
   decorateReview,
   lastActivity,
   contributorsOf,
-  conversationThread,
+  discussionThread,
   cleanExcerpt,
   isBot,
   byActionThenFreshness,
@@ -109,19 +109,55 @@ test('a review comment left in the PR conversation becomes a thread', () => {
   const pr = node({
     comments: { nodes: [issueComment(['author', ago(5)]), issueComment([ME, ago(3)])] },
   });
-  const conversation = conversationThread(pr, ME);
+  const discussion = discussionThread(pr, ME);
 
-  assert.ok(conversation, 'un thread de conversation était attendu');
-  assert.equal(conversation.path, null, 'une conversation n’a pas de fichier');
-  assert.equal(conversation.author, 'author');
-  assert.equal(conversation.iParticipated, true);
-  assert.equal(conversation.lastByMe, true);
-  assert.equal(conversation.commentCount, 2);
+  assert.ok(discussion, 'un thread de discussion était attendu');
+  assert.equal(discussion.path, null, 'une discussion n’a pas de fichier');
+  assert.equal(discussion.author, 'author');
+  assert.equal(discussion.iParticipated, true);
+  assert.equal(discussion.lastByMe, true);
+  assert.equal(discussion.commentCount, 2);
 });
 
-test('the conversation thread excludes bots', () => {
+test('the discussion thread excludes bots', () => {
   const pr = node({ comments: { nodes: [issueComment([bot('qltysh'), ago(1)])] } });
-  assert.equal(conversationThread(pr, ME), null);
+  assert.equal(discussionThread(pr, ME), null);
+});
+
+// Observed on forest-rails#796: a reviewer wrote in the body of their review, I answered
+// in the PR conversation seventeen minutes later, and the board showed both "1 to fix"
+// and "1 awaiting a reply" — one exchange, counted twice.
+test('answering in the conversation settles a remark left in a review body', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: user('reviewer'), state: 'COMMENTED', submittedAt: ago(3), url: 'u', body: 'index and count still hold' },
+      ],
+    },
+    comments: { nodes: [issueComment([ME, ago(2)])] },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 0, 'ma réponse a répondu à sa remarque');
+  assert.equal(decorated.waitingOnThem.length, 1);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('the discussion is one thread across both of its forms', () => {
+  const pr = node({
+    reviews: {
+      nodes: [
+        { author: user('reviewer'), state: 'COMMENTED', submittedAt: ago(3), url: 'u', body: 'a remark' },
+      ],
+    },
+    comments: { nodes: [issueComment([ME, ago(2)])] },
+  });
+  const threads = baseShape(pr, ME).threads;
+
+  assert.equal(threads.length, 1);
+  assert.equal(threads[0].commentCount, 2);
+  // Named after the form the last word took, which is the one the excerpt shows.
+  assert.equal(threads[0].channel, 'conversation');
 });
 
 test('reviewing: I spoke last, so I am waiting on the author', () => {
