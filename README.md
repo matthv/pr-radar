@@ -254,8 +254,23 @@ Two ways to narrow what they cover, because they answer different problems:
   clipboard is rebuilt from what is left, and a section emptied that way stops being
   announced.
 
-Copying gives plain markdown with the headings; on screen each PR number links to the
-pull request it summarises.
+Each line carries **the time of that PR's real activity, its number and its state**, in
+four fixed columns so the day reads down the edge of the panel. The state is read off the
+board, never asked of the model: the bucket is already computed, and prose would freeze it
+at the moment of writing and let it go stale. The weekday is on every line, today's
+included — dropping it there read as an oversight and left the column ragged.
+
+The bullets are ordered **oldest activity first**, the way the day happened rather than
+the board's order of urgency, and sorted before the request rather than after the answer,
+since the model words each bullet against the order it is given.
+
+Copying gives plain markdown with the headings, the state word included — "merged" is half
+of what a standup line says. On screen each PR number links to the pull request it
+summarises.
+
+The group markers the model emits are matched as a whole line holding nothing but the
+token, hashes or bold optional: it has been seen writing `## MINE`, `MINE` and `**MINE**`
+for the same request, and a stricter pattern let the raw marker through as a bullet.
 
 ## Notifications
 

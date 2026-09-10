@@ -362,6 +362,19 @@
     font-size: 11.5px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase;
     color: var(--text-faint); margin-bottom: 10px;
   }
+  /* Four fixed cells, so the times read down the edge and every sentence starts on the
+     same line. Widths sized for the longest value each can hold: "mer. 10:03", "#8473",
+     and the longest state word, measured generously. */
+  #notesBody .when {
+    flex: none; width: 66px; text-align: right;
+    font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums;
+    padding-top: 1px;
+  }
+  #notesBody .num { flex: none; width: 44px; text-align: right; }
+  #notesBody .state { flex: none; width: 112px; }
+  /* Aligned to the first line: a bullet is a sentence carrying a marker, not a pill with
+     a sentence stuck to it. */
+  #notesBody .pill { flex: none; align-self: flex-start; margin-top: 1px; }
   /* Refresh's own fill: it carries the window being summarised, which is the one thing
      about these notes worth reading before the notes themselves. Not cyan — that means a
      location here (the repo badge, a thread's path, the PR numbers below). */
@@ -2009,7 +2022,7 @@ document.addEventListener('mouseout', event => {
 function splitSections(text) {
   const sections = [];
   for (const line of text.split('\n').map(l => l.trim()).filter(Boolean)) {
-    const marker = line.match(/^#{1,3}\s*(MINE|REVIEWS)\b/i);
+    const marker = line.match(/^[#*\s]*(MINE|REVIEWS)[*\s:]*$/i);
     if (marker) {
       sections.push({ group: marker[1].toUpperCase(), lines: [] });
       continue;
@@ -2022,12 +2035,30 @@ function splitSections(text) {
 
 // On screen the PR number becomes a link to the PR it summarises; the clipboard gets
 // plain markdown, which is what pastes into a standup note.
+// The weekday on every line, today's included. Dropping it for today read as an
+// oversight next to the others, and left the column ragged — the same length everywhere
+// is what makes it a column.
+function activityClock(iso) {
+  const at = new Date(iso);
+  return `${at.toLocaleDateString(LOCALE[lang], { weekday: 'short' })} `
+    + at.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+}
+
+// The state comes off the board, never from the model: the bucket is already computed,
+// and asking prose to carry it would put it a regeneration away and let it go stale.
+const NOTE_STATE = {
+  action: ['todo', 'orbit_action'],
+  waiting: ['pending', 'orbit_waiting'],
+  merged: ['good', 'orbit_merged'],
+  idle: ['', 'orbit_idle'],
+};
+
 function showNotes(text, counts) {
   applyScopeLabel();
-  const urls = new Map(
+  const board = new Map(
     [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].map(pr => [
       String(pr.number),
-      pr.url,
+      pr,
     ]),
   );
   const heading = group =>
@@ -2051,11 +2082,21 @@ function showNotes(text, counts) {
           return `<li data-copy="${escapeHtml(plain)}"><span>${escapeHtml(plain)}</span>${drop}</li>`;
         }
         const [, number, rest] = bullet;
-        const url = urls.get(number);
-        return `<li data-copy="${escapeHtml(plain)}">`
-          + (url
-            ? `<a class="num" href="${escapeHtml(url)}" target="_blank" rel="noopener">#${number}</a>`
+        const pr = board.get(number);
+        const [kind, key] = NOTE_STATE[pr?.bucket] ?? [];
+        // The word travels with the copy: "merged" is half of what a standup line says.
+        const marked = `#${number}${key ? ` (${t(key)})` : ''} ${rest}`;
+        copied[copied.length - 1] = `- ${marked}`;
+
+        return `<li data-copy="${escapeHtml(marked)}">`
+          + (pr
+            ? `<span class="when" title="${escapeHtml(t('agoTitle'))}">`
+              + `${activityClock(pr.lastActivityAt)}</span>`
+            : '')
+          + (pr
+            ? `<a class="num" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener">#${number}</a>`
             : `<span class="num">#${number}</span>`)
+          + `<span class="state">${key ? pill(kind, t(key)) : ''}</span>`
           + `<span>${escapeHtml(rest)}</span>${drop}</li>`;
       });
 
@@ -2086,16 +2127,21 @@ function closeNotes() {
 // button that started it rather than by a blocking overlay: the board stays readable.
 // The window narrows what is sent, not what the board shows: the board answers "what
 // needs me now", and hiding a card that asks something of you would break that.
-function withinWindow(ids) {
-  if (notesWindow === 'all') return ids;
-  const since = lastWorkingDay().getTime();
+// Oldest activity first: a standup is told in the order the day happened, not in the
+// board's order of urgency. Sorted before the request rather than after the answer, since
+// the model words the bullets against the order it is given.
+function forNotes(ids) {
   const activity = new Map(
     [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].map(pr => [
       pr.id,
       new Date(pr.lastActivityAt).getTime(),
     ]),
   );
-  return ids.filter(id => (activity.get(id) ?? 0) >= since);
+  const since = notesWindow === 'all' ? 0 : lastWorkingDay().getTime();
+
+  return ids
+    .filter(id => (activity.get(id) ?? 0) >= since)
+    .sort((a, b) => (activity.get(a) ?? 0) - (activity.get(b) ?? 0));
 }
 
 // A model call runs for a minute and a half; the server kills its own after three. The
@@ -2114,8 +2160,8 @@ function writeOtherLanguage(mine, reviews) {
 }
 
 async function writeNotes() {
-  const mine = withinWindow(state.visibleMine);
-  const reviews = withinWindow(state.visibleReviews);
+  const mine = forNotes(state.visibleMine);
+  const reviews = forNotes(state.visibleReviews);
   if (!mine.length && !reviews.length) return showNotes(t('notesEmpty'), null);
 
   const button = el('notes');
