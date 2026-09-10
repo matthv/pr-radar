@@ -672,6 +672,9 @@ function decorateReview(pr, me, requestedFromMe) {
 
   const awaitingFix = awaitingAuthor.length > 0 || myLatestVerdict === 'CHANGES_REQUESTED';
 
+  // Once merged, every pending state is history — the same rule my own PRs follow. Left
+  // in, a merged PR would keep claiming a reply was waiting for me on something closed,
+  // which is exactly what kept other people's merges off the board in the first place.
   return {
     ...pr,
     side: 'review',
@@ -679,13 +682,19 @@ function decorateReview(pr, me, requestedFromMe) {
     iHaveReviewed,
     myLatestVerdict,
     myLastActivity: myLastActivity ?? null,
-    awaitingAuthor,
-    answeredToMe,
-    pushedSinceMyFeedback,
-    reasons,
-    needsAction: reasons.length > 0,
-    awaitingFix,
-    bucket: reasons.length ? 'action' : awaitingFix ? 'waiting' : 'idle',
+    awaitingAuthor: pr.merged ? [] : awaitingAuthor,
+    answeredToMe: pr.merged ? [] : answeredToMe,
+    pushedSinceMyFeedback: pr.merged ? false : pushedSinceMyFeedback,
+    reasons: pr.merged ? [] : reasons,
+    needsAction: pr.merged ? false : reasons.length > 0,
+    awaitingFix: pr.merged ? false : awaitingFix,
+    bucket: pr.merged
+      ? 'merged'
+      : reasons.length
+        ? 'action'
+        : awaitingFix
+          ? 'waiting'
+          : 'idle',
   };
 }
 
@@ -699,7 +708,20 @@ const byActionThenFreshness = (a, b) =>
   settledRank(a) - settledRank(b) ||
   new Date(b.lastActivityAt) - new Date(a.lastActivityAt);
 
-async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
+// A merge is talked about at the next standup, so the window has to survive the night: a
+// rolling twelve hours dropped a five-o'clock merge before anyone could mention it. Back
+// to the start of the previous working day instead, which is the same window the standup
+// notes use — and on a Monday that reaches Friday, where no count of hours would.
+function mergedSince() {
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  do {
+    since.setDate(since.getDate() - 1);
+  } while (since.getDay() === 0 || since.getDay() === 6);
+  return since.getTime();
+}
+
+async function fetchDashboard({ org, maxAgeDays }) {
   const scope = `org:${org} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
   // commented never shows up there. `commenter:` covers that case.
@@ -717,10 +739,22 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
     () => searchPullRequests(`${scope} commenter:@me -author:@me`),
     // Merged PRs are searched separately: `scope` pins `is:open`.
     () => searchPullRequests(`org:${org} is:pr is:merged author:@me`),
+    // A PR I reviewed vanished the moment it merged, though "the one I reviewed shipped"
+    // is worth a line at a standup. Only a submitted review counts here: for a PR I
+    // merely commented on, its landing is not really my news.
+    () => searchPullRequests(`org:${org} is:pr is:merged reviewed-by:@me -author:@me`),
     () => recentlyTouchedPullRequests(org, me),
   ]);
 
-  const SOURCES = ['author', 'reviewed-by', 'review-requested', 'commenter', 'merged', 'events'];
+  const SOURCES = [
+    'author',
+    'reviewed-by',
+    'review-requested',
+    'commenter',
+    'merged',
+    'merged-reviewed',
+    'events',
+  ];
   const sourceOf = (index, fallback) => {
     const result = settled[index];
     if (result.status === 'fulfilled') return result.value;
@@ -728,14 +762,15 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
     return fallback;
   };
 
-  const [mineFound, reviewedFound, requestedFound, commentedFound, mergedFound, touchedRefs] = [
-    sourceOf(0, []),
-    sourceOf(1, []),
-    sourceOf(2, []),
-    sourceOf(3, []),
-    sourceOf(4, []),
-    sourceOf(5, []),
-  ];
+  const [
+    mineFound,
+    reviewedFound,
+    requestedFound,
+    commentedFound,
+    mergedFound,
+    mergedReviewedFound,
+    touchedRefs,
+  ] = [sourceOf(0, []), sourceOf(1, []), sourceOf(2, []), sourceOf(3, []), sourceOf(4, []), sourceOf(5, []), sourceOf(6, [])];
 
   if (warnings.length === settled.length) {
     throw new Error(`Aucune source GitHub n'a répondu : ${warnings[0].message}`);
@@ -749,13 +784,11 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
   const maybeFresh = item => new Date(item.updatedAt).getTime() >= cutoff;
   const found = [...mineFound, ...reviewedFound, ...requestedFound, ...commentedFound];
 
-  // A merge is worth watching while its release pipeline can still bite. The window is
-  // what bounds it — see PR_RADAR_MERGED_HOURS.
-  const mergedCutoff = Date.now() - mergedHours * 60 * 60 * 1000;
-  const mergedIds = new Set(
-    mergedFound
-      .filter(item => new Date(item.updatedAt).getTime() >= mergedCutoff)
-      .map(item => item.id),
+  const mergedCutoff = mergedSince();
+  const withinMergedWindow = item => new Date(item.updatedAt).getTime() >= mergedCutoff;
+  const mergedIds = new Set(mergedFound.filter(withinMergedWindow).map(item => item.id));
+  const mergedReviewedIds = new Set(
+    mergedReviewedFound.filter(withinMergedWindow).map(item => item.id),
   );
   const stale = new Set(found.filter(item => !maybeFresh(item)).map(item => item.id));
 
@@ -764,6 +797,7 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
   mergedIds.forEach(id => mineSet.add(id));
   const requestedSet = ids(requestedFound);
   const reviewSet = new Set([...ids(reviewedFound), ...ids(commentedFound), ...requestedSet]);
+  mergedReviewedIds.forEach(id => reviewSet.add(id));
 
   // PRs from the event feed never went through the search: neither their state nor
   // their author is guaranteed. Load them, then split on the real author.
@@ -795,7 +829,7 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
       const fresh = new Date(shaped.mergedAt).getTime() >= mergedCutoff;
       // Kept whatever the outcome: dropping it on success would make "it passed"
       // indistinguishable from "I never saw it".
-      if (mine && fresh) shapes.set(id, shaped);
+      if (fresh && (mine || mergedReviewedIds.has(id))) shapes.set(id, shaped);
       continue;
     }
 
@@ -845,7 +879,7 @@ async function fetchDashboard({ org, maxAgeDays, mergedHours }) {
     me,
     org,
     maxAgeDays,
-    mergedHours,
+    mergedSince: new Date(mergedCutoff).toISOString(),
     warnings,
     fetchedAt: new Date().toISOString(),
     mine,

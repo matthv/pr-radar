@@ -47,7 +47,6 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_ORG` | — | GitHub org to scan (**required**) |
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
-| `PR_RADAR_MERGED_HOURS` | `12` | How long a merge of yours stays watched |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
@@ -164,9 +163,22 @@ still counting as the latest verdict.
 ## Watching a merge
 
 A PR leaves the board the moment it is merged — which is the moment its release
-pipeline starts. Merges of yours therefore stay in a **Recently merged** group for
-`PR_RADAR_MERGED_HOURS`, carrying the status of the **merge commit**, not of the PR
-head: what runs after a squash is the release job on the base branch.
+pipeline starts. Merges therefore stay in a **Recently merged** group, carrying the
+status of the **merge commit**, not of the PR head: what runs after a squash is the
+release job on the base branch.
+
+**The window is the previous working day, not a count of hours.** It was twelve rolling
+hours, which cannot survive a night: a merge at five in the afternoon was gone by five in
+the morning, before anyone could mention it at a standup — and on a Monday no number of
+hours reaches Friday. Merges since the start of the previous working day, then, the same
+window the standup notes use. `PR_RADAR_MERGED_HOURS` is gone with it.
+
+**A PR you reviewed stays too.** It used to vanish the instant it merged, though "the one
+I reviewed shipped" is a line worth having. Other people's merges were kept off the board
+because the review side had no notion of a merge and would claim a reply was waiting for
+you on something closed; it drops every pending state on a merge now, the way your own
+PRs already did, so they can be shown. Only a *submitted review* counts: for a PR you
+merely commented on, its landing is not really your news.
 
 The outcome paints the whole card, because after a merge it is the only thing left to
 know. Amber while it runs — the outcome is unknown, and green would announce a success

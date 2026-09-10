@@ -1427,6 +1427,14 @@ function mineCard(pr) {
 
 function reviewPills(pr) {
   const pills = [];
+  // Same reading as on my own merges: an age, not a state, since the verdict pill beside
+  // it is what still says anything.
+  if (pr.merged) {
+    pills.push(
+      `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
+      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>`,
+    );
+  }
   if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
@@ -1654,6 +1662,7 @@ function render() {
 
   const shownReviews = renderColumn(el('reviews'), reviews, reviewCard, {
     action: t('groupReviewAction'),
+    merged: t('groupMineMerged'),
     waiting: t('groupReviewWaiting'),
     idle: t('groupIdle'),
   }, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);

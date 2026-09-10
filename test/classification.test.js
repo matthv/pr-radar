@@ -277,6 +277,34 @@ test('reviewing: a bot review body is not feedback of mine', () => {
   assert.equal(decorated.bucket, 'idle');
 });
 
+// A PR I reviewed used to vanish the moment it merged, though it is what I talk about at
+// the next standup. Its pending states have to go with the merge, or it would keep saying
+// a reply was waiting for me on something closed.
+test('reviewing: a merge settles everything that was pending', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(1),
+    state: 'MERGED',
+    reviews: {
+      nodes: [
+        { author: user(ME), state: 'CHANGES_REQUESTED', submittedAt: ago(4), url: 'u', body: '' },
+      ],
+    },
+    reviewThreads: {
+      nodes: [thread({ comments: [[ME, ago(4)]] })],
+    },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, true);
+
+  assert.equal(decorated.bucket, 'merged');
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.awaitingFix, false);
+  assert.equal(decorated.awaitingAuthor.length, 0);
+  assert.deepEqual(decorated.reasons, []);
+  // The verdict survives: "I approved it and it shipped" is the line worth having.
+  assert.equal(decorated.myLatestVerdict, 'CHANGES_REQUESTED');
+});
+
 test('reviewing: a changes-requested with no inline comment still awaits a fix', () => {
   const pr = node({
     reviews: { nodes: [{ author: user(ME), state: 'CHANGES_REQUESTED', submittedAt: ago(4), url: 'u' }] },
@@ -535,9 +563,11 @@ test('a merge I took over is mine to watch, by the board\'s own notion of owners
   assert.equal(takenOver.headCommitAuthor, ME, 'the head commit is what makes it mine');
 });
 
-test('a merge by someone else is not mine to watch', () => {
-  // The relaxed state filter that lets my merges through must not let theirs in: the
-  // review side has no notion of "merged" and would report a reply on a closed PR.
+// This once asserted the opposite: that decorateReview would claim a reply was waiting on
+// a closed PR, which is why other people's merges were kept off the board entirely. The
+// review side understands a merge now, so they can be shown — and a PR I reviewed is what
+// I talk about at the next standup.
+test('a merge by someone else is settled, not a reply waiting for me', () => {
   const theirs = baseShape(node({
     author: user('someone'),
     merged: true,
@@ -549,10 +579,10 @@ test('a merge by someone else is not mine to watch', () => {
   assert.equal(theirs.merged, true);
   assert.notEqual(theirs.author, ME, 'the fixture is authored by someone else');
 
-  // decorateReview would happily claim a reply is waiting for me, which is why the
-  // filtering has to happen upstream, on the author.
   const decorated = decorateReview(theirs, ME, false);
-  assert.equal(decorated.answeredToMe.length, 1, 'hence the upstream guard in fetchDashboard');
+  assert.equal(decorated.answeredToMe.length, 0, 'the merge settled it');
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.bucket, 'merged');
 });
 
 test('within the merged group, a running release outranks a landed one', () => {
