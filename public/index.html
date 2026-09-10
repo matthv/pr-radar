@@ -489,8 +489,10 @@
   /* The release outcome paints the whole card, not just a pill: after a merge it is the
      only thing left to know. Amber while it runs — the outcome is not known yet, and
      green would announce a success that has not happened. */
-  .card.pipeline-done { background: linear-gradient(100deg, var(--emerald-soft) -10%, var(--surface) 45%); }
-  .card.pipeline-done::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
+  .card.pipeline-done,
+  .card.pipeline-none { background: linear-gradient(100deg, var(--emerald-soft) -10%, var(--surface) 45%); }
+  .card.pipeline-done::before,
+  .card.pipeline-none::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
   .card.pipeline-failed { background: linear-gradient(100deg, var(--rose-soft) -10%, var(--surface) 45%); }
   .card.pipeline-failed::before { background: linear-gradient(180deg, var(--rose), var(--rose-2)); }
   .card.pipeline-failed .reason { color: var(--rose); }
@@ -655,6 +657,18 @@
   .thread-body { color: var(--text-soft); margin-top: 4px; }
   .thread-more { color: var(--cyan); white-space: nowrap; }
   .thread-more:hover { text-decoration: underline; }
+  /* Same recipe as a thread's file-path chip: a branch is a "where" fact, not a state,
+     and the two answer the same question — shown whole, the same way a file path is never
+     edited down. Capped and truncated instead: a stacked PR's base can be another PR's
+     whole slug, seventy characters long; the full name is a hover away, the way the merge
+     date already is on the pill beside it. */
+  .branch-badge {
+    display: inline-block; max-width: 210px; vertical-align: bottom;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
+    font-size: 11px; color: var(--cyan); background: var(--cyan-soft);
+    padding: 1px 6px; border-radius: 5px;
+  }
 
   /* Same sweep as gitdeck uses for a pane awaiting content, so the two tools read
      alike while they wait. */
@@ -906,6 +920,7 @@ const I18N = {
     dismiss: 'retirer cette carte du tableau',
     pillMergedAgo: 'fusionnée il y a {v}',
     mergedTitle: 'fusion de la PR — {date}',
+    mergedIntoTitle: 'fusionnée vers {branch}, pas encore livrée',
     pipelineRunning: 'release en cours',
     pipelineDone: 'release publiée',
     pipelineFailed: 'release en échec',
@@ -1014,6 +1029,7 @@ const I18N = {
     dismiss: 'drop this card from the board',
     pillMergedAgo: 'merged {v} ago',
     mergedTitle: 'PR merged on {date}',
+    mergedIntoTitle: 'merged into {branch}, not shipped yet',
     pipelineRunning: 'release running',
     pipelineDone: 'released',
     pipelineFailed: 'release failed',
@@ -1320,11 +1336,19 @@ function threadHtml(thread) {
 
 // On a merged PR the release outcome owns the card's colour, overriding the bucket:
 // the bucket says whose move it is, but here what matters is whether the release landed.
+// pipelineOutcome is computed server-side (github.js), not re-derived here, so this and
+// the sort order in byActionThenFreshness cannot read the same commit two different ways.
 function pipelineClass(pr) {
   if (!pr.merged) return '';
-  if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') return ' pipeline-failed';
-  if (pr.mergePipeline === 'SUCCESS') return ' pipeline-done';
-  return ' pipeline-running';
+  if (pr.pipelineOutcome === 'failed') return ' pipeline-failed';
+  if (pr.pipelineOutcome === 'done') return ' pipeline-done';
+  if (pr.pipelineOutcome === 'running') return ' pipeline-running';
+  // 'none': no check was ever posted to this merge commit, and none ever will be —
+  // merging into a branch with no CI on push, say. `.card.merged` alone is amber, meant
+  // as a transient default always meant to be overridden — left unstyled here it read as
+  // "still waiting on someone", the opposite of settled. Painted the same green as a
+  // landed release: nothing is pending either way, only the pill beside it differs.
+  return ' pipeline-none';
 }
 
 function cardHtml(pr, threadsToShow, extraPills) {
@@ -1399,6 +1423,20 @@ function resolveReview(pr) {
   };
 }
 
+// A merge into anything but the repo's default branch has not shipped, whatever the
+// pipeline says — a stacked feature branch can carry a green, settled-looking outcome of
+// its own. `mergeTarget` is only ever the branch name, computed server-side, and only
+// when it differs from the default; shared by both sides so a reviewed PR's card cannot
+// say something different from one's own.
+function mergeTargetBadge(pr) {
+  if (!pr.merged || !pr.mergeTarget) return '';
+  // The raw name, unedited — a thread's file path never gets rewritten either, and a
+  // stripped `feature/` prefix would silently misrepresent a `hotfix/` or `release/`
+  // branch the same shortcut does not apply to.
+  return `<span class="branch-badge" title="${escapeHtml(t('mergedIntoTitle', { branch: pr.mergeTarget }))}">`
+    + `${escapeHtml(pr.mergeTarget)}</span>`;
+}
+
 // The pills a card wears, extracted so the orbit view's hover card cannot drift from
 // them: one PR, one set of pills, whichever view is drawing it.
 function minePills(pr) {
@@ -1409,19 +1447,24 @@ function minePills(pr) {
     // and failed.
     pills.push(
       `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
-      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>`,
+      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>${mergeTargetBadge(pr)}`,
     );
-    // Three outcomes, three readings: still running, published, broken.
-    if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') {
+    // Four outcomes: broken, published, still running, or no signal at all. That last
+    // one is not "running" — nothing was ever posted to this merge commit, and nothing
+    // ever will be, so no pill claims a decision is imminent when none is coming. And on
+    // a stacked branch, "done" only ever means the branch's own checks passed, never that
+    // a release went out — forest-rails#803 had real green checks yet sat nowhere near
+    // main, so the badge above already says what needs saying and this pill stays quiet.
+    if (pr.pipelineOutcome === 'failed') {
       pills.push(pill('alert', t('pipelineFailed')));
-    } else if (pr.mergePipeline === 'SUCCESS') {
+    } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
       pills.push(
         pr.release
           ? `<a class="pill good" href="${escapeHtml(pr.release.url)}" target="_blank" rel="noopener"`
             + ` title="${escapeHtml(t('releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
           : pill('good', t('pipelineDone')),
       );
-    } else {
+    } else if (pr.pipelineOutcome === 'running') {
       pills.push(`<span class="pill pending running">${t('pipelineRunning')}</span>`);
     }
   }
@@ -1445,7 +1488,7 @@ function reviewPills(pr) {
   if (pr.merged) {
     pills.push(
       `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
-      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>`,
+      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>${mergeTargetBadge(pr)}`,
     );
   }
   if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
@@ -1505,9 +1548,10 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
   target.innerHTML = groups
     .map(([bucket, group]) => {
       // A summary reports the state that still needs attention: the merged group turns
-      // green only once every release in it has landed. A failed one is not here — it
-      // moves to the action group.
-      const settled = bucket === 'merged' && group.every(pr => pr.mergePipeline === 'SUCCESS');
+      // green once nothing in it is still deciding. A failed one is not here — it moves
+      // to the action group; a merge with no CI signal at all settles immediately too,
+      // since it is never going to produce one.
+      const settled = bucket === 'merged' && group.every(pr => pr.pipelineOutcome !== 'running');
       return `<div class="group-label ${bucket}${settled ? ' settled' : ''}">`
         + `<span class="gdot"></span>${groupLabels[bucket]}`
         + `<span class="gcount">${group.length}</span></div>`

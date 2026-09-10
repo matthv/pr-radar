@@ -546,8 +546,104 @@ test('my PR: a running release keeps it watched without demanding anything', () 
   const decorated = decorateMine(baseShape(pr, ME));
 
   assert.equal(decorated.mergePipeline, 'PENDING');
+  assert.equal(decorated.pipelineOutcome, 'running');
   assert.equal(decorated.needsAction, false);
   assert.equal(decorated.bucket, 'merged');
+});
+
+// Observed on forest-rails#796 and #795: merged into a stacked feature branch with no CI
+// configured on push, so the merge commit's rollup is null — not PENDING, not a transient
+// gap before the real answer, but permanently absent. Folding that into "running" left
+// the card breathing amber forever, promising a decision that was never coming.
+test('a merge with no CI signal at all settles, rather than breathing forever', () => {
+  const pr = node({ merged: true, mergedAt: ago(0.1), mergeCommit: { oid: 'x', statusCheckRollup: null } });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.mergePipeline, null);
+  assert.equal(decorated.pipelineOutcome, 'none');
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.bucket, 'merged');
+});
+
+test('within the merged group, a genuinely running release still outranks one with no CI signal', () => {
+  const running = decorateMine(baseShape(node({
+    merged: true, mergedAt: ago(2), lastActivityAt: ago(2),
+    mergeCommit: { oid: 'a', statusCheckRollup: { state: 'PENDING' } },
+    head: { nodes: [{ commit: { committedDate: ago(2), author: { user: user(ME) }, statusCheckRollup: null } }] },
+  }), ME));
+
+  const noSignal = decorateMine(baseShape(node({
+    merged: true, mergedAt: ago(0.1),
+    mergeCommit: { oid: 'b', statusCheckRollup: null },
+    head: { nodes: [{ commit: { committedDate: ago(0.1), author: { user: user(ME) }, statusCheckRollup: null } }] },
+  }), ME));
+
+  // Both are equally "finished" for sorting purposes, so freshness decides between them —
+  // the running one is older but still not settled, hence first.
+  const sorted = [noSignal, running].sort(byActionThenFreshness);
+  assert.equal(sorted[0].pipelineOutcome, 'running', 'the genuinely running one comes first');
+});
+
+// Observed on forest-rails#795 and #803: a chain of PRs stacked on `optim-rbac-capabilities`
+// rather than main. A green, settled-looking merge commit does not mean the code shipped —
+// only a merge into the repo's own default branch does.
+test('a merge into a stacked feature branch names its target', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(0.1),
+    baseRefName: 'feature/optim-rbac-capabilities',
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+    repository: { nameWithOwner: 'o/r', defaultBranchRef: { name: 'main' } },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.mergeTarget, 'feature/optim-rbac-capabilities');
+});
+
+test('a merge into the repo\'s own default branch names no target', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(0.1),
+    baseRefName: 'main',
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+    repository: { nameWithOwner: 'o/r', defaultBranchRef: { name: 'main' } },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.mergeTarget, null);
+});
+
+test('a PR still open names no merge target either', () => {
+  const pr = node({
+    baseRefName: 'feature/optim-rbac-capabilities',
+    repository: { nameWithOwner: 'o/r', defaultBranchRef: { name: 'main' } },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.mergeTarget, null, 'not merged yet, nothing to name');
+});
+
+// Observed on forest-rails#803: its own checks genuinely succeeded, and the repo had
+// published a release since — but that release was cut from main, which this merge had
+// not reached. Correlating the two would have worn a real version tag for code nowhere
+// near it.
+test('a release published since is not credited to a merge stacked on a feature branch', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(1),
+    baseRefName: 'feature/prd-1083',
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+    repository: {
+      nameWithOwner: 'o/r',
+      defaultBranchRef: { name: 'main' },
+      latestRelease: { tagName: 'v9.21.0', url: 'u', publishedAt: ago(0.5) },
+    },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.pipelineOutcome, 'done', 'the commit\'s own checks did pass');
+  assert.equal(decorated.release, null, 'but the release belongs to main, not to this');
+  assert.equal(decorated.mergeTarget, 'feature/prd-1083');
 });
 
 test('a merge I took over is mine to watch, by the board\'s own notion of ownership', () => {

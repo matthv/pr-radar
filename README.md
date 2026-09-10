@@ -185,8 +185,25 @@ know. Amber while it runs — the outcome is unknown, and green would announce a
 that has not happened — with the card breathing to say the decision is live. Green with
 the version tag once published, red and back on your plate if it failed.
 
+**Amber only while something is genuinely in flight.** GitHub's rollup for a merge commit
+is `null`, not `PENDING`, when no check was ever posted to it at all — merging into a
+branch with no CI configured on push, a stacked feature branch used only to collect other
+PRs, say. That is permanent, not a gap before the real answer arrives, so it settles
+straight to green rather than breathing forever for a decision that is never coming
+— seen on forest-rails#796 and #795, stuck amber for good until this was caught.
+
+**A merge into anything but the repo's default branch wears a small branch badge**, the
+same recipe as a thread's file-path chip: a location fact, shown whole, never edited down
+(a stripped `feature/` prefix would silently misrepresent a `hotfix/` or `release/` branch
+the same shortcut does not cover). It says the code has not shipped the way a merge into
+main has, whatever the pipeline outcome claims — a stacked branch can have its own checks
+pass clean and still be nowhere near production.
+
 The version comes from the repo's latest release, kept only when it was published after
-the merge. It is a correlation, not something GitHub states: two merges minutes apart
+the merge *and* the merge landed on the default branch — a release is cut from there, so
+a merge stacked on a side branch cannot be in it yet. Skipping that check once had
+forest-rails#803 wearing a real version tag for code main had not received. It is a
+correlation regardless, not something GitHub states outright: two merges minutes apart
 would point at the same tag, hence the "latest release since the merge" wording and the
 plain "released" fallback for repos that do not tag every merge.
 

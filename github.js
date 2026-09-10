@@ -43,6 +43,7 @@ query($ids: [ID!]!) {
       merged
       mergedAt
       mergeCommit { oid statusCheckRollup { state } }
+      baseRefName
       createdAt
       updatedAt
       mergeable
@@ -51,7 +52,11 @@ query($ids: [ID!]!) {
       deletions
       changedFiles
       author { login avatarUrl }
-      repository { nameWithOwner latestRelease { tagName url publishedAt } }
+      repository {
+        nameWithOwner
+        defaultBranchRef { name }
+        latestRelease { tagName url publishedAt }
+      }
       labels(first: 10) { nodes { name color } }
       head: commits(last: 1) {
         nodes {
@@ -492,12 +497,30 @@ function truncationOf(pr) {
   return over.length ? over.join(', ') : null;
 }
 
+// GitHub's StatusState enum for a commit rollup: ERROR, EXPECTED, FAILURE, PENDING,
+// SUCCESS — or no rollup at all, when nothing was ever posted to that commit. Folding
+// "no rollup" into "still running" told a card whose outcome will never arrive to keep
+// breathing forever: merging into a branch with no CI configured on push (a stacked
+// feature branch used only to collect other PRs, say) leaves the merge commit with zero
+// checks, permanently, not a transient gap before the real answer shows up.
+function pipelineOutcome(pipeline) {
+  if (pipeline === 'FAILURE' || pipeline === 'ERROR') return 'failed';
+  if (pipeline === 'SUCCESS') return 'done';
+  if (pipeline === 'PENDING' || pipeline === 'EXPECTED') return 'running';
+  return 'none';
+}
+
 // The newest release of the repo, when it landed after this merge. It is a correlation,
 // not a fact GitHub states: two merges minutes apart could both point at the same tag,
 // which is why the label says "latest release since the merge" rather than "this one's".
+// A release is cut from the default branch, so a merge into a stacked feature branch
+// cannot be in it yet, whatever the repo published afterwards — observed on
+// forest-rails#803, whose checks passed and which would otherwise have worn v9.21.0
+// while sitting on a side branch main had not received.
 function releaseAfterMerge(pr) {
   const latest = pr.repository.latestRelease;
   if (!pr.merged || !latest?.publishedAt) return null;
+  if (pr.baseRefName && pr.baseRefName !== pr.repository.defaultBranchRef?.name) return null;
   if (new Date(latest.publishedAt) < new Date(pr.mergedAt)) return null;
   return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt };
 }
@@ -519,7 +542,19 @@ function baseShape(pr, me) {
     // The rollup on the merge commit, not on the PR head: it is the release pipeline
     // that runs after the squash, and the only part still worth watching.
     mergePipeline: pr.mergeCommit?.statusCheckRollup?.state ?? null,
+    // The raw value kept above for anyone reading it directly; this is what "running" vs
+    // "no signal at all" actually means, computed once so the render layer and the sort
+    // order cannot drift apart on it.
+    pipelineOutcome: pipelineOutcome(pr.mergeCommit?.statusCheckRollup?.state ?? null),
     release: releaseAfterMerge(pr),
+    // The branch it landed on, but only once merged, and only when that isn't the
+    // repo's default: a merge into a stacked feature branch has not shipped the way a
+    // merge into main has, and the pipeline outcome alone cannot say that — a branch with
+    // no CI on push looks exactly like one that is genuinely settled.
+    mergeTarget:
+      pr.merged && pr.baseRefName && pr.baseRefName !== pr.repository.defaultBranchRef?.name
+        ? pr.baseRefName
+        : null,
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,
     lastActivityAt: lastActivity(pr),
@@ -700,8 +735,11 @@ function decorateReview(pr, me, requestedFromMe) {
 
 // A landed release is the one thing on the board that is finished, so it goes last
 // among equals. Freshness alone only correlates with "still running" — a merge whose
-// pipeline finished fast would otherwise outrank one still in flight.
-const settledRank = pr => (pr.merged && pr.mergePipeline === 'SUCCESS' ? 1 : 0);
+// pipeline finished fast would otherwise outrank one still in flight. "Finished" here
+// means anything but genuinely running: a merge with no CI signal at all is not going
+// to resolve later, so it settles immediately rather than contending for top billing
+// forever.
+const settledRank = pr => (pr.merged && pr.pipelineOutcome !== 'running' ? 1 : 0);
 
 const byActionThenFreshness = (a, b) =>
   Number(b.needsAction) - Number(a.needsAction) ||
