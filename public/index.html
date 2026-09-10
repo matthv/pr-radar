@@ -682,6 +682,18 @@
   .card.skeleton::before { background: none; }
   @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 
+  /* Same sweep, sized to fill its grid track the way a real orbit's SVG does — so the
+     skeleton is not a small island in a wide cell, and nothing jumps in size once the
+     real drawing replaces it. */
+  .orbit-skel {
+    width: 100%; max-width: 360px; aspect-ratio: 1; border-radius: 18px;
+    background:
+      linear-gradient(90deg, transparent, color-mix(in srgb, var(--indigo) 7%, transparent), transparent)
+      0 0 / 40% 100% no-repeat var(--sunken);
+    animation: sweep 1.1s ease-in-out infinite;
+  }
+  .orbit-skel-caption { width: 40%; max-width: 140px; height: 12px; margin-top: 10px; border-radius: 6px; background: var(--sunken); }
+
   /* The button that triggered it carries the wait, and an auto-refresh shows there too:
      what it says is "a fetch is in flight", which is true either way. The glyph is a
      rotation already, so it spins rather than being swapped for a separate spinner. */
@@ -1734,6 +1746,11 @@ function render() {
 function renderSkeleton() {
   el('mine').innerHTML = '<div class="card skeleton"></div>'.repeat(3);
   el('reviews').innerHTML = '<div class="card skeleton"></div>'.repeat(2);
+  // Only the board had one: loading straight into the orbit view (it is remembered
+  // across visits) left it a plain, unbroken fill with nothing saying data was coming.
+  const cell = '<figure class="orbit"><div class="orbit-skel"></div>'
+    + '<div class="orbit-skel-caption"></div></figure>';
+  el('orbits').innerHTML = `<div class="orbit-grid">${cell.repeat(3)}</div>`;
 }
 
 async function load(force) {
