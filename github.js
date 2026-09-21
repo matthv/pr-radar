@@ -950,4 +950,5 @@ module.exports = {
   cleanExcerpt,
   isBot,
   fetchDigestInputs,
+  mergedSince,
 };

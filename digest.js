@@ -180,6 +180,37 @@ async function generate(groups, counts, lang, key) {
   return text;
 }
 
+// What a PR I review is waiting for. The board says it with colour and pills; the model
+// only ever sees text, so the bucket is spelled out for it. Lived in server.js until the
+// daily pre-warm script needed the exact same shaping outside of a request.
+const SITUATION = {
+  action: 'the reader has not reviewed it yet, or has replies waiting for them',
+  waiting: 'the reader has given feedback and waits for the author to push a fix',
+  merged: 'merged',
+  idle: 'nothing pending on either side',
+};
+
+// Turns a board plus two id lists into what standupNotes needs. An id is only honoured
+// if the board actually knows it — this is a way to summarise the board, not a way to
+// read arbitrary nodes through it.
+function pickForDigest(board, { mine = [], reviews = [] } = {}) {
+  const known = new Map([...board.mine, ...board.reviews].map(pr => [pr.id, pr]));
+
+  const pick = (ids, describe) =>
+    ids
+      .map(id => known.get(id))
+      .filter(Boolean)
+      .map(pr => ({
+        id: pr.id,
+        repo: pr.repo,
+        number: pr.number,
+        lastActivityAt: pr.lastActivityAt,
+        ...(describe ? { situation: SITUATION[pr.bucket] } : {}),
+      }));
+
+  return { mine: pick(mine, false), reviews: pick(reviews, true) };
+}
+
 // Two tabs, or a click landing on the language being written ahead: one generation per
 // key is enough, and a second `claude` for the same work would also race the cache write.
 const pending = new Map();
@@ -202,4 +233,4 @@ async function standupNotes({ mine = [], reviews = [] }, lang) {
   return { text: await pending.get(key), cached: false, counts };
 }
 
-module.exports = { available, standupNotes, MAX_PRS };
+module.exports = { available, standupNotes, pickForDigest, MAX_PRS };

@@ -96,39 +96,21 @@ async function readJsonBody(req) {
 
 // What a PR I review is waiting for. The board says it with colour and pills; the model
 // only ever sees text, so the bucket is spelled out for it.
-const SITUATION = {
-  action: 'the reader has not reviewed it yet, or has replies waiting for them',
-  waiting: 'the reader has given feedback and waits for the author to push a fix',
-  merged: 'merged',
-  idle: 'nothing pending on either side',
-};
-
 // The client sends what it has on screen, but the ids are honoured only if the board
 // already knows them: the endpoint summarises the board, it is not a way to read
-// arbitrary nodes through the session.
+// arbitrary nodes through the session. Shaping the picked ids into what standupNotes
+// needs lives in digest.js now, shared with the unattended daily pre-warm script.
 async function digestFor(body) {
   // The last board served, expired or not, rather than a fresh one: the client is looking
   // at that payload, so the notes describe what is on screen instead of something newer.
   // Refetching also charged a full GitHub round trip before every digest.
   const board = cache.payload ?? (await dashboard(false));
-  const known = new Map([...board.mine, ...board.reviews].map(pr => [pr.id, pr]));
+  const shaped = digest.pickForDigest(board, {
+    mine: Array.isArray(body.mine) ? body.mine : [],
+    reviews: Array.isArray(body.reviews) ? body.reviews : [],
+  });
 
-  const pick = (ids, describe) =>
-    (Array.isArray(ids) ? ids : [])
-      .map(id => known.get(id))
-      .filter(Boolean)
-      .map(pr => ({
-        id: pr.id,
-        repo: pr.repo,
-        number: pr.number,
-        lastActivityAt: pr.lastActivityAt,
-        ...(describe ? { situation: SITUATION[pr.bucket] } : {}),
-      }));
-
-  return digest.standupNotes(
-    { mine: pick(body.mine, false), reviews: pick(body.reviews, true) },
-    body.lang === 'fr' ? 'fr' : 'en',
-  );
+  return digest.standupNotes(shaped, body.lang === 'fr' ? 'fr' : 'en');
 }
 
 async function serveStatic(res, urlPath) {

@@ -50,6 +50,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
+| `PR_RADAR_DAILY_NOTES_TIME` | `08:30` | When the standup notes get pre-warmed; read only by `daily-notes-install.sh`, see [Warming them before you look](#warming-them-before-you-look) |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
 The server caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`.
@@ -288,6 +289,44 @@ summarises.
 The group markers the model emits are matched as a whole line holding nothing but the
 token, hashes or bold optional: it has been seen writing `## MINE`, `MINE` and `**MINE**`
 for the same request, and a stricter pattern let the raw marker through as a bullet.
+
+### Warming them before you look
+
+```bash
+./daily-notes-install.sh    # schedules the pre-warm, weekday mornings
+./daily-notes-uninstall.sh  # and to undo it
+node daily-notes.js         # runs it once, right now, to check it works
+```
+
+The 30-to-100-second wait is only ever paid once — the point of this script is to pay it
+before you open the tab. `daily-notes.js` runs standalone: it never starts the HTTP
+server and does not need one running, it only shares the same on-disk
+`.digest-cache.json` the server's `/api/digest` reads and writes. Whichever process gets
+there first, warm or cold, the other one just finds the cache the first one left —
+verified by running the script once, then hitting the live server's endpoint with the
+same pull requests: a 0.02s response, `cached: true`.
+
+It pre-warms the full board's default view — both sides, the previous working day, oldest
+first — since there is no browser filter to read from an unattended job. **This can only
+save time, never make the notes wrong**: if the board moved since the pre-warm, or you
+had a project filter active, the cache key simply misses and it regenerates at full cost,
+exactly as it would with no script installed at all. Both languages are written every
+time, since nothing here knows which one you will open to.
+
+The schedule is a `launchd` **LaunchAgent** (`~/Library/LaunchAgents/local.pr-radar.daily-notes.plist`), not `cron`: cron does nothing about a Mac asleep at the
+scheduled minute, while launchd generally catches a missed `StartCalendarInterval` up on
+wake. Neither guarantees the exact minute on a laptop that sleeps — this is a best-effort
+head start, not a promise. The time comes from `PR_RADAR_DAILY_NOTES_TIME` (`08:30` by
+default) in `.env`, read once by the install script: the schedule itself is baked into the
+static plist XML, so change the time in `.env` and re-run `daily-notes-install.sh` rather
+than editing the plist by hand. `node`, `claude` and `gh` are resolved from your own shell
+at install time and written into the job as absolute paths, since launchd's own PATH is
+too bare to find any of them. A run's own log lands in `.daily-notes.log`.
+
+The shaping this needed — turning a handful of ids plus a board into what `standupNotes`
+takes — used to live inline in `server.js`'s HTTP handler. It is `digest.pickForDigest`
+now, shared by the endpoint and this script, so a change to what a "situation" means
+cannot update one caller and quietly leave the other stale.
 
 ## Notifications
 
