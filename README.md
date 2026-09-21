@@ -49,7 +49,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
-| `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it |
+| `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_DAILY_NOTES_TIME` | `08:30` | When the standup notes get pre-warmed; read only by `daily-notes-install.sh`, see [Warming them before you look](#warming-them-before-you-look) |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
@@ -388,9 +388,12 @@ nothing else. Three checkboxes used to sit there and were removed rather than mo
   metrics — one height for every control, so alignment never depends on what a
   control contains.
   It points at `PR_RADAR_GITDECK_URL`; leave that empty and the button disappears,
-  so there is no dead control for anyone who does not run gitdeck. No separate
-  boolean flag: the URL already carries both the destination and whether to show
-  it, and two variables for one decision can contradict each other.
+  so there is no dead control for anyone who does not run gitdeck. `.env.example`
+  ships the value empty rather than defaulting to the localhost URL, since an
+  unset variable falls back to that default and would show a dead button to
+  anyone who never edits this line. No separate boolean flag: the URL already
+  carries both the destination and whether to show it, and two variables for
+  one decision can contradict each other.
   It is a single global link rather than one per card, because gitdeck keeps the
   selected repo in internal state rather than in the URL, so there is nothing to
   deep-link to.
