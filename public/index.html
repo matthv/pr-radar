@@ -1307,6 +1307,13 @@ function whoHtml(pr) {
 }
 
 function ciPill(pr) {
+  // ciState is the head commit's own checks — the feature branch's, run before the
+  // merge. Once merged, that commit lives on no branch any more, and the pill sat next
+  // to the merge commit's own outcome pill without saying it was a different thing: a
+  // static green "CI ✓" from before the merge, beside a card still breathing amber
+  // because the merge commit's own pipeline hasn't finished — read as a contradiction.
+  if (pr.merged) return '';
+
   const map = {
     SUCCESS: ['good', 'ciOk'],
     FAILURE: ['alert', 'ciFail'],
@@ -1451,35 +1458,37 @@ function mergeTargetBadge(pr) {
 
 // The pills a card wears, extracted so the orbit view's hover card cannot drift from
 // them: one PR, one set of pills, whichever view is drawing it.
-function minePills(pr) {
-  const pills = [];
-  if (pr.merged) {
-    // An age, like "opened" and "active": the pill beside it owns the state, and that
-    // state changes — no single colour here could stay true through running, published
-    // and failed.
+// Shared by both sides: a merge's outcome is the same fact whichever column shows it, and
+// this used to exist only in minePills — a reviewed PR's card had nothing to read once
+// ciPill stopped covering for it, just a background breathing amber with no word for why.
+function mergeOutcomePills(pr) {
+  const pills = [
+    `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
+    + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>${mergeTargetBadge(pr)}`,
+  ];
+  // Four outcomes: broken, published, still running, or no signal at all. That last
+  // one is not "running" — nothing was ever posted to this merge commit, and nothing
+  // ever will be, so no pill claims a decision is imminent when none is coming. And on
+  // a stacked branch, "done" only ever means the branch's own checks passed, never that
+  // a release went out — forest-rails#803 had real green checks yet sat nowhere near
+  // main, so the badge above already says what needs saying and this pill stays quiet.
+  if (pr.pipelineOutcome === 'failed') {
+    pills.push(pill('alert', t('pipelineFailed')));
+  } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
     pills.push(
-      `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
-      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>${mergeTargetBadge(pr)}`,
+      pr.release
+        ? `<a class="pill good" href="${escapeHtml(pr.release.url)}" target="_blank" rel="noopener"`
+          + ` title="${escapeHtml(t('releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
+        : pill('good', t('pipelineDone')),
     );
-    // Four outcomes: broken, published, still running, or no signal at all. That last
-    // one is not "running" — nothing was ever posted to this merge commit, and nothing
-    // ever will be, so no pill claims a decision is imminent when none is coming. And on
-    // a stacked branch, "done" only ever means the branch's own checks passed, never that
-    // a release went out — forest-rails#803 had real green checks yet sat nowhere near
-    // main, so the badge above already says what needs saying and this pill stays quiet.
-    if (pr.pipelineOutcome === 'failed') {
-      pills.push(pill('alert', t('pipelineFailed')));
-    } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
-      pills.push(
-        pr.release
-          ? `<a class="pill good" href="${escapeHtml(pr.release.url)}" target="_blank" rel="noopener"`
-            + ` title="${escapeHtml(t('releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
-          : pill('good', t('pipelineDone')),
-      );
-    } else if (pr.pipelineOutcome === 'running') {
-      pills.push(`<span class="pill pending running">${t('pipelineRunning')}</span>`);
-    }
+  } else if (pr.pipelineOutcome === 'running') {
+    pills.push(`<span class="pill pending running">${t('pipelineRunning')}</span>`);
   }
+  return pills;
+}
+
+function minePills(pr) {
+  const pills = pr.merged ? mergeOutcomePills(pr) : [];
   // A PR opened by someone else only lands here because I took it over: unsaid, its
   // presence in "my PRs" is unexplainable.
   if (pr.author !== state.data.me) pills.push(pill('', t('pillTakenOver', { author: pr.author })));
@@ -1494,15 +1503,11 @@ function mineCard(pr) {
 }
 
 function reviewPills(pr) {
-  const pills = [];
-  // Same reading as on my own merges: an age, not a state, since the verdict pill beside
-  // it is what still says anything.
-  if (pr.merged) {
-    pills.push(
-      `<span title="${escapeHtml(t('mergedTitle', { date: onDate(pr.mergedAt) }))}">`
-      + `${t('pillMergedAgo', { v: ago(pr.mergedAt) })}</span>${mergeTargetBadge(pr)}`,
-    );
-  }
+  // Same outcome pills as my own merges — a merge commit's pipeline is the same fact
+  // whichever side reviews it. Used to stop at the age line here, on the idea that a
+  // verdict pill ("I approved") still said something once merged; it never said whether
+  // the release had landed, so a card could only breathe amber with no word for why.
+  const pills = pr.merged ? mergeOutcomePills(pr) : [];
   if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
