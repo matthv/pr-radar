@@ -1,7 +1,16 @@
 #!/bin/sh
-# Schedules daily-notes.js on weekday mornings via launchd — the only thing on macOS
-# that still tries once the day resumes if the laptop was asleep at the exact minute,
-# which plain cron does not.
+# Schedules daily-notes.js to fire every few minutes, all day, via launchd — the script
+# itself is what narrows that down to weekday mornings (see PR_RADAR_DAILY_NOTES_FROM/
+# UNTIL in .env.example), so the window can change with an edit to .env, no re-install.
+#
+# A single fixed time was tried first and went stale the first real morning it ran:
+# launchd fired it on time — screen lock does not stop a LaunchAgent, only real sleep
+# does — but the ordinary activity between that one run and the actual click was enough
+# to move the board and miss the cache key anyway. Repeating narrows that gap to the
+# interval below instead of betting everything on one moment picked in advance. A run
+# outside the window costs nothing at all — the script exits before any GitHub call; one
+# inside it still fetches the board (a few seconds) but skips the expensive part, the
+# `claude` spawn, whenever nothing has changed since the last run.
 #
 # launchd runs the agent with almost no PATH, so `node`/`claude`/`gh` are resolved here,
 # in the user's own shell, and baked into the plist as absolute paths — the plist itself
@@ -29,12 +38,19 @@ JOB_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 JOB_PATH="$(dirname "$NODE_BIN"):$JOB_PATH"
 
 # Read once from .env (a targeted grep, not a source — .env is data, not a script to run).
-TIME="$(grep -E '^PR_RADAR_DAILY_NOTES_TIME=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
-TIME="${TIME:-08:30}"
-HOUR="$(echo "$TIME" | cut -d: -f1 | sed 's/^0*//')"
-MINUTE="$(echo "$TIME" | cut -d: -f2 | sed 's/^0*//')"
-HOUR="${HOUR:-8}"
-MINUTE="${MINUTE:-30}"
+# Only the interval goes into the plist: the FROM/UNTIL window is read by the script
+# itself on every run, straight from .env, so narrowing or widening it later needs only
+# an edit there — not a re-run of this installer.
+read_env() {
+  grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-
+}
+INTERVAL_MINUTES="$(read_env PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES)"
+INTERVAL_MINUTES="${INTERVAL_MINUTES:-10}"
+INTERVAL_SECONDS=$((INTERVAL_MINUTES * 60))
+WINDOW_FROM="$(read_env PR_RADAR_DAILY_NOTES_FROM)"
+WINDOW_FROM="${WINDOW_FROM:-07:30}"
+WINDOW_UNTIL="$(read_env PR_RADAR_DAILY_NOTES_UNTIL)"
+WINDOW_UNTIL="${WINDOW_UNTIL:-09:30}"
 
 mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -57,14 +73,8 @@ cat > "$PLIST" <<PLIST_EOF
     <key>PATH</key>
     <string>$JOB_PATH</string>
   </dict>
-  <key>StartCalendarInterval</key>
-  <array>
-    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
-    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
-    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
-    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
-    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>$HOUR</integer><key>Minute</key><integer>$MINUTE</integer></dict>
-  </array>
+  <key>StartInterval</key>
+  <integer>$INTERVAL_SECONDS</integer>
   <key>StandardOutPath</key>
   <string>$REPO_DIR/.daily-notes.log</string>
   <key>StandardErrorPath</key>
@@ -77,7 +87,7 @@ launchctl bootout "gui/$(id -u)" "$PLIST" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 launchctl enable "gui/$(id -u)/$LABEL"
 
-echo "Planifié : tous les jours ouvrés à $TIME."
+echo "Planifié : toutes les $INTERVAL_MINUTES min, jours ouvrés entre $WINDOW_FROM et $WINDOW_UNTIL."
 echo "Journal  : $REPO_DIR/.daily-notes.log"
-echo "Test immédiat : node daily-notes.js"
+echo "Test immédiat, même hors fenêtre : node daily-notes.js --force"
 echo "Pour retirer  : ./daily-notes-uninstall.sh"

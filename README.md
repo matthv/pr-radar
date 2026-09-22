@@ -50,7 +50,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it — `.env.example` ships it empty |
-| `PR_RADAR_DAILY_NOTES_TIME` | `08:30` | When the standup notes get pre-warmed; read only by `daily-notes-install.sh`, see [Warming them before you look](#warming-them-before-you-look) |
+| `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
+| `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
 The server caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`.
@@ -308,20 +309,35 @@ same pull requests: a 0.02s response, `cached: true`.
 
 It pre-warms the full board's default view — both sides, the previous working day, oldest
 first — since there is no browser filter to read from an unattended job. **This can only
-save time, never make the notes wrong**: if the board moved since the pre-warm, or you
-had a project filter active, the cache key simply misses and it regenerates at full cost,
-exactly as it would with no script installed at all. Both languages are written every
-time, since nothing here knows which one you will open to.
+save time, never make the notes wrong**: if the board moved since the most recent run, or
+you had a project filter active, the cache key simply misses and it regenerates at full
+cost, exactly as it would with no script installed at all. Both languages are written
+every time, since nothing here knows which one you will open to.
 
-The schedule is a `launchd` **LaunchAgent** (`~/Library/LaunchAgents/local.pr-radar.daily-notes.plist`), not `cron`: cron does nothing about a Mac asleep at the
-scheduled minute, while launchd generally catches a missed `StartCalendarInterval` up on
-wake. Neither guarantees the exact minute on a laptop that sleeps — this is a best-effort
-head start, not a promise. The time comes from `PR_RADAR_DAILY_NOTES_TIME` (`08:30` by
-default) in `.env`, read once by the install script: the schedule itself is baked into the
-static plist XML, so change the time in `.env` and re-run `daily-notes-install.sh` rather
-than editing the plist by hand. `node`, `claude` and `gh` are resolved from your own shell
-at install time and written into the job as absolute paths, since launchd's own PATH is
-too bare to find any of them. A run's own log lands in `.daily-notes.log`.
+**It fires every few minutes through the whole window, not once.** A single fixed time
+was tried first and went stale the first real morning it ran: `launchd` fired it right on
+schedule — a locked screen does not stop a `LaunchAgent`, only real sleep does, confirmed
+from the job's own run log — it wrote the cache, and forty-three ordinary minutes between
+that run and the actual click were enough to move the board and miss the cache key
+anyway. Repeating narrows that gap to the interval instead of betting everything on one
+moment chosen in advance; a run outside the window costs nothing at all, exiting before
+any GitHub call, and one inside it still fetches the board but skips the expensive part —
+the `claude` spawn — whenever nothing has changed since the last one.
+
+The schedule is a `launchd` **LaunchAgent**
+(`~/Library/LaunchAgents/local.pr-radar.daily-notes.plist`), not `cron`, which has no
+notion of "asleep right now" at all. `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` (`07:30` /
+`09:30` by default) and `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` (`10`) in `.env` control
+it. Only the interval is baked into the plist itself — change it and re-run
+`daily-notes-install.sh`. The window is read fresh by `daily-notes.js` on every single
+run, so narrowing or widening it needs only an edit to `.env`, no re-install; running it
+by hand outside the window would otherwise silently do nothing, which is why
+`node daily-notes.js --force` exists, skipping the window check for a manual test.
+`node`, `claude` and `gh` are resolved from your own shell at install time and written
+into the job as absolute paths, since launchd's own PATH is too bare to find any of them.
+A run's own log lands in `.daily-notes.log` — empty runs outside the window write nothing
+to it, so it stays readable rather than filling up with a "skipped" line every few minutes
+for twenty-two hours a day.
 
 The shaping this needed — turning a handful of ids plus a board into what `standupNotes`
 takes — used to live inline in `server.js`'s HTTP handler. It is `digest.pickForDigest`
