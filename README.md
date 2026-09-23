@@ -49,7 +49,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
-| `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to gitdeck in the header; empty hides it — `.env.example` ships it empty |
+| `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
@@ -397,8 +397,9 @@ nothing else. Three checkboxes used to sit there and were removed rather than mo
 
 - 🔊 mutes the chime (remembered).
 - `☾` / `☀` toggles light / dark (light by default, remembered).
-- A **gitdeck** button in the header opens the local web git client, carrying
-  gitdeck's own branch mark so it is recognisable at a glance. It is the mirror of
+- A **gitdeck** button in the header opens [gitdeck](https://github.com/matthv/gitdeck), a
+  separate personal repo (a local web git client), carrying gitdeck's own branch mark so it
+  is recognisable at a glance. It is the mirror of
   PR Radar's own button over there: each tool points at the other with the same
   soft-tinted pill in the host's accent, and the whole toolbar shares gitdeck's
   metrics — one height for every control, so alignment never depends on what a
