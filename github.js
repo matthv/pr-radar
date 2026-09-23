@@ -42,7 +42,13 @@ query($ids: [ID!]!) {
       isDraft
       merged
       mergedAt
-      mergeCommit { oid statusCheckRollup { state } }
+      mergeCommit {
+        oid
+        statusCheckRollup { state }
+        checkSuites(first: 20) {
+          nodes { status conclusion checkRuns(first: 1) { totalCount } }
+        }
+      }
       baseRefName
       createdAt
       updatedAt
@@ -503,7 +509,23 @@ function truncationOf(pr) {
 // breathing forever: merging into a branch with no CI configured on push (a stacked
 // feature branch used only to collect other PRs, say) leaves the merge commit with zero
 // checks, permanently, not a transient gap before the real answer shows up.
-function pipelineOutcome(pipeline) {
+// A check suite's own conclusion already accounts for continue-on-error jobs inside it —
+// it reads SUCCESS as soon as every *required* job passed, even when an optional one
+// failed. The coarse rollup does not: it flags FAILURE for the whole commit purely because
+// one CheckRun inside a passing suite has conclusion FAILURE, which is exactly what a
+// continue-on-error flaky test looks like — observed on agent-nodejs#1918, whose release
+// job ran and published, worn red anyway because "LLM Integration Tests" is allowed to
+// fail without blocking it. Suites with zero check runs (Nx Cloud, Macroscope, ...) never
+// fired for this commit — a push event, not the pull_request one they listen for — and are
+// not a signal either way. Fixtures with no checkSuites data fall back to the rollup.
+function pipelineOutcome(mergeCommit) {
+  const suites = (mergeCommit?.checkSuites?.nodes ?? []).filter(s => (s.checkRuns?.totalCount ?? 0) > 0);
+  if (suites.length) {
+    if (suites.some(s => s.status !== 'COMPLETED')) return 'running';
+    if (suites.some(s => ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(s.conclusion))) return 'failed';
+    return 'done';
+  }
+  const pipeline = mergeCommit?.statusCheckRollup?.state ?? null;
   if (pipeline === 'FAILURE' || pipeline === 'ERROR') return 'failed';
   if (pipeline === 'SUCCESS') return 'done';
   if (pipeline === 'PENDING' || pipeline === 'EXPECTED') return 'running';
@@ -545,7 +567,7 @@ function baseShape(pr, me) {
     // The raw value kept above for anyone reading it directly; this is what "running" vs
     // "no signal at all" actually means, computed once so the render layer and the sort
     // order cannot drift apart on it.
-    pipelineOutcome: pipelineOutcome(pr.mergeCommit?.statusCheckRollup?.state ?? null),
+    pipelineOutcome: pipelineOutcome(pr.mergeCommit),
     release: releaseAfterMerge(pr),
     // The branch it landed on, but only once merged, and only when that isn't the
     // repo's default: a merge into a stacked feature branch has not shipped the way a
@@ -612,7 +634,7 @@ function decorateMine(pr) {
   // Once merged, unaddressed remarks, head CI and conflicts are all history — they were
   // about getting it merged. The release is the only thing that can still ask anything.
   if (pr.merged) {
-    if (pr.mergePipeline === 'FAILURE' || pr.mergePipeline === 'ERROR') {
+    if (pr.pipelineOutcome === 'failed') {
       reasons.push({ kind: 'merge-pipeline' });
     }
   } else {

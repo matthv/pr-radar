@@ -551,6 +551,57 @@ test('my PR: a running release keeps it watched without demanding anything', () 
   assert.equal(decorated.bucket, 'merged');
 });
 
+// Observed on agent-nodejs#1918: "LLM Integration Tests" is a continue-on-error job, so the
+// GitHub Actions check suite still concludes SUCCESS (its release job ran and published)
+// even though that one CheckRun's own conclusion is FAILURE. The coarse rollup does not
+// know about continue-on-error and reports FAILURE for the whole commit regardless — a
+// published release worn red. Suites with no check runs at all (an app that only listens
+// for pull_request events, never firing on this push) are not a signal either way.
+test('a continue-on-error job inside a passing suite does not fail the release', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(0.1),
+    mergeCommit: {
+      oid: 'x',
+      statusCheckRollup: { state: 'FAILURE' },
+      checkSuites: {
+        nodes: [
+          { status: 'QUEUED', conclusion: null, checkRuns: { totalCount: 0 } },
+          {
+            status: 'COMPLETED',
+            conclusion: 'SUCCESS',
+            checkRuns: { totalCount: 30 },
+          },
+        ],
+      },
+    },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.pipelineOutcome, 'done');
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.bucket, 'merged');
+});
+
+test('a check suite that actually failed still fails the release', () => {
+  const pr = node({
+    merged: true,
+    mergedAt: ago(0.1),
+    mergeCommit: {
+      oid: 'x',
+      statusCheckRollup: { state: 'FAILURE' },
+      checkSuites: {
+        nodes: [{ status: 'COMPLETED', conclusion: 'FAILURE', checkRuns: { totalCount: 5 } }],
+      },
+    },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.pipelineOutcome, 'failed');
+  assert.equal(decorated.needsAction, true);
+  assert.deepEqual(decorated.reasons.map(r => r.kind), ['merge-pipeline']);
+});
+
 // Observed on forest-rails#796 and #795: merged into a stacked feature branch with no CI
 // configured on push, so the merge commit's rollup is null — not PENDING, not a transient
 // gap before the real answer, but permanently absent. Folding that into "running" left
