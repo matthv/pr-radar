@@ -363,14 +363,18 @@
     color: var(--text-faint); margin-bottom: 10px;
   }
   /* Four fixed cells, so the times read down the edge and every sentence starts on the
-     same line. Widths sized for the longest value each can hold: "mer. 10:03", "#8473",
-     and the longest state word, measured generously. */
+     same line. Widths sized for the longest value each can hold: "mer. 10:03",
+     "forestadmin-server #8516" (ellipsised past that — a rare, very long repo name should
+     not stretch every other line to fit it), and the longest state word, measured
+     generously. */
   #notesBody .when {
     flex: none; width: 66px; text-align: right;
     font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums;
     padding-top: 1px;
   }
-  #notesBody .num { flex: none; width: 44px; text-align: right; }
+  #notesBody .num {
+    flex: none; width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   #notesBody .state { flex: none; width: 112px; }
   /* Aligned to the first line: a bullet is a sentence carrying a marker, not a pill with
      a sentence stuck to it. */
@@ -419,7 +423,7 @@
   }
   #notesBody .notes-group:first-child { margin-top: 0; }
   #notesBody .num {
-    flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
     color: var(--cyan); padding-top: 1px;
   }
   #notesBody .num:hover { text-decoration: underline; }
@@ -2150,8 +2154,11 @@ function showNotes(text, counts) {
         const [, number, rest] = bullet;
         const pr = board.get(number);
         const [kind, key] = NOTE_STATE[pr?.bucket] ?? [];
+        // A repo is a location, the same cyan as a thread's file path elsewhere on the
+        // board — stripped of the owner, since every repo here is already on this org.
+        const repoLabel = pr ? `${pr.repo.replace(/^.*\//, '')} #${number}` : `#${number}`;
         // The word travels with the copy: "merged" is half of what a standup line says.
-        const marked = `#${number}${key ? ` (${t(key)})` : ''} ${rest}`;
+        const marked = `${repoLabel}${key ? ` (${t(key)})` : ''} ${rest}`;
         copied[copied.length - 1] = `- ${marked}`;
 
         return `<li data-copy="${escapeHtml(marked)}">`
@@ -2160,8 +2167,9 @@ function showNotes(text, counts) {
               + `${activityClock(pr.lastActivityAt)}</span>`
             : '')
           + (pr
-            ? `<a class="num" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener">#${number}</a>`
-            : `<span class="num">#${number}</span>`)
+            ? `<a class="num" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener"`
+              + ` title="${escapeHtml(pr.repo)}">${escapeHtml(repoLabel)}</a>`
+            : `<span class="num">${escapeHtml(repoLabel)}</span>`)
           + `<span class="state">${key ? pill(kind, t(key)) : ''}</span>`
           + `<span>${escapeHtml(rest)}</span>${drop}</li>`;
       });
