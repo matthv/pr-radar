@@ -175,6 +175,10 @@
   #sound.off .wave { opacity: 0; }
   #sound.off .muted { opacity: 1; }
   #sound svg { width: 15px; height: 15px; display: block; }
+  #sound:not(.off) {
+    color: #fff; background: linear-gradient(135deg, var(--indigo), var(--indigo-2));
+    border-color: transparent;
+  }
   #reload { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
   #reload:hover { color: var(--amber); border-color: var(--amber); }
   #stamp { display: inline-flex; align-items: center; font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
