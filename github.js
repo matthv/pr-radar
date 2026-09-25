@@ -673,7 +673,10 @@ function decorateMine(pr) {
   };
 }
 
-function decorateReview(pr, me, requestedFromMe) {
+// `reviewOwedByMe`: GitHub's formal review request, or this org's other way of handing the
+// same responsibility off — an assignee with no request at all, observed on
+// agent-nodejs#1912, opened by an automated author with its human owner only assigned.
+function decorateReview(pr, me, reviewOwedByMe) {
   const myThreads = pr.threads.filter(t => t.iParticipated);
   const myUnresolved = myThreads.filter(t => !t.isResolved);
 
@@ -721,7 +724,7 @@ function decorateReview(pr, me, requestedFromMe) {
   const iHaveReviewed = myReviews.length > 0 || myThreads.length > 0;
 
   const reasons = [];
-  if (requestedFromMe && !iHaveReviewed) reasons.push({ kind: 'to-review' });
+  if (reviewOwedByMe && !iHaveReviewed) reasons.push({ kind: 'to-review' });
   if (answeredToMe.length) reasons.push({ kind: 'answers', count: answeredToMe.length });
   if (pushedSinceMyFeedback && (awaitingAuthor.length || myLatestVerdict === 'CHANGES_REQUESTED')) {
     reasons.push({ kind: 'recheck' });
@@ -735,7 +738,7 @@ function decorateReview(pr, me, requestedFromMe) {
   return {
     ...pr,
     side: 'review',
-    requestedFromMe,
+    reviewOwedByMe,
     iHaveReviewed,
     myLatestVerdict,
     myLastActivity: myLastActivity ?? null,
@@ -796,6 +799,8 @@ async function fetchDashboard({ org, maxAgeDays }) {
     () => searchPullRequests(`${scope} author:@me`),
     () => searchPullRequests(`${scope} reviewed-by:@me -author:@me`),
     () => searchPullRequests(`${scope} review-requested:@me -author:@me`),
+    // See `reviewOwedByMe` below: an assignee with no formal request also owes a review.
+    () => searchPullRequests(`${scope} assignee:@me -author:@me`),
     () => searchPullRequests(`${scope} commenter:@me -author:@me`),
     // Merged PRs are searched separately: `scope` pins `is:open`.
     () => searchPullRequests(`org:${org} is:pr is:merged author:@me`),
@@ -810,6 +815,7 @@ async function fetchDashboard({ org, maxAgeDays }) {
     'author',
     'reviewed-by',
     'review-requested',
+    'assigned',
     'commenter',
     'merged',
     'merged-reviewed',
@@ -826,11 +832,21 @@ async function fetchDashboard({ org, maxAgeDays }) {
     mineFound,
     reviewedFound,
     requestedFound,
+    assignedFound,
     commentedFound,
     mergedFound,
     mergedReviewedFound,
     touchedRefs,
-  ] = [sourceOf(0, []), sourceOf(1, []), sourceOf(2, []), sourceOf(3, []), sourceOf(4, []), sourceOf(5, []), sourceOf(6, [])];
+  ] = [
+    sourceOf(0, []),
+    sourceOf(1, []),
+    sourceOf(2, []),
+    sourceOf(3, []),
+    sourceOf(4, []),
+    sourceOf(5, []),
+    sourceOf(6, []),
+    sourceOf(7, []),
+  ];
 
   if (warnings.length === settled.length) {
     throw new Error(`Aucune source GitHub n'a répondu : ${warnings[0].message}`);
@@ -842,7 +858,7 @@ async function fetchDashboard({ org, maxAgeDays }) {
   // loading PRs that are dead for certain. The real cut happens on `lastActivityAt`,
   // which needs the details.
   const maybeFresh = item => new Date(item.updatedAt).getTime() >= cutoff;
-  const found = [...mineFound, ...reviewedFound, ...requestedFound, ...commentedFound];
+  const found = [...mineFound, ...reviewedFound, ...requestedFound, ...assignedFound, ...commentedFound];
 
   const mergedCutoff = mergedSince();
   const withinMergedWindow = item => new Date(item.updatedAt).getTime() >= mergedCutoff;
@@ -856,7 +872,13 @@ async function fetchDashboard({ org, maxAgeDays }) {
   const mineSet = ids(mineFound);
   mergedIds.forEach(id => mineSet.add(id));
   const requestedSet = ids(requestedFound);
-  const reviewSet = new Set([...ids(reviewedFound), ...ids(commentedFound), ...requestedSet]);
+  const assignedSet = ids(assignedFound);
+  const reviewSet = new Set([
+    ...ids(reviewedFound),
+    ...ids(commentedFound),
+    ...requestedSet,
+    ...assignedSet,
+  ]);
   mergedReviewedIds.forEach(id => reviewSet.add(id));
 
   // PRs from the event feed never went through the search: neither their state nor
@@ -932,7 +954,7 @@ async function fetchDashboard({ org, maxAgeDays }) {
   const reviews = [...reviewSet]
     .map(id => shapes.get(id))
     .filter(Boolean)
-    .map(pr => decorateReview(pr, me, requestedSet.has(pr.id)))
+    .map(pr => decorateReview(pr, me, requestedSet.has(pr.id) || assignedSet.has(pr.id)))
     .sort(byActionThenFreshness);
 
   return {

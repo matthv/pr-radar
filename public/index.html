@@ -1516,7 +1516,7 @@ function reviewPills(pr) {
   // verdict pill ("I approved") still said something once merged; it never said whether
   // the release had landed, so a card could only breathe amber with no word for why.
   const pills = pr.merged ? mergeOutcomePills(pr) : [];
-  if (pr.requestedFromMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
+  if (pr.reviewOwedByMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
   if (pr.myLatestVerdict === 'CHANGES_REQUESTED') pills.push(pill('pending', t('pillIRequested')));

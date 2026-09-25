@@ -206,7 +206,11 @@ test('reviewing: my own commits are never something for me to re-check', () => {
   assert.equal(decorated.reasons.some(r => r.kind === 'recheck'), false);
 });
 
-test('reviewing: a review requested and not done is an action', () => {
+// `reviewOwedByMe` is true for a formal GitHub review request or an assignee with none —
+// decorateReview does not need to tell them apart, both mean the same thing is expected of
+// me. Observed on agent-nodejs#1912, opened by an automated author with a human assignee
+// and no reviewer ever requested.
+test('reviewing: a review owed and not done is an action', () => {
   const pr = node();
   const decorated = decorateReview(baseShape(pr, ME), ME, true);
 
