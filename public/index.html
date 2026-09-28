@@ -628,6 +628,38 @@
   .card.snoozed { opacity: .55; }
   .card.snoozed:hover { opacity: 1; }
 
+  .card-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+  /* Neutral, deliberately: this is an annotation, not a state — none of the five hues
+     (indigo/amber/emerald/rose/cyan) mean "you wrote something here". */
+  .note-btn {
+    display: flex; align-items: center; justify-content: center;
+    flex: none; width: 26px; height: 26px; margin-top: 11px; padding: 0;
+    font: inherit; color: var(--text-faint);
+    background: none; border: 0; border-radius: 7px;
+    cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
+  }
+  .note-btn svg { width: 13px; height: 13px; display: block; }
+  .card:hover .note-btn, .note-btn:focus-visible, .note-btn.has-note,
+  .card.editing-note .note-btn { opacity: 1; }
+  .note-btn:hover { background: var(--hairline); color: var(--text-soft); }
+  .note-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .note-btn.has-note { color: var(--text-soft); }
+
+  .note-editor { margin-top: 9px; }
+  .note-editor textarea {
+    width: 100%; box-sizing: border-box; resize: vertical; min-height: 50px;
+    font: inherit; font-size: 12.5px; line-height: 1.5; color: var(--text);
+    background: var(--sunken); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .note-editor textarea:focus { outline: none; border-color: var(--indigo); }
+  .note-text {
+    margin-top: 9px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5;
+    color: var(--text-soft); background: var(--sunken); border-radius: 8px;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .note-text a { color: var(--link); }
+
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a
      priority. The secondary action only appears once the set is revealed. */
@@ -832,6 +864,7 @@ const state = {
   repoActive: 0,
   snoozed: new Set(),
   revealSnoozed: false,
+  editingNote: null,
   visibleMine: [],
   visibleReviews: [],
   notesText: null,
@@ -887,6 +920,40 @@ const snoozes = {
   },
 };
 
+// A personal sticky note per PR, this browser only — never sent to GitHub, never shared
+// with whoever else opens this same board. Unlike a snooze it survives ordinary activity
+// on the PR (that is not what it is for); it only goes away once the PR itself is gone
+// from the tool, pruned the same way a stale snooze is.
+const cardNotes = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem('pr-radar:notes') ?? '{}');
+    } catch {
+      return {};
+    }
+  },
+  write(map) {
+    localStorage.setItem('pr-radar:notes', JSON.stringify(map));
+  },
+  get(id) {
+    return cardNotes.read()[id] ?? '';
+  },
+  set(id, text) {
+    const map = cardNotes.read();
+    if (text) map[id] = text;
+    else delete map[id];
+    cardNotes.write(map);
+  },
+  prune(all) {
+    const map = cardNotes.read();
+    const live = new Set(all.map(pr => pr.id));
+    const kept = Object.keys(map).filter(id => live.has(id));
+    if (kept.length !== Object.keys(map).length) {
+      cardNotes.write(Object.fromEntries(kept.map(id => [id, map[id]])));
+    }
+  },
+};
+
 const I18N = {
   fr: {
     agoUnits: ['s', 'min', 'h', 'j', 'sem'],
@@ -909,6 +976,9 @@ const I18N = {
     snoozedHide: 'masquer',
     snoozedWake: 'réveiller tout',
     snoozedBadge: 'en veille',
+    noteTitleAdd: 'ajouter une note (visible ici seulement)',
+    noteTitleEdit: 'modifier la note (visible ici seulement)',
+    notePlaceholder: 'Un lien Slack, un rappel pour plus tard…',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
@@ -1018,6 +1088,9 @@ const I18N = {
     snoozedHide: 'hide',
     snoozedWake: 'wake all',
     snoozedBadge: 'snoozed',
+    noteTitleAdd: 'add a note (visible here only)',
+    noteTitleEdit: 'edit the note (visible here only)',
+    notePlaceholder: 'A Slack link, a reminder for later…',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
@@ -1256,6 +1329,12 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 
+// Escaped first, linked second: a pasted `<a href="...">` is inert text here, never a tag
+// — the only markup this ever produces is the anchor built below, around a bare URL.
+const NOTE_URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+const linkifyNote = text =>
+  escapeHtml(text).replace(NOTE_URL_RE, url => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
+
 function ago(iso) {
   if (!iso) return '';
   const units = I18N[lang].agoUnits;
@@ -1284,6 +1363,12 @@ const MAX_BOT_PILLS = 3;
 const PAUSE = '<svg class="glyph" viewBox="0 0 10 12" aria-hidden="true">'
   + '<rect x="1" y="1" width="3" height="10" rx="1.2" fill="currentColor"/>'
   + '<rect x="6" y="1" width="3" height="10" rx="1.2" fill="currentColor"/></svg>';
+
+const NOTE_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M3 2.5h7.5L13 5v8.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1Z"/>'
+  + '<path d="M10.2 2.6V5a1 1 0 0 0 1 1h2.3"/>'
+  + '<path d="M4.5 8h6M4.5 10.5h4"/></svg>';
 
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
@@ -1381,9 +1466,11 @@ function pipelineClass(pr) {
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
+  const note = cardNotes.get(pr.id);
+  const editingNote = state.editingNote === pr.id;
 
   return `
-    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${open}" data-id="${pr.id}">
+    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${open}" data-id="${pr.id}">
       <div class="card-top">
         <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -1403,8 +1490,17 @@ function cardHtml(pr, threadsToShow, extraPills) {
         : ''}
       <div class="card-foot">
         ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : '<span></span>'}
-        <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+        <div class="card-actions">
+          <button type="button" class="note-btn${note ? ' has-note' : ''}"
+            title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
+          <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+        </div>
       </div>
+      ${editingNote
+        ? `<div class="note-editor"><textarea placeholder="${escapeHtml(t('notePlaceholder'))}">${escapeHtml(note)}</textarea></div>`
+        : note
+          ? `<div class="note-text">${linkifyNote(note)}</div>`
+          : ''}
       ${count ? `<div class="threads">${threadsToShow.map(threadHtml).join('')}</div>` : ''}
     </div>`;
 }
@@ -1672,6 +1768,7 @@ function render() {
   // Judged on the resolved list, so the rule and the button agree on what "asks for
   // action" means — the raw payload's needsAction ignores the "hide bots" filter.
   state.snoozed = snoozes.applicable([...mine, ...reviews]);
+  cardNotes.prune([...mine, ...reviews]);
 
   const mineAction = filterList(mine).filter(pr => pr.needsAction).length;
   const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
@@ -1754,6 +1851,16 @@ function render() {
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
   state.lastActionCount = total;
+
+  // `autofocus` on a freshly injected textarea is not reliable enough across browsers to
+  // depend on alone for landing the cursor at the end rather than the start.
+  if (state.editingNote) {
+    const textarea = document.querySelector('.note-editor textarea');
+    if (textarea) {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+    }
+  }
 }
 
 function renderSkeleton() {
@@ -1797,6 +1904,24 @@ async function load(force) {
 }
 
 document.addEventListener('click', event => {
+  const noteButton = event.target.closest('.note-btn');
+  if (noteButton) {
+    // Any open editor already saved itself on the focusout this click just caused, so
+    // reading cardNotes here (inside render, via cardHtml) is never a step behind.
+    const { note } = noteButton.dataset;
+    state.editingNote = state.editingNote === note ? null : note;
+    render();
+    return;
+  }
+
+  // A click anywhere outside the open editor closes it — the text is already safe (the
+  // focusout this same click caused fired first), this only collapses it back to display.
+  if (state.editingNote && !event.target.closest('.note-editor')) {
+    state.editingNote = null;
+    render();
+    return;
+  }
+
   const snoozeButton = event.target.closest('.snooze');
   if (snoozeButton) {
     const { snooze } = snoozeButton.dataset;
@@ -1851,8 +1976,26 @@ document.addEventListener('click', event => {
   render();
 });
 
+// Saved on blur, not on every keystroke: a textarea mid-edit is not yet a decision, and
+// `focusout` (unlike `blur`) bubbles, so one delegated listener covers every card.
+document.addEventListener('focusout', event => {
+  const textarea = event.target.closest('.note-editor textarea');
+  if (!textarea) return;
+  const { id } = textarea.closest('.card').dataset;
+  cardNotes.set(id, textarea.value.trim());
+});
+
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (state.editingNote) {
+    // Escape does not blur the textarea on its own, so the focusout autosave never runs —
+    // saved explicitly here instead, from whichever value is on screen right now.
+    const textarea = document.querySelector('.note-editor textarea');
+    if (textarea) cardNotes.set(state.editingNote, textarea.value.trim());
+    state.editingNote = null;
+    render();
+    return;
+  }
   if (state.repoOpen) {
     openRepoPicker(false);
     el('repoTrigger').focus();
