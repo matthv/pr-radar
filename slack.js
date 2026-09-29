@@ -142,18 +142,29 @@ async function readViaApi(oldest) {
 const SLACK_TOOL = 'mcp__claude_ai_Slack__slack_read_channel';
 const NO_TOOL = 'NO_SLACK_TOOL';
 
-// Built-in tools off, and the one Slack read allowed: every other connector's tool needs
-// a permission nobody is there to grant in `-p`, so it is refused.
-const CLAUDE_SLACK_ARGS = [
+// Built-in tools off except ToolSearch, and the one Slack read allowed: every other
+// connector's tool needs a permission nobody is there to grant in `-p`, so it is refused.
+// ToolSearch stays because with many connectors their tools are only loaded on demand.
+const claudeArgs = model => [
   '-p',
   '--model',
-  'claude-haiku-4-5-20251001',
+  model,
   '--no-session-persistence',
   '--tools',
-  '',
+  'ToolSearch',
   '--allowedTools',
   SLACK_TOOL,
 ];
+
+// Tried in order until one sees the Slack tool. The first is the cheap one, and works for
+// most setups. The second was needed by a colleague whose Claude listed the tool fine yet
+// answered "no tool" under the first — from a folder it trusts, with a model that loads
+// deferred tools. The one that worked is kept for the session: one call per read after.
+const CLAUDE_VARIANTS = [
+  { args: claudeArgs('claude-haiku-4-5-20251001'), cwd: require('node:os').tmpdir() },
+  { args: claudeArgs('sonnet'), cwd: __dirname },
+];
+let workingVariant = null;
 
 function promptFor(oldest) {
   return [
@@ -168,14 +179,19 @@ function promptFor(oldest) {
   ].join('\n');
 }
 
+// Matched loosely: the model may wrap the marker, but a real read always carries an array.
+const sawNoTool = output => output.includes(NO_TOOL) && !output.includes('[');
+
 async function readViaClaude(oldest) {
   const { claude } = require('./digest');
-  const output = await claude(promptFor(oldest), CLAUDE_SLACK_ARGS);
-  // Matched loosely: the model may wrap the marker, but a real read always carries an array.
-  if (output.includes(NO_TOOL) && !output.includes('[')) {
-    throw Object.assign(new Error('slack: no Slack connector in Claude'), { code: 'no-connector' });
+  const variants = workingVariant ? [workingVariant] : CLAUDE_VARIANTS;
+  for (const variant of variants) {
+    const output = await claude(promptFor(oldest), variant.args, variant.cwd);
+    if (sawNoTool(output)) continue;
+    workingVariant = variant;
+    return parseClaudeMessages(output);
   }
-  return parseClaudeMessages(output);
+  throw Object.assign(new Error('slack: no Slack connector in Claude'), { code: 'no-connector' });
 }
 
 // A failed read says nothing about whether a PR was announced, so it must not spend any

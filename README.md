@@ -249,9 +249,14 @@ PR_RADAR_SLACK_TOKEN=                # optional, see below
 
 **Through Claude, the default.** With no token, the server runs `claude -p` with your
 own Slack connector — the one Claude Code already has when you are signed in — and the
-single `slack_read_channel` tool allowed, built-in tools off. Nothing to install, nothing
-to ask an admin for. It needs the `claude` CLI, like the standup notes; with no Slack
-connector, the first read says so in the warning banner and the lookup stays off until
+single `slack_read_channel` tool allowed, built-in tools off but `ToolSearch` (with many
+connectors, their tools are only loaded on demand). Nothing to install, nothing to ask an
+admin for. It needs the `claude` CLI, like the standup notes.
+
+Two setups are tried in turn: Haiku from the temp directory, the cheap one, then Sonnet
+from this repo's folder — a colleague's Claude listed the Slack tool fine yet answered
+"no tool" under the first. Whichever sees the tool is kept for the session. Only when both
+say there is no Slack tool does the warning banner say so, and the lookup stays off until
 the server restarts.
 
 The model only *transcribes*: it copies each message's timestamp and text as JSON, and
