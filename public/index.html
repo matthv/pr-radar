@@ -2289,7 +2289,11 @@ function showNotes(text, counts) {
   el('notesBody').innerHTML = sections
     .map(section => {
       const items = section.lines.map(line => {
-        const bullet = line.match(/^[-*•]\s*#(\d+)\s+(.*)$/);
+        // The model does not always put a space before the sentence: "#812 Fixes…" in
+        // English, but "#812: Corrige…" in French — observed 2026-09-29, where the colon
+        // sat right against the digits and the old `\s+`-only regex fell through to the
+        // plain-line fallback, losing the time, repo and state pill on every line.
+        const bullet = line.match(/^[-*•]\s*#(\d+)(?:\s*:\s*|\s+)(.*)$/);
         const plain = bullet ? `#${bullet[1]} ${bullet[2]}` : line.replace(/^[-*•]\s*/, '');
         const drop = `<button type="button" class="drop" title="${t('dropLine')}"`
           + ` aria-label="${t('dropLine')}">×</button>`;
