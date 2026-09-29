@@ -53,6 +53,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
+| `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
@@ -152,6 +153,25 @@ re-checked on its own clock rather than at render time, since a render follows i
 fetch by milliseconds and the mark would never show. And the page refetches when the
 tab becomes visible again — a laptop waking from sleep leaves `setInterval` far
 behind.
+
+## When the tool itself is behind
+
+The tool has no version number; the commit is the version. Every
+`PR_RADAR_UPDATE_HOURS` hours (2 by default, `0` turns it off) the server runs
+`git fetch` and counts the commits between its own `HEAD` and `origin/main`. When it is
+behind, the page shows an indigo banner — not amber, since nothing is wrong with the
+data — with the count, the titles of the commits missed, and `git pull` to copy. A `×`
+hides it for that exact remote commit; the next push brings it back.
+
+Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
+state while working, and a banner there would be noise. Nothing pulls or reloads on its
+own — a colleague's clone may carry local changes, and a restart is needed anyway — which
+is also why this is a banner and not a modal: the button such a modal would carry could
+not do the update, only send you to a terminal.
+
+A failed check (no `git`, a folder downloaded as a zip, no network) is not board data:
+it never reaches the warning banner. The page just says nothing about versions, one line
+goes to the server's console, and the next tick tries again.
 
 ## Tests
 

@@ -768,6 +768,25 @@
     margin: 20px 28px 0; padding: 12px 15px; border-radius: 10px;
     background: var(--amber-soft); color: var(--amber); font-size: 13px; font-weight: 500;
   }
+  /* Indigo, not amber: a newer tool is not a data problem, it is something to do — the
+     action hue on this board. */
+  .update {
+    margin: 20px 28px 0; padding: 12px 15px; border-radius: 10px;
+    background: var(--indigo-soft); color: var(--indigo); font-size: 13px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  }
+  .update b { font-weight: 650; }
+  .update code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: var(--surface); padding: 1px 6px; border-radius: 5px;
+  }
+  .update .notes-act { margin-left: 0; width: auto; padding: 0 9px; font-size: 12px; color: var(--indigo); }
+  .update .notes-act.done { color: var(--emerald); }
+  .update .dismiss { margin-left: auto; }
+  .update-titles {
+    flex-basis: 100%; margin: 2px 0 0; padding-left: 18px;
+    color: var(--text-soft); font-size: 12.5px; line-height: 1.55;
+  }
 </style>
 </head>
 <body>
@@ -821,6 +840,7 @@
 </header>
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
+<div id="update" class="update" hidden></div>
 <div class="summary" id="summary" hidden>
   <button type="button" class="picker-trigger notes-btn" id="notes" aria-expanded="false" hidden></button>
   <span class="band-sep" aria-hidden="true"></span>
@@ -981,6 +1001,14 @@ const I18N = {
     warning_many: 'Données incomplètes : {sources} n’ont pas répondu. Le reste est à jour.',
     slackNoConnector: 'Lien Slack désactivé : Claude n’a pas de connecteur Slack. Active-le sur claude.ai (Paramètres → Connecteurs), puis redémarre pr-radar. Le board, lui, est à jour.',
     slackFailed: 'Lien Slack indisponible ({message}) : les liens vers les annonces peuvent manquer. Le board, lui, est à jour.',
+    updateTitle: 'Nouvelle version disponible',
+    updateBehind_one: '{n} commit en retard.',
+    updateBehind_many: '{n} commits en retard.',
+    updateHow: 'Dans un terminal, dans le dossier pr-radar : {command}, puis redémarre le serveur.',
+    updateCopy: 'Copier',
+    updateCopied: 'Copié',
+    updateMore: 'et {n} de plus',
+    updateDismiss: 'masquer jusqu’à la prochaine version',
     themeTitle: 'Thème clair / sombre',
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
@@ -1096,6 +1124,14 @@ const I18N = {
     warning_many: 'Incomplete data: {sources} did not answer. The rest is up to date.',
     slackNoConnector: 'Slack link off: Claude has no Slack connector. Turn it on at claude.ai (Settings → Connectors), then restart pr-radar. The board itself is up to date.',
     slackFailed: 'Slack link unavailable ({message}): links to announcements may be missing. The board itself is up to date.',
+    updateTitle: 'New version available',
+    updateBehind_one: '{n} commit behind.',
+    updateBehind_many: '{n} commits behind.',
+    updateHow: 'In a terminal, in the pr-radar folder: {command}, then restart the server.',
+    updateCopy: 'Copy',
+    updateCopied: 'Copied',
+    updateMore: 'and {n} more',
+    updateDismiss: 'hide until the next version',
     themeTitle: 'Light / dark theme',
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
@@ -1913,6 +1949,30 @@ function renderSkeleton() {
   el('orbits').innerHTML = `<div class="orbit-grid">${cell.repeat(3)}</div>`;
 }
 
+const UPDATE_TITLES_SHOWN = 8;
+
+// Shown only when this clone is behind origin/main, and only until dismissed for that
+// exact remote commit: the next push brings it back. Nothing here pulls or reloads —
+// updating means a terminal and a restart, so the banner says so and gets out of the way.
+function renderUpdate(update) {
+  const box = el('update');
+  const dismissed = store.get('updateDismissed', null);
+  if (!update?.behind || dismissed === update.latest) {
+    box.hidden = true;
+    return;
+  }
+  const titles = update.titles.slice(0, UPDATE_TITLES_SHOWN).map(title => `<li>${escapeHtml(title)}</li>`);
+  const more = update.titles.length - UPDATE_TITLES_SHOWN;
+  box.innerHTML = `<b>${t('updateTitle')}</b>`
+    + `<span>${tn('updateBehind', update.behind)}</span>`
+    + `<span>${t('updateHow', { command: '<code>git pull</code>' })}</span>`
+    + `<button type="button" class="notes-act" data-update-copy>${t('updateCopy')}</button>`
+    + `<button type="button" class="notes-act dismiss" data-update-dismiss="${escapeHtml(update.latest)}"`
+    + ` title="${escapeHtml(t('updateDismiss'))}" aria-label="${escapeHtml(t('updateDismiss'))}">×</button>`
+    + `<ul class="update-titles">${titles.join('')}${more > 0 ? `<li>${t('updateMore', { n: more })}</li>` : ''}</ul>`;
+  box.hidden = false;
+}
+
 async function load(force) {
   el('refresh').classList.add('busy');
   try {
@@ -1927,6 +1987,7 @@ async function load(force) {
     if (!response.ok) throw new Error(payload.error || response.statusText);
     el('error').hidden = true;
     state.data = payload;
+    renderUpdate(payload.update);
     el('summary').hidden = false;
     scheduleRefresh(payload.refreshSeconds);
     render();
@@ -1944,6 +2005,26 @@ async function load(force) {
 }
 
 document.addEventListener('click', event => {
+  const dismissUpdate = event.target.closest('[data-update-dismiss]');
+  if (dismissUpdate) {
+    store.set('updateDismissed', dismissUpdate.dataset.updateDismiss);
+    el('update').hidden = true;
+    return;
+  }
+
+  const copyUpdate = event.target.closest('[data-update-copy]');
+  if (copyUpdate) {
+    navigator.clipboard.writeText('git pull').then(() => {
+      copyUpdate.textContent = t('updateCopied');
+      copyUpdate.classList.add('done');
+      setTimeout(() => {
+        copyUpdate.textContent = t('updateCopy');
+        copyUpdate.classList.remove('done');
+      }, 1500);
+    });
+    return;
+  }
+
   const noteButton = event.target.closest('.note-btn');
   if (noteButton) {
     // Any open editor already saved itself on the focusout this click just caused, so

@@ -15,6 +15,7 @@ try {
 const { fetchDashboard } = require('./github');
 const digest = require('./digest');
 const slack = require('./slack');
+const update = require('./update');
 
 const PORT = Number(process.env.PORT || 4321);
 const ORG = process.env.PR_RADAR_ORG;
@@ -184,7 +185,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/prs') {
     const version = await assetVersion();
     try {
-      json(res, 200, await dashboard(url.searchParams.get('force') === '1'), version);
+      // Added to the response, not the cache: the banner follows the latest check without
+      // waiting for a GitHub refresh to rebuild the payload.
+      const payload = await dashboard(url.searchParams.get('force') === '1');
+      json(res, 200, { ...payload, update: update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
     }
@@ -216,7 +220,9 @@ server.listen(PORT, async () => {
       `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · refresh ${REFRESH_SECONDS}s\n` +
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
-      `  slack link ${SLACK_MODES[slackMode]}`,
+      `  slack link ${SLACK_MODES[slackMode]}\n` +
+      `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
+  update.start();
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });
