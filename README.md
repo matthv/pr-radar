@@ -235,9 +235,10 @@ so the store cannot drift out of sync with the board.
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of
-`github.com/…/pull/…` links — a card whose PR was announced there grows a small `#`
-button next to the note and snooze buttons, opening that very message. It is where the
-PR is actually discussed, and the board is where you notice you need it.
+`github.com/…/pull/…` links — a card whose PR was announced there grows a Slack logo at
+the far right of its bottom row, opening that very message. Unlike the note and snooze
+buttons it is always visible, and being last it never shifts when they appear on hover.
+It is where the PR is actually discussed, and the board is where you notice you need it.
 
 ```bash
 PR_RADAR_SLACK_CHANNEL=C0C4S34GD7H   # #tech-pr; empty turns the feature off
