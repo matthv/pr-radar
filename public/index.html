@@ -660,6 +660,18 @@
   }
   .note-text a { color: var(--link); }
 
+  /* Always visible, unlike the note and snooze buttons: it only exists on a card that has
+     something to open. Last in the row, so the hover-only buttons appearing beside it
+     never push it around. */
+  .slack-link {
+    display: flex; align-items: center; justify-content: center;
+    flex: none; width: 26px; height: 26px; margin-top: 11px;
+    border-radius: 7px; transition: background .15s;
+  }
+  .slack-link svg { width: 14px; height: 14px; display: block; }
+  .slack-link:hover { background: var(--hairline); }
+  .slack-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a
      priority. The secondary action only appears once the set is revealed. */
@@ -979,6 +991,7 @@ const I18N = {
     noteTitleAdd: 'ajouter une note (visible ici seulement)',
     noteTitleEdit: 'modifier la note (visible ici seulement)',
     notePlaceholder: 'Un lien Slack, un rappel pour plus tard…',
+    slackTitle: 'ouvrir le message Slack qui annonce cette PR',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
@@ -1091,6 +1104,7 @@ const I18N = {
     noteTitleAdd: 'add a note (visible here only)',
     noteTitleEdit: 'edit the note (visible here only)',
     notePlaceholder: 'A Slack link, a reminder for later…',
+    slackTitle: 'open the Slack message announcing this PR',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
@@ -1370,6 +1384,16 @@ const NOTE_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" st
   + '<path d="M10.2 2.6V5a1 1 0 0 0 1 1h2.3"/>'
   + '<path d="M4.5 8h6M4.5 10.5h4"/></svg>';
 
+// Slack's own mark, in its own colours (Wikimedia Commons, Slack_icon_2019.svg): the one
+// place the board wears a brand's palette rather than its own, because the logo is what
+// makes the button readable at a glance.
+const SLACK_ICON = '<svg viewBox="0 0 127 127" aria-hidden="true">'
+  + '<path fill="#E01E5A" d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z"/>'
+  + '<path fill="#36C5F0" d="M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z"/>'
+  + '<path fill="#2EB67D" d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z"/>'
+  + '<path fill="#ECB22E" d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z"/>'
+  + '</svg>';
+
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
   if (!people.length) return '';
@@ -1494,6 +1518,10 @@ function cardHtml(pr, threadsToShow, extraPills) {
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+          ${pr.slackUrl
+            ? `<a class="slack-link" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
+              + ` title="${escapeHtml(t('slackTitle'))}">${SLACK_ICON}</a>`
+            : ''}
         </div>
       </div>
       ${editingNote

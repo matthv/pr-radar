@@ -50,9 +50,9 @@ const CLAUDE_ARGS = [
 // The prompt goes through stdin rather than argv: `claude -p` waits three seconds for a
 // stdin that never comes otherwise, and a board of twenty PRs would push argv towards
 // its size limit.
-function claude(prompt) {
+function claude(prompt, args = CLAUDE_ARGS) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', CLAUDE_ARGS, { cwd: os.tmpdir() });
+    const child = spawn('claude', args, { cwd: os.tmpdir() });
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
@@ -233,4 +233,4 @@ async function standupNotes({ mine = [], reviews = [] }, lang) {
   return { text: await pending.get(key), cached: false, counts };
 }
 
-module.exports = { available, standupNotes, pickForDigest, MAX_PRS };
+module.exports = { available, claude, standupNotes, pickForDigest, MAX_PRS };

@@ -14,6 +14,7 @@ try {
 
 const { fetchDashboard } = require('./github');
 const digest = require('./digest');
+const slack = require('./slack');
 
 const PORT = Number(process.env.PORT || 4321);
 const ORG = process.env.PR_RADAR_ORG;
@@ -48,17 +49,60 @@ const MIME = {
 let cache = { at: 0, payload: null };
 let inFlight = null;
 let digestAvailable = false;
+let slackMode = 'off';
+let slackWarning = null;
+let slackReading = null;
+
+async function withSlackLinks(payload) {
+  const links = await slack.linksFor([...payload.mine, ...payload.reviews]);
+  const withSlack = pr => ({ ...pr, slackUrl: links.get(pr.id) ?? null });
+  return { ...payload, mine: payload.mine.map(withSlack), reviews: payload.reviews.map(withSlack) };
+}
+
+// Slack is asked after GitHub, only about the PRs on the board, and its failure is a
+// warning in the same banner as a half-answering GitHub source: the board never waits on
+// it or breaks because of it. Through the API it is read inline — a couple of hundred
+// milliseconds. Through Claude it takes seconds, so it runs behind the response and
+// patches the cached board when done: the button shows up on the next refresh.
+async function readSlack(prs) {
+  try {
+    const read = await slack.lookup(prs, { maxAgeDays: MAX_AGE_DAYS, via: slackMode });
+    if (read && slackMode === 'claude') console.log(`[${new Date().toISOString()}] slack: channel read via claude`);
+    slackWarning = null;
+  } catch (error) {
+    slackWarning = { source: 'slack', message: error.message };
+  }
+}
+
+function readSlackInBackground(prs) {
+  if (slackReading) return;
+  slackReading = readSlack(prs)
+    .then(async () => {
+      if (!cache.payload) return;
+      const warnings = cache.payload.warnings.filter(w => w.source !== 'slack');
+      cache.payload = { ...(await withSlackLinks(cache.payload)), warnings: slackWarning ? [...warnings, slackWarning] : warnings };
+    })
+    .finally(() => {
+      slackReading = null;
+    });
+}
 
 async function dashboard(force) {
   if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
   if (inFlight) return inFlight;
 
   inFlight = fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS })
-    .then(payload => {
+    .then(async fetched => {
+      const prs = [...fetched.mine, ...fetched.reviews];
+      if (slackMode === 'api') await readSlack(prs);
+      if (slackMode === 'claude') readSlackInBackground(prs);
+      const payload = slackMode === 'off' ? fetched : await withSlackLinks(fetched);
+
       cache = {
         at: Date.now(),
         payload: {
           ...payload,
+          warnings: slackWarning ? [...payload.warnings, slackWarning] : payload.warnings,
           refreshSeconds: REFRESH_SECONDS,
           gitdeckUrl: GITDECK_URL,
           hideDrafts: HIDE_DRAFTS,
@@ -160,11 +204,18 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, async () => {
   digestAvailable = await digest.available();
+  slackMode = slack.mode(digestAvailable);
+  const SLACK_MODES = {
+    api: 'via the Slack API',
+    claude: 'via Claude, when a PR on the board has no link yet',
+    off: 'off (no PR_RADAR_SLACK_CHANNEL, or no token and no claude CLI)',
+  };
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
       `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · refresh ${REFRESH_SECONDS}s\n` +
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
-      `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}`,
+      `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
+      `  slack link ${SLACK_MODES[slackMode]}`,
   );
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });

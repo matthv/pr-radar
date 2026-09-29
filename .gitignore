@@ -3,4 +3,5 @@ node_modules/
 .DS_Store
 .digest-cache.json
 .daily-notes.log
+.slack-links.json
 .idea/

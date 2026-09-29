@@ -50,6 +50,9 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
+| `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
+| `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
+| `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
@@ -228,6 +231,75 @@ that asks something of you: nothing else would bring it back. So the count sits 
 the summary band, next to the counters, with the snoozed cards one click away and a
 **wake all** next to them. Entries whose PR has moved on are pruned on every render,
 so the store cannot drift out of sync with the board.
+
+## The Slack announcement link
+
+When the team announces its PRs in a Slack channel — one message, a handful of
+`github.com/…/pull/…` links — a card whose PR was announced there grows a small `#`
+button next to the note and snooze buttons, opening that very message. It is where the
+PR is actually discussed, and the board is where you notice you need it.
+
+```bash
+PR_RADAR_SLACK_CHANNEL=C0C4S34GD7H   # #tech-pr; empty turns the feature off
+PR_RADAR_SLACK_TOKEN=                # optional, see below
+```
+
+### Two ways to read the channel
+
+**Through Claude, the default.** With no token, the server runs `claude -p` with your
+own Slack connector — the one Claude Code already has when you are signed in — and the
+single `slack_read_channel` tool allowed, built-in tools off. Nothing to install, nothing
+to ask an admin for. It needs the `claude` CLI, like the standup notes; with no Slack
+connector, the first read says so in the warning banner and the lookup stays off until
+the server restarts.
+
+The model only *transcribes*: it copies each message's timestamp and text as JSON, and
+matching a PR to its message is done in code, on that copy. A timestamp out of shape is
+dropped rather than turned into a link to nowhere, and an answer that is not JSON counts
+as a failed read, never as an empty channel.
+
+**Through the Slack API, when a token is set.** A bot token wins over Claude. It comes
+from a Slack app with the single `channels:history` scope: at
+[api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **OAuth &
+Permissions** → *Bot Token Scopes* `channels:history` → **Install to Workspace** → copy
+the *Bot User OAuth Token*, then `/invite @<your app>` in the channel (`not_in_channel`
+in the warning banner is what forgetting that looks like). Installing an app may need a
+workspace admin — on Forest it does, which is why the Claude path exists.
+
+### When the channel is read
+
+A read through Claude takes a dozen seconds, so it is only made when it can find
+something:
+
+- **A PR new to the board, with no link yet, is due at once.** Nothing new on the board
+  means no call at all.
+- **A miss is retried twice**, 30 minutes and then 2 hours later — a PR is often opened
+  before it is announced. After a third miss, that PR is no longer a reason to read.
+- **One read serves every PR.** Whatever PRs are due, a single call is made, in the
+  background: the board is answered straight away, and the button shows up on the next
+  refresh (or at once with *Refresh*).
+- **Each read is incremental**: only messages after the newest one already seen (the
+  board's own `PR_RADAR_MAX_AGE_DAYS` window the very first time). So a PR given up on is
+  still linked the day its announcement shows up, as soon as another new PR triggers a
+  read.
+
+The Slack API path is cheap enough to read on every refresh, with the same incremental
+rule.
+
+What has been read, and each PR's tries, persist in `.slack-links.json` (ignored by
+git): a restart does not re-read the channel. Delete the file to start over.
+
+### Matching, and what it misses
+
+A PR is matched on its link, wherever it sits in the message and in whatever casing the
+URL was pasted. When the same PR is posted twice the **oldest** message wins: that is the
+announcement, the later one a re-post. Reading forward only has its limits: an older
+message *edited* to add a link is not seen again (its timestamp does not move), replies
+inside threads are not read, and on the Claude path a read returns at most 100 messages,
+so a burst larger than that between two reads loses its oldest ones.
+
+A Slack failure lands in the warning banner under the source `slack`, and the board
+itself is unaffected.
 
 ## Standup notes
 
