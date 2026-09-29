@@ -979,6 +979,8 @@ const I18N = {
     stampTitle: 'dernier fetch — rafraîchissement automatique toutes les {every}',
     warning_one: 'Données incomplètes : {sources} n’a pas répondu. Le reste est à jour.',
     warning_many: 'Données incomplètes : {sources} n’ont pas répondu. Le reste est à jour.',
+    slackNoConnector: 'Lien Slack désactivé : Claude n’a pas de connecteur Slack. Active-le sur claude.ai (Paramètres → Connecteurs), puis redémarre pr-radar. Le board, lui, est à jour.',
+    slackFailed: 'Lien Slack indisponible ({message}) : les liens vers les annonces peuvent manquer. Le board, lui, est à jour.',
     themeTitle: 'Thème clair / sombre',
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
@@ -1092,6 +1094,8 @@ const I18N = {
     stampTitle: 'last fetch — auto-refresh every {every}',
     warning_one: 'Incomplete data: {sources} did not answer. The rest is up to date.',
     warning_many: 'Incomplete data: {sources} did not answer. The rest is up to date.',
+    slackNoConnector: 'Slack link off: Claude has no Slack connector. Turn it on at claude.ai (Settings → Connectors), then restart pr-radar. The board itself is up to date.',
+    slackFailed: 'Slack link unavailable ({message}): links to announcements may be missing. The board itself is up to date.',
     themeTitle: 'Light / dark theme',
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
@@ -1813,12 +1817,20 @@ function render() {
   if (data.gitdeckUrl) el('gitdeck').href = data.gitdeckUrl;
   else el('gitdeck').removeAttribute('href');
 
+  // Slack is kept out of "incomplete data": when it fails the board is still whole, only
+  // the announcement links are missing, and the fix is on the reader's side.
   const warnings = data.warnings ?? [];
-  el('warning').hidden = warnings.length === 0;
-  if (warnings.length) {
-    const sources = [...new Set(warnings.map(w => w.source))];
-    el('warning').textContent = tn('warning', sources.length, { sources: sources.join(', ') });
+  const slackWarning = warnings.find(w => w.source === 'slack');
+  const sources = [...new Set(warnings.filter(w => w.source !== 'slack').map(w => w.source))];
+  const lines = [];
+  if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
+  if (slackWarning) {
+    lines.push(slackWarning.kind === 'no-connector'
+      ? t('slackNoConnector')
+      : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
+  el('warning').hidden = lines.length === 0;
+  el('warning').textContent = lines.join(' ');
 
   const asleep = state.snoozed.size;
   el('snoozedNote').innerHTML = asleep

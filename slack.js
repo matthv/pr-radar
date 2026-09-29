@@ -168,17 +168,23 @@ function promptFor(oldest) {
   ].join('\n');
 }
 
-let claudeDisabled = false;
-
 async function readViaClaude(oldest) {
   const { claude } = require('./digest');
   const output = await claude(promptFor(oldest), CLAUDE_SLACK_ARGS);
-  if (output.trim() === NO_TOOL) {
-    claudeDisabled = true;
-    throw new Error('slack: no Slack connector in Claude — link lookup off until restart');
+  // Matched loosely: the model may wrap the marker, but a real read always carries an array.
+  if (output.includes(NO_TOOL) && !output.includes('[')) {
+    throw Object.assign(new Error('slack: no Slack connector in Claude'), { code: 'no-connector' });
   }
   return parseClaudeMessages(output);
 }
+
+// A failed read says nothing about whether a PR was announced, so it must not spend any
+// PR's tries — it once did, and a reader who then turned the connector on still waited
+// hours for links. The read itself backs off instead, and the failure keeps being
+// reported until a read succeeds: going quiet after the first refresh looked exactly
+// like "nothing announced". A missing connector only comes back with a restart.
+const FAILURE_BACKOFF_MS = 30 * 60_000;
+let lastFailure = null;
 
 // Persisted, or every server restart would cost a model call over the whole age window.
 let state = null;
@@ -218,26 +224,30 @@ async function linksFor(prs) {
 // older message edited to add a link is not seen again: its ts does not move.
 //
 // The API path reads on every refresh — it is cheap. The Claude path reads only when a
-// PR is due, and is what `force` is for: nothing else asks it.
+// PR is due.
 async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
   await loadState();
   const onBoard = new Set(prs.map(pr => keyOf(pr.repo, pr.number)));
   state.attempts = Object.fromEntries(Object.entries(state.attempts).filter(([key]) => onBoard.has(key)));
 
+  if (via === 'claude' && lastFailure) {
+    if (lastFailure.error.code === 'no-connector' || now < lastFailure.retryAt) throw lastFailure.error;
+  }
   const due = dueForLookup(prs, state, now);
-  if (via === 'claude' && (claudeDisabled || !due.length)) return false;
+  if (via === 'claude' && !due.length) return false;
 
   const oldest = state.latestTs ?? String(Math.floor(now / 1000) - maxAgeDays * 86400);
+  let messages;
   try {
-    const messages = via === 'api' ? await readViaApi(oldest) : await readViaClaude(oldest);
-    Object.assign(state, mergeLinks(state, messages));
-    state.attempts = recordMisses(state.attempts, due.filter(key => !state.byPr.has(key)), now);
-    for (const key of state.byPr.keys()) delete state.attempts[key];
+    messages = via === 'api' ? await readViaApi(oldest) : await readViaClaude(oldest);
   } catch (error) {
-    state.attempts = recordMisses(state.attempts, due, now);
-    await saveState();
+    lastFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
     throw error;
   }
+  lastFailure = null;
+  Object.assign(state, mergeLinks(state, messages));
+  state.attempts = recordMisses(state.attempts, due.filter(key => !state.byPr.has(key)), now);
+  for (const key of state.byPr.keys()) delete state.attempts[key];
   await saveState();
   return true;
 }

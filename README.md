@@ -276,6 +276,10 @@ something:
   means no call at all.
 - **A miss is retried twice**, 30 minutes and then 2 hours later — a PR is often opened
   before it is announced. After a third miss, that PR is no longer a reason to read.
+- **A failed read is not a miss.** A read that did not work (no connector, an answer
+  that is not JSON) says nothing about the PRs, so it spends none of their tries: the
+  next read simply waits 30 minutes, and the warning stays in the banner until a read
+  succeeds. A missing connector stays reported until the server restarts.
 - **One read serves every PR.** Whatever PRs are due, a single call is made, in the
   background: the board is answered straight away, and the button shows up on the next
   refresh (or at once with *Refresh*).

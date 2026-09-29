@@ -70,7 +70,8 @@ async function readSlack(prs) {
     if (read && slackMode === 'claude') console.log(`[${new Date().toISOString()}] slack: channel read via claude`);
     slackWarning = null;
   } catch (error) {
-    slackWarning = { source: 'slack', message: error.message };
+    // The kind picks the banner's sentence: only the board knows how to say what to do.
+    slackWarning = { source: 'slack', kind: error.code ?? 'failed', message: error.message };
   }
 }
 
