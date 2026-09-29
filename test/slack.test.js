@@ -103,6 +103,13 @@ test('permalink is the archive URL with the dot dropped from the timestamp', () 
   );
 });
 
+test('permalink ignores anything after the workspace domain, a pasted `]` included', () => {
+  assert.equal(
+    permalink('https://forestadmin.slack.com/]', 'C0C4S34GD7H', '1790669118.622829'),
+    'https://forestadmin.slack.com/archives/C0C4S34GD7H/p1790669118622829',
+  );
+});
+
 // What claude -p actually answered in the spike: the array inside a markdown fence.
 test('parseClaudeMessages reads the array out of a fenced answer', () => {
   const output = '```json\n[{"ts": "1790677464.854919", "text": "• https://github.com/ForestAdmin/agent-ruby/pull/397"}]\n```';

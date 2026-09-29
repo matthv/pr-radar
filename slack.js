@@ -65,8 +65,10 @@ function mergeLinks(existing, messages) {
   return { byPr, latestTs };
 }
 
+// Only the origin is kept: a workspace URL pasted out of a Slack message once came with a
+// stray `]` after the slash, and every link built on it pointed nowhere.
 const permalink = (workspaceUrl, channel, ts) =>
-  `${workspaceUrl.replace(/\/?$/, '/')}archives/${channel}/p${ts.replace('.', '')}`;
+  `${new URL(workspaceUrl).origin}/archives/${channel}/p${ts.replace('.', '')}`;
 
 // The model only transcribes; matching a PR to its message is done here, on its copy.
 // What it returns is still checked: a timestamp out of shape is dropped rather than
@@ -156,12 +158,13 @@ const claudeArgs = model => [
   SLACK_TOOL,
 ];
 
-// Tried in order until one sees the Slack tool. The first is the cheap one, and works for
-// most setups. The second was needed by a colleague whose Claude listed the tool fine yet
-// answered "no tool" under the first — from a folder it trusts, with a model that loads
-// deferred tools. The one that worked is kept for the session: one call per read after.
+// Run from this repo's folder, not the temp directory the standup notes use: a colleague's
+// Claude loaded no connector at all from /tmp, with any model, and all of them from here.
+// The repo has no CLAUDE.md, so the folder adds no context. Sonnet stays as a fallback
+// should Haiku fail to load a connector's deferred tools. Whichever sees the Slack tool is
+// kept for the session: one call per read after.
 const CLAUDE_VARIANTS = [
-  { args: claudeArgs('claude-haiku-4-5-20251001'), cwd: require('node:os').tmpdir() },
+  { args: claudeArgs('claude-haiku-4-5-20251001'), cwd: __dirname },
   { args: claudeArgs('sonnet'), cwd: __dirname },
 ];
 let workingVariant = null;

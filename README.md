@@ -253,11 +253,11 @@ single `slack_read_channel` tool allowed, built-in tools off but `ToolSearch` (w
 connectors, their tools are only loaded on demand). Nothing to install, nothing to ask an
 admin for. It needs the `claude` CLI, like the standup notes.
 
-Two setups are tried in turn: Haiku from the temp directory, the cheap one, then Sonnet
-from this repo's folder — a colleague's Claude listed the Slack tool fine yet answered
-"no tool" under the first. Whichever sees the tool is kept for the session. Only when both
-say there is no Slack tool does the warning banner say so, and the lookup stays off until
-the server restarts.
+It runs from this repo's folder, not the temp directory the standup notes use: a
+colleague's Claude loaded no connector at all from `/tmp`, whatever the model, and all of
+them from here. Haiku is tried first, then Sonnet as a fallback; whichever sees the tool
+is kept for the session. Only when both say there is no Slack tool does the warning banner
+say so, and the lookup stays off until the server restarts.
 
 The model only *transcribes*: it copies each message's timestamp and text as JSON, and
 matching a PR to its message is done in code, on that copy. A timestamp out of shape is
