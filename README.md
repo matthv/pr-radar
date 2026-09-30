@@ -17,7 +17,7 @@ follows reality without any manual step.
 
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | review requested and not done, replies to your comments, new commits since your feedback |
+| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, replies to your comments, new commits since your feedback |
 | `Waiting` | you replied — the ball is with the reviewers | your open threads / your changes-requested await a fix |
 | `Nothing to report` | everything else | everything else |
 
@@ -103,8 +103,15 @@ Two more review bodies are left out, both found on agent-ruby#398, where a revie
   that review's own inline threads. The body could only be answered at PR level, which
   nobody does when the remark sits on a line; the conversation went where the remark was.
 
-Discovery uses four searches — `author:@me`, `reviewed-by:@me`,
-`review-requested:@me`, `commenter:@me` — plus the account's **event feed**.
+Discovery uses five searches — `author:@me`, `reviewed-by:@me`,
+`review-requested:@me`, `assignee:@me`, `commenter:@me` — plus the account's **event
+feed**.
+
+`assignee:` is there because a PR does not always carry a formal review request: this
+org also hands a review off through the assignees field. agent-nodejs#1912, opened by an
+automated author with its human owner only assigned, sat in "nothing to report" until
+that search was added; an assignee with no review yet owes one just as a requested
+reviewer does.
 
 `commenter:` is essential because `reviewed-by:` only matches a **formally
 submitted** review, so a PR where you merely wrote in the conversation never shows
@@ -143,8 +150,8 @@ dropped PRs stays visible in the header so the filter is never silent.
 
 ## When GitHub only half answers
 
-The five discovery sources are independent, so one timing out no longer wipes the
-other four: what answered is kept and an amber banner names what is missing. That
+Each discovery source is independent, so one timing out no longer wipes the others:
+what answered is kept and an amber banner names what is missing. That
 matters most for `author` — a silent gap there would read as "you have no open PRs".
 A failing detail batch costs only its six PRs. Only a total outage raises an error.
 
@@ -173,8 +180,9 @@ The tool has no version number; the commit is the version. Every
 `PR_RADAR_UPDATE_HOURS` hours (2 by default, `0` turns it off) the server runs
 `git fetch` and counts the commits between its own `HEAD` and `origin/main`. When it is
 behind, the page shows an indigo banner — not amber, since nothing is wrong with the
-data — with the count, the titles of the commits missed, and `git pull` to copy. A `×`
-hides it for that exact remote commit; the next push brings it back.
+data — with the count, the titles of the commits missed (the first eight, then "and N
+more"), and `git pull` to copy. A `×` hides it for that exact remote commit; the next
+push brings it back.
 
 Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
 state while working, and a banner there would be noise. Nothing pulls or reloads on its
@@ -192,11 +200,20 @@ goes to the server's console, and the next tick tries again.
 node --test         # or: npm test
 ```
 
-Node's built-in runner, no dependency. The suite covers the classification logic,
-which is where every bug so far has lived: `updated_at` overstating freshness, bot
-comments faking activity, feedback left in the PR conversation, commits you pushed
-yourself being flagged as needing your re-check, and a superseded changes-requested
-still counting as the latest verdict.
+Node's built-in runner, no dependency. Four files, one per module, each testing the pure
+functions that module exports and none of its network calls:
+
+- `test/classification.test.js` — the board's rules, where most bugs have lived:
+  `updated_at` overstating freshness, bot comments faking activity, feedback left in the
+  PR conversation, commits you pushed yourself flagged for your own re-check, a
+  superseded changes-requested still counting, a continue-on-error job failing a release,
+  a review body that asks nothing or was answered inline;
+- `test/digest.test.js` — shaping a board into what the standup notes take;
+- `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge,
+  permalinks, the model's transcription, and the retry schedule;
+- `test/update.test.js` — reading `git` output into "behind by N".
+
+Every real case named in this file has its fixture there, under its PR number.
 
 ## Watching a merge
 
@@ -264,6 +281,26 @@ that asks something of you: nothing else would bring it back. So the count sits 
 the summary band, next to the counters, with the snoozed cards one click away and a
 **wake all** next to them. Entries whose PR has moved on are pruned on every render,
 so the store cannot drift out of sync with the board.
+
+## A note on a card
+
+Every card takes one private note — the Slack thread where someone asked you to look, a
+reminder for later. A colleague the board was shared with asked for it; the note button
+sits in the card's bottom row next to snooze, visible on hover and permanently once a
+note exists.
+
+It lives in this browser only (`localStorage`, key `pr-radar:notes`): never sent to
+GitHub, never seen by anyone else opening the same board. Bare `http(s)://` URLs in it
+become links; everything else is escaped first, so pasting raw HTML does nothing
+executable — the only markup ever produced is the anchor built around a URL.
+
+It saves itself when you leave it: a click anywhere else, `Escape`, or focus moving on.
+The click that leaves it also closes it back to display mode, since a textarea that
+silently kept its text but stayed open read as "did that save at all".
+
+Unlike a snooze, ordinary activity on the PR does not clear it — that is not what a note
+is for. It goes only when the PR itself leaves the board (merged and aged out, closed),
+pruned on the same render pass as a stale snooze.
 
 ## The Slack announcement link
 
@@ -336,7 +373,9 @@ git): a restart does not re-read the channel. Delete the file to start over.
 
 A PR is matched on its link, wherever it sits in the message and in whatever casing the
 URL was pasted. When the same PR is posted twice the **oldest** message wins: that is the
-announcement, the later one a re-post. Reading forward only has its limits: an older
+announcement, the later one a re-post. The message link is built on the workspace URL's
+origin alone: a `PR_RADAR_SLACK_WORKSPACE` pasted out of Slack once arrived with a stray
+`]` after the slash, and every link built on it pointed nowhere. Reading forward only has its limits: an older
 message *edited* to add a link is not seen again (its timestamp does not move), replies
 inside threads are not read, and on the Claude path a read returns at most 100 messages,
 so a burst larger than that between two reads loses its oldest ones.
@@ -388,8 +427,12 @@ Two ways to narrow what they cover, because they answer different problems:
   clipboard is rebuilt from what is left, and a section emptied that way stops being
   announced.
 
-Each line carries **the time of that PR's real activity, its number and its state**, in
-four fixed columns so the day reads down the edge of the panel. The state is read off the
+Each line carries **the time of that PR's real activity, its repo and number, and its
+state**, in four fixed columns so the day reads down the edge of the panel. The repo is
+there because the notes span the whole org: a bare `#1918` said nothing about which
+project it belonged to. The cell is sized for the longest name actually in use
+(`forestadmin-server #8516`) and ellipsised past that, rather than stretching every other
+line to fit a rare outlier. The state is read off the
 board, never asked of the model: the bucket is already computed, and prose would freeze it
 at the moment of writing and let it go stale. The weekday is on every line, today's
 included — dropping it there read as an oversight and left the column ragged.
@@ -399,12 +442,15 @@ the board's order of urgency, and sorted before the request rather than after th
 since the model words each bullet against the order it is given.
 
 Copying gives plain markdown with the headings, the state word included — "merged" is half
-of what a standup line says. On screen each PR number links to the pull request it
+of what a standup line says. On screen each `repo #number` links to the pull request it
 summarises.
 
 The group markers the model emits are matched as a whole line holding nothing but the
 token, hashes or bold optional: it has been seen writing `## MINE`, `MINE` and `**MINE**`
-for the same request, and a stricter pattern let the raw marker through as a bullet.
+for the same request, and a stricter pattern let the raw marker through as a bullet. The
+bullets are read just as loosely: English answers write `#812 Fixes…`, French ones
+`#812: Corrige…` with the colon against the digits, and a pattern that required a space
+there once dropped every French line to the plain fallback — no time, no repo, no pill.
 
 ### Warming them before you look
 
@@ -462,7 +508,8 @@ cannot update one caller and quietly leave the other stale.
 ## Notifications
 
 - The tab title shows the number of pending actions: `(4) PR Radar`.
-- A chime plays when that number goes up (**sound** checkbox, remembered). It
+- A chime plays when that number goes up (the **speaker** button, remembered — filled
+  indigo while on, plain when muted). It
   follows the counter, not activity: a PR you just opened yourself lands in
   *waiting on the reviewers* and asks nothing of you, so it stays silent — you came
   from `gh pr create` and know it exists. It rings when a reviewer turns it into
@@ -510,7 +557,9 @@ nothing else. Three checkboxes used to sit there and were removed rather than mo
 - **hide drafts** became `PR_RADAR_HIDE_DRAFTS`: whether drafts belong on the board is
   decided once, not per session.
 
-- 🔊 mutes the chime (remembered).
+- 🔊 mutes the chime (remembered). The button is filled indigo while the chime is on,
+  the same "this is active" language as the `FR`/`EN` pill: two people independently read
+  the plain icon swap as "is this even on right now".
 - `☾` / `☀` toggles light / dark (light by default, remembered).
 - A **gitdeck** button in the header opens [gitdeck](https://github.com/matthv/gitdeck), a
   separate personal repo (a local web git client), carrying gitdeck's own branch mark so it
@@ -559,7 +608,11 @@ Colour encodes priority, not severity:
 - **emerald** — approved, green CI.
 - **brick** — actually broken, and only that: failing CI, merge conflicts.
 - **cyan** — the review column's marker and a thread's location (`file.rb:42`,
-  `conversation`). Never a state: it is a navigation accent.
+  `conversation`, a repo badge, a branch badge). Never a state: it is a navigation accent.
+
+The one exception is the Slack logo on a card, drawn in Slack's own four colours: the
+only place the board wears a brand's palette rather than its own, because the logo is what
+makes that button readable at a glance where a monochrome mark did not.
 
 Each column carries its own title hue (indigo on the left, cyan on the right) so
 you can tell them apart at a glance while scrolling.
@@ -578,6 +631,7 @@ Pills carry the state; a reason line only appears for what no pill already says
   bug misleading. (`gh auth token` also does not exist before 2.16.)
 - Reviews requested **through a team** do not show up: GitHub search requires
   `team-review-requested:org/team`, which is not covered here.
-- The synthetic conversation thread excludes bots, but cannot tell a real piece of
-  feedback from an "LGTM 🎉": on your own PRs, a trailing congratulatory comment
-  counts as something to address.
+- The synthetic conversation thread excludes bots. Review bodies that ask nothing are
+  filtered out (see [Where your feedback is looked for](#where-your-feedback-is-looked-for)),
+  but a plain **conversation comment** is not read: on your own PRs, a trailing "LGTM 🎉"
+  left as a comment rather than a review still counts as something to address.
