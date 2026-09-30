@@ -10,6 +10,7 @@ const {
   lastActivity,
   contributorsOf,
   discussionThread,
+  asksNothing,
   cleanExcerpt,
   isBot,
   byActionThenFreshness,
@@ -768,4 +769,70 @@ test('a truncated excerpt says so, and does not cut mid-word', () => {
 test('an excerpt that fits is left exactly as it is', () => {
   const short = 'A short remark about a field.';
   assert.deepEqual(cleanExcerpt(short), { text: short, truncated: false });
+});
+
+// Observed on agent-ruby#398: a reviewer's "Spec (PRD-1404): conforms." sat in "to fix"
+// for a day. A verdict asks for nothing; the rule only knew a body was there.
+const CONFORMS = '**Spec (`PRD-1404`)**: conforms. An unknown id and a `can?` denial both reload the users under one 60 s throttle per process, and the four required test cases are present.';
+const CONTRADICTS = '**Spec (PRD-1271)**: the Editor permission gate contradicts the validated behaviour doc, which Brice confirmed on 2026-09-29, inline. Everything else conforms.';
+
+test('asksNothing: a verdict with no request in it, code spans dropped first', () => {
+  assert.equal(asksNothing(CONFORMS), true, 'the `can?` method name is not a question');
+  assert.equal(asksNothing('LGTM'), true);
+  assert.equal(asksNothing('Looks good to me, nothing to add.'), true);
+});
+
+test('asksNothing: anything that reads as a request, or carries no verdict, stays pending', () => {
+  assert.equal(asksNothing(CONTRADICTS), false, '"contradicts" is a finding, whatever follows');
+  assert.equal(asksNothing('Looks good, but should we keep the old route?'), false);
+  assert.equal(asksNothing('A few things before merge'), false, 'no verdict at all: pending as before');
+  assert.equal(asksNothing(''), false);
+});
+
+const commented = (login, body, at, extra = {}) => ({
+  author: user(login), state: 'COMMENTED', submittedAt: at, url: 'u', body, ...extra,
+});
+
+test('my PR: a commented review that only says "conforms" is not something to fix', () => {
+  const pr = node({ author: user(ME), reviews: { nodes: [commented('Scra3', CONFORMS, ago(1))] } });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 0);
+  assert.equal(decorated.reasons.some(r => r.kind === 'threads'), false);
+});
+
+test('my PR: a commented review that flags a contradiction is still something to fix', () => {
+  const pr = node({ author: user(ME), reviews: { nodes: [commented('Scra3', CONTRADICTS, ago(1))] } });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 1);
+  assert.deepEqual(decorated.reasons.map(r => r.kind), ['threads']);
+});
+
+// The other half of agent-ruby#398: the review also had one inline thread, answered and
+// resolved — the body was still counted, since it could only be answered at PR level.
+function reviewWithInlineThread({ myReplyAt, replier = ME }) {
+  const inline = thread({ comments: [['Scra3', ago(2)], ...(myReplyAt ? [[replier, myReplyAt]] : [])], isResolved: Boolean(myReplyAt) });
+  inline.comments.nodes[0].pullRequestReview = { id: 'PRR_1' };
+  return node({
+    author: user(ME),
+    reviews: { nodes: [commented('Scra3', 'Please also double-check the gate below.', ago(2), { id: 'PRR_1' })] },
+    reviewThreads: { nodes: [inline] },
+  });
+}
+
+test('my PR: a review body is answered by my reply in one of its own inline threads', () => {
+  const decorated = decorateMine(baseShape(reviewWithInlineThread({ myReplyAt: ago(1) }), ME));
+
+  assert.equal(decorated.threads.some(t => t.channel === 'review'), false, 'the body is settled');
+  assert.equal(decorated.toFix.length, 0);
+  assert.equal(decorated.needsAction, false);
+});
+
+test('my PR: a reply that predates the review, or someone else\'s reply, does not settle the body', () => {
+  const before = decorateMine(baseShape(reviewWithInlineThread({ myReplyAt: ago(3) }), ME));
+  assert.equal(before.threads.some(t => t.channel === 'review'), true);
+
+  const theirs = decorateMine(baseShape(reviewWithInlineThread({ myReplyAt: ago(1), replier: 'someone' }), ME));
+  assert.equal(theirs.threads.some(t => t.channel === 'review'), true);
 });

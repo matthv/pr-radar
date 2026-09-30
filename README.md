@@ -90,6 +90,19 @@ the message the excerpt shows.
 An **approval's** body is left out of it: a courtesy, not a request, and letting it in
 would make approving look like feedback still pending.
 
+Two more review bodies are left out, both found on agent-ruby#398, where a reviewer's
+"Spec (PRD-1404): conforms." sat in "to fix" for a day:
+
+- a **commented review that asks nothing** — its body carries a verdict (`conforms`,
+  `LGTM`, `looks good`, `nothing to add`…) and none of the words a request is made of
+  (`should`, `must`, `missing`, `contradicts`, a question mark…). Code spans are dropped
+  before reading, so a `` `can?` `` method name is not a question. It is read
+  conservatively: a body with no verdict, or with any such word, stays pending — a glance
+  costs less than a missed remark;
+- a **review body answered inline** — when you replied, after the review, inside one of
+  that review's own inline threads. The body could only be answered at PR level, which
+  nobody does when the remark sits on a line; the conversation went where the remark was.
+
 Discovery uses four searches — `author:@me`, `reviewed-by:@me`,
 `review-requested:@me`, `commenter:@me` — plus the account's **event feed**.
 

@@ -76,7 +76,7 @@ query($ids: [ID!]!) {
       recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(last: 100) { totalCount nodes { author { __typename login } state submittedAt url body } }
+      reviews(last: 100) { totalCount nodes { id author { __typename login } state submittedAt url body } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
@@ -91,7 +91,7 @@ query($ids: [ID!]!) {
           line
           comments(first: 20) {
             totalCount
-            nodes { author { __typename login } body createdAt url }
+            nodes { author { __typename login } body createdAt url pullRequestReview { id } }
           }
         }
       }
@@ -414,6 +414,35 @@ function lastActivity(pr) {
 // pending for ever — a reviewer asking for a fix in their review body and my answer in the
 // conversation showed up as both "to fix" and "awaiting a reply", one exchange counted
 // twice.
+// A commented review whose body is a verdict and nothing else — "conforms", "LGTM" — asks
+// for nothing, yet it used to sit in "to fix" until answered, because the rule only knew
+// that a body was there. Observed on agent-ruby#398. Read conservatively: the body has to
+// carry a verdict *and* none of the words a request is made of; anything else stays
+// pending, which is the failure mode that costs a glance rather than a missed remark.
+// Code spans are dropped first — a `can?` method name is not a question.
+const VERDICT_RE = /\b(conforms|lgtm|looks good|nothing to (add|fix|report)|no (remarks?|comments?|concerns?)|all good)\b/i;
+const REQUEST_RE = /\?|\b(should|must|needs?|missing|gaps?|contradicts?|not|nit|please|blockers?|blocking|fix)\b|n't/i;
+
+function asksNothing(body) {
+  const prose = String(body ?? '').replace(/`[^`]*`/g, '');
+  return VERDICT_RE.test(prose) && !REQUEST_RE.test(prose);
+}
+
+// A review body is answered where the conversation actually went: my reply inside one of
+// that review's own inline threads, after it was posted, settles the body too. Without
+// this, agent-ruby#398 stayed "to fix" with its one thread resolved — the body could only
+// be answered at PR level, which nobody does when the remark is on a line.
+function answeredInline(review, pr, me) {
+  if (!review.id) return false;
+  return pr.reviewThreads.nodes.some(thread => {
+    const comments = thread?.comments?.nodes?.filter(Boolean) ?? [];
+    if (comments[0]?.pullRequestReview?.id !== review.id) return false;
+    return comments.some(
+      c => c.author?.login === me && new Date(c.createdAt) > new Date(review.submittedAt),
+    );
+  });
+}
+
 function discussionThread(pr, me) {
   const messages = [
     ...pr.reviews.nodes
@@ -424,7 +453,9 @@ function discussionThread(pr, me) {
           // An approval's body is a courtesy, not a request. Letting it in would make
           // approving look like feedback still pending, the opposite of what it is.
           && review.state !== 'APPROVED'
-          && (review.body ?? '').trim(),
+          && (review.body ?? '').trim()
+          && !(review.state === 'COMMENTED' && asksNothing(review.body))
+          && !(review.author.login !== me && answeredInline(review, pr, me)),
       )
       .map(review => ({
         channel: 'review',
@@ -991,6 +1022,7 @@ module.exports = {
   lastActivity,
   contributorsOf,
   discussionThread,
+  asksNothing,
   cleanExcerpt,
   isBot,
   fetchDigestInputs,
