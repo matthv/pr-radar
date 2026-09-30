@@ -11,7 +11,7 @@ const { fetchDigestInputs } = require('./github');
 const MODEL = 'claude-haiku-4-5-20251001';
 // Part of the cache key: reword the prompt and every stored digest is stale, since it
 // answers a question no longer being asked.
-const PROMPT_VERSION = 4;
+const PROMPT_VERSION = 5;
 const CACHE_FILE = path.join(__dirname, '.digest-cache.json');
 const CACHE_KEEP = 20;
 const BODY_LIMIT = 1500;
@@ -87,37 +87,81 @@ function blockFor(pr) {
     .join('\n');
 }
 
+// A standup is told by piece of work, not by pull request: the back and the front of one
+// change are one thing to say (Alban's feedback, forestadmin#9977 + forestadmin-server#8522).
+// The grouping is decided here, from what can be checked — the model only words it.
+const TICKET_RE = /\b([A-Z]{2,}-\d{2,})\b/;
+const BRANCH_TICKET_RE = /(?:^|\/)([a-z]{2,}-\d{2,})(?=[-_/]|$)/i;
+
+function ticketKey(pr) {
+  return pr.title?.match(TICKET_RE)?.[1]
+    ?? pr.headRefName?.match(BRANCH_TICKET_RE)?.[1]?.toUpperCase()
+    ?? pr.body?.match(TICKET_RE)?.[1]
+    ?? null;
+}
+
+// The same ticket, or the very same title once its conventional prefix is gone: the two
+// halves of one change are opened with one title, and not always with the ticket in it.
+function workKey(pr) {
+  const ticket = ticketKey(pr);
+  if (ticket) return `ticket:${ticket}`;
+  return `title:${String(pr.title ?? '').replace(/^\w+(\([^)]*\))?!?:\s*/, '').trim().toLowerCase()}`;
+}
+
+// First-appearance order, so the oldest-activity-first order of the input survives.
+function clusterForDigest(prs) {
+  const clusters = new Map();
+  for (const pr of prs) {
+    const key = workKey(pr);
+    if (!clusters.has(key)) clusters.set(key, { key, prs: [] });
+    clusters.get(key).prs.push(pr);
+  }
+  return [...clusters.values()];
+}
+
+function clusterBlock(cluster) {
+  if (cluster.prs.length === 1) return blockFor(cluster.prs[0]);
+  const label = cluster.key.startsWith('ticket:') ? cluster.key.slice(7) : 'same change';
+  return `<work key="${label}">\n${cluster.prs.map(blockFor).join('\n\n')}\n</work>`;
+}
+
 // The section markers are fixed tokens rather than prose: the reader's own headings are
-// added client-side, so they stay translated and stay out of the model's hands.
+// added client-side, so they stay translated and stay out of the model's hands. Grouping
+// stays inside a section: what I wrote and what I review are two roles, two bullets.
 function promptFor(groups, lang) {
   const sections = [];
-  if (groups.mine.length) {
-    sections.push(`<group name="MINE">\n${groups.mine.map(blockFor).join('\n\n')}\n</group>`);
-  }
-  if (groups.reviews.length) {
-    sections.push(
-      `<group name="REVIEWS">\n${groups.reviews.map(blockFor).join('\n\n')}\n</group>`,
-    );
+  for (const [name, prs] of [['MINE', groups.mine], ['REVIEWS', groups.reviews]]) {
+    if (!prs.length) continue;
+    sections.push(`<group name="${name}">\n${clusterForDigest(prs).map(clusterBlock).join('\n\n')}\n</group>`);
   }
 
   return [
     `Write standup notes from the pull requests below, in ${lang === 'fr' ? 'French' : 'English'}.`,
     '',
-    'Answer with one line per group, then one bullet per pull request, in the order given:',
+    'Answer with one line per group, then one bullet per piece of work, in the order given:',
     '',
     '## MINE',
     '- #<number> <what it does>',
+    '- #<number> #<number> <what that piece of work does>',
     '## REVIEWS',
     '- #<number> <what it does>',
     '',
     'Keep the group markers exactly as written, in capitals, untranslated, and only for a',
     'group that has pull requests. No other heading, no preamble, no closing line.',
     '',
-    'Each bullet is two sentences and 25 to 45 words: what the change does, then what it',
-    'changes for whoever uses the code — the behaviour it fixes, the risk it removes, the',
-    'thing now possible. Plain language, present tense. Never name files, and drop the',
-    'conventional-commit prefix from the title. Where two pull requests are part of the',
-    'same effort, word them so that reads.',
+    'One bullet per <work>, and one per pull request outside any <work>. A bullet starts',
+    'with every number it covers, each written #<number>, then the sentences.',
+    '',
+    'Each bullet is two sentences: what the change does, then what it changes for whoever',
+    'uses the code — the behaviour it fixes, the risk it removes, the thing now possible.',
+    '25 to 45 words for one pull request; up to 60 for a <work>, which says what the whole',
+    'change does as one thing, and where its parts stand only where they differ. Plain',
+    'language, present tense. Never name files, and drop the conventional-commit prefix',
+    'from the title.',
+    '',
+    'Two pull requests outside any <work> that are visibly one effort — one depends on the',
+    'other, the same feature in two repos — may share one bullet the same way, numbers',
+    'first. Never merge across groups.',
     '',
     'MINE are the reader\'s own pull requests. REVIEWS are other people\'s, which the',
     'reader is reviewing: there the second sentence says where it stands, from the',
@@ -233,4 +277,14 @@ async function standupNotes({ mine = [], reviews = [] }, lang) {
   return { text: await pending.get(key), cached: false, counts };
 }
 
-module.exports = { available, claude, standupNotes, pickForDigest, MAX_PRS };
+module.exports = {
+  available,
+  claude,
+  standupNotes,
+  pickForDigest,
+  ticketKey,
+  workKey,
+  clusterForDigest,
+  promptFor,
+  MAX_PRS,
+};

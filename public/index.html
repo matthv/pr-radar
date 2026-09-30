@@ -379,7 +379,17 @@
   #notesBody .num {
     flex: none; width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  #notesBody .state { flex: none; width: 112px; }
+  /* A bullet can cover a whole piece of work: its PRs stack in the same cell, each its own
+     link, so the column keeps its width and every sentence still starts on one edge. */
+  #notesBody .nums { flex: none; width: 190px; display: flex; flex-direction: column; gap: 2px; position: relative; }
+  /* A bracket in the gutter ties the stacked PRs together, without pushing them off the
+     edge the single-PR lines' numbers sit on. Cyan: it is still about where the work is. */
+  #notesBody .nums::before {
+    content: ""; position: absolute; left: -9px; top: 4px; bottom: 4px; width: 5px;
+    border: 2px solid var(--cyan); border-right: 0; border-radius: 2px 0 0 2px; opacity: .45;
+  }
+  #notesBody .nums .num { width: auto; }
+  #notesBody .state { flex: none; width: 112px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
   /* Aligned to the first line: a bullet is a sentence carrying a marker, not a pill with
      a sentence stuck to it. */
   #notesBody .pill { flex: none; align-self: flex-start; margin-top: 1px; }
@@ -411,7 +421,7 @@
 
   .notes-panel.stale #notesBody { opacity: .35; }
   #notesBody { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; transition: opacity .2s; }
-  #notesBody li { display: flex; gap: 9px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
+  #notesBody li { display: flex; gap: 14px; font-size: 12.5px; line-height: 1.55; color: var(--text); }
   /* No filter knows what you will actually mention: the last cut is made by hand. */
   #notesBody .drop {
     flex: none; margin-left: auto; width: 18px; height: 18px; padding: 0;
@@ -1092,6 +1102,7 @@ const I18N = {
     notesTitle: 'résumer mes PRs affichées en une phrase chacune',
     notesBusy: 'Rédaction…',
     notesMine: 'mes PRs ({n})',
+    notesSameWork: 'même chantier : ces PR sont résumées ensemble',
     notesReviews: 'PRs que je review ({n})',
     notesCopy: 'copier',
     notesCopied: 'copié',
@@ -1216,6 +1227,7 @@ const I18N = {
     notesTitle: 'summarise the PRs on screen, one sentence each',
     notesBusy: 'Writing…',
     notesMine: 'my PRs ({n})',
+    notesSameWork: 'same piece of work: these PRs are summarised together',
     notesReviews: 'PRs I review ({n})',
     notesCopy: 'copy',
     notesCopied: 'copied',
@@ -2401,12 +2413,12 @@ const NOTE_STATE = {
 
 function showNotes(text, counts) {
   applyScopeLabel();
-  const board = new Map(
-    [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].map(pr => [
-      String(pr.number),
-      pr,
-    ]),
-  );
+  // Looked up in the bullet's own section first: two repos can share a number, and the
+  // same number in "mine" and "reviews" is two different PRs.
+  const byNumber = list => new Map((list ?? []).map(pr => [String(pr.number), pr]));
+  const sides = { MINE: byNumber(state.data?.mine), REVIEWS: byNumber(state.data?.reviews) };
+  const anywhere = new Map([...sides.REVIEWS, ...sides.MINE]);
+  const find = (group, number) => sides[group]?.get(number) ?? anywhere.get(number);
   const heading = group =>
     group === 'REVIEWS'
       ? t('notesReviews', { n: counts?.reviews ?? 0 })
@@ -2422,35 +2434,52 @@ function showNotes(text, counts) {
         // English, but "#812: Corrige…" in French — observed 2026-09-29, where the colon
         // sat right against the digits and the old `\s+`-only regex fell through to the
         // plain-line fallback, losing the time, repo and state pill on every line.
-        const bullet = line.match(/^[-*•]\s*#(\d+)(?:\s*:\s*|\s+)(.*)$/);
-        const plain = bullet ? `#${bullet[1]} ${bullet[2]}` : line.replace(/^[-*•]\s*/, '');
+        // One number or several — a bullet can cover a whole piece of work, "#9977 #8522"
+        // or "#9977, #8522:". The model does not always put a space before the sentence
+        // either: "#812: Corrige…" in French, observed 2026-09-29.
+        const bullet = line.match(/^[-*•]\s*(#\d+(?:[\s,]+#\d+)*)\s*(?::\s*|\s)\s*(\S.*)$/);
+        const numbers = bullet ? bullet[1].match(/\d+/g) : [];
+        const rest = bullet ? bullet[2] : '';
+        const plain = bullet ? `${numbers.map(n => `#${n}`).join(' ')} ${rest}` : line.replace(/^[-*•]\s*/, '');
         const drop = `<button type="button" class="drop" title="${t('dropLine')}"`
           + ` aria-label="${t('dropLine')}">×</button>`;
-        copied.push(`- ${plain}`);
 
         if (!bullet) {
+          copied.push(`- ${plain}`);
           return `<li data-copy="${escapeHtml(plain)}"><span>${escapeHtml(plain)}</span>${drop}</li>`;
         }
-        const [, number, rest] = bullet;
-        const pr = board.get(number);
-        const [kind, key] = NOTE_STATE[pr?.bucket] ?? [];
-        // A repo is a location, the same cyan as a thread's file path elsewhere on the
-        // board — stripped of the owner, since every repo here is already on this org.
-        const repoLabel = pr ? `${pr.repo.replace(/^.*\//, '')} #${number}` : `#${number}`;
+        const entries = numbers.map(number => {
+          const pr = find(section.group, number);
+          // A repo is a location, the same cyan as a thread's file path elsewhere on the
+          // board — stripped of the owner, since every repo here is already on this org.
+          const label = pr ? `${pr.repo.replace(/^.*\//, '')} #${number}` : `#${number}`;
+          return { number, pr, label, state: NOTE_STATE[pr?.bucket] ?? [] };
+        });
+        const known = entries.filter(entry => entry.pr);
+        const latest = known.map(entry => entry.pr.lastActivityAt).sort().pop();
+        // One pill when every part stands in the same place, one per part otherwise:
+        // "back merged, front awaiting review" is the news of a piece of work.
+        const keys = [...new Set(entries.map(entry => entry.state[1]).filter(Boolean))];
+        const pills = keys.length <= 1
+          ? (keys.length ? [pill(entries.find(e => e.state[1])?.state[0], t(keys[0]))] : [])
+          : entries.filter(entry => entry.state[1]).map(entry => pill(entry.state[0], t(entry.state[1])));
         // The word travels with the copy: "merged" is half of what a standup line says.
-        const marked = `${repoLabel}${key ? ` (${t(key)})` : ''} ${rest}`;
-        copied[copied.length - 1] = `- ${marked}`;
+        const marked = `${entries.map(entry => entry.label).join(' + ')}`
+          + `${keys.length ? ` (${(keys.length === 1 ? keys : entries.map(e => e.state[1]).filter(Boolean)).map(k => t(k)).join(', ')})` : ''}`
+          + ` ${rest}`;
+        copied.push(`- ${marked}`);
+
+        const links = entries.map(entry => (entry.pr
+          ? `<a class="num" href="${escapeHtml(entry.pr.url)}" target="_blank" rel="noopener"`
+            + ` title="${escapeHtml(entry.pr.repo)}">${escapeHtml(entry.label)}</a>`
+          : `<span class="num">${escapeHtml(entry.label)}</span>`)).join('');
 
         return `<li data-copy="${escapeHtml(marked)}">`
-          + (pr
-            ? `<span class="when" title="${escapeHtml(t('agoTitle'))}">`
-              + `${activityClock(pr.lastActivityAt)}</span>`
+          + (latest
+            ? `<span class="when" title="${escapeHtml(t('agoTitle'))}">${activityClock(latest)}</span>`
             : '')
-          + (pr
-            ? `<a class="num" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener"`
-              + ` title="${escapeHtml(pr.repo)}">${escapeHtml(repoLabel)}</a>`
-            : `<span class="num">${escapeHtml(repoLabel)}</span>`)
-          + `<span class="state">${key ? pill(kind, t(key)) : ''}</span>`
+          + (entries.length > 1 ? `<span class="nums" title="${escapeHtml(t('notesSameWork'))}">${links}</span>` : links)
+          + `<span class="state">${pills.join('')}</span>`
           + `<span>${escapeHtml(rest)}</span>${drop}</li>`;
       });
 

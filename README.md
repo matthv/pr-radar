@@ -406,8 +406,26 @@ itself is unaffected.
 ## Standup notes
 
 A button in the summary band turns the board into notes you can read out at a standup:
-one bullet per pull request, in two sections — your own, then the ones you review, where
+one bullet per piece of work, in two sections — your own, then the ones you review, where
 the second sentence says where each stands so you know what to say about it.
+
+**One bullet per piece of work, not per pull request.** A standup is told by what you
+worked on, and the back and the front of one change are one thing to say — the feedback
+came from a colleague, on forestadmin#9977 and forestadmin-server#8522, which gave two
+bullets saying the same thing. The grouping is decided in code, from what can be checked:
+the same ticket key (`PRD-1271`) in the title, the branch (`feature/prd-1184-…`) or the
+description, or the very same title once its conventional prefix is gone. At least two
+digits make a ticket, so a `UTF-8` in a title does not glue two PRs together. The model
+receives each group and words it as one bullet; it may also join two lone pull requests
+that are visibly one effort. Either way a bullet starts with every number it covers, so
+the page keeps a link, a state and a drop button per line. Grouping never crosses the two
+sections: what you wrote and what you review are two roles, two bullets.
+
+On screen a grouped bullet stacks its pull requests in the same cell, each its own link,
+tied by a thin bracket in the gutter; it shows one state pill when every part stands in
+the same place and one per part otherwise ("back merged, front awaiting review" is the
+news), and the time of the most recent. The copied line reads
+`forestadmin #9977 + forestadmin-server #8522 (merged, waiting) …`.
 
 The model is reached through the **`claude` CLI**, so the tool holds no model key — the
 same reason GitHub access goes through `gh`. Without that CLI on the PATH the button

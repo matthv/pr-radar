@@ -143,6 +143,7 @@ query($ids: [ID!]!) {
       number
       title
       body
+      headRefName
       repository { nameWithOwner }
       files(first: 20) { nodes { path } }
     }
@@ -157,6 +158,7 @@ async function fetchDigestInputs(ids) {
     number: pr.number,
     title: pr.title,
     body: pr.body || '',
+    headRefName: pr.headRefName ?? null,
     repo: pr.repository.nameWithOwner,
     files: pr.files.nodes.map(file => file.path),
   }));
