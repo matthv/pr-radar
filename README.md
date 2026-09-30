@@ -532,6 +532,18 @@ it. Only the interval is baked into the plist itself — change it and re-run
 run, so narrowing or widening it needs only an edit to `.env`, no re-install; running it
 by hand outside the window would otherwise silently do nothing, which is why
 `node daily-notes.js --force` exists, skipping the window check for a manual test.
+
+For a standup at 9:30, for instance:
+
+```bash
+PR_RADAR_DAILY_NOTES_FROM=08:45
+PR_RADAR_DAILY_NOTES_UNTIL=09:25   # five minutes early: a late run must finish in time
+```
+
+The end sits a few minutes before the meeting on purpose. Runs do not land on round
+minutes — `StartInterval` counts from when the job was loaded, not from midnight — and a
+generation already started goes to its end (30 to 100 seconds) regardless of the window,
+so an `UNTIL` right on the hour could still be writing when the standup begins.
 `node`, `claude` and `gh` are resolved from your own shell at install time and written
 into the job as absolute paths, since launchd's own PATH is too bare to find any of them.
 A run's own log lands in `.daily-notes.log` — empty runs outside the window write nothing
