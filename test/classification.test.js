@@ -836,3 +836,62 @@ test('my PR: a reply that predates the review, or someone else\'s reply, does no
   const theirs = decorateMine(baseShape(reviewWithInlineThread({ myReplyAt: ago(1), replier: 'someone' }), ME));
   assert.equal(theirs.threads.some(t => t.channel === 'review'), true);
 });
+
+// Observed on forestadmin-server#8542: the deploy passed, but "Notify CI Failure on Main"
+// — a workflow_run reaction, broken for a year — failed beside it, and the card wore red.
+const suite = (event, name, conclusion, extra = {}) => ({
+  status: 'COMPLETED',
+  conclusion,
+  checkRuns: { totalCount: 3 },
+  workflowRun: { event, url: `https://github.com/o/r/actions/runs/${name.length}`, workflow: { name } },
+  ...extra,
+});
+const mergedWith = suites => node({
+  merged: true,
+  mergedAt: ago(0.1),
+  mergeCommit: { oid: 'x', statusCheckRollup: { state: 'FAILURE' }, checkSuites: { nodes: suites } },
+});
+
+test('a workflow reacting to another one is not this commit\'s pipeline', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    suite('push', 'Build, Test and Deploy', 'SUCCESS'),
+    suite('workflow_run', 'Notify CI Failure on Main', 'FAILURE'),
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'done');
+  assert.equal(decorated.pipelineFailure, null);
+  assert.equal(decorated.needsAction, false);
+  assert.equal(decorated.bucket, 'merged');
+});
+
+test('a cron landing on the branch tip is not this commit\'s pipeline either', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    suite('push', 'Build, Test and Deploy', 'SUCCESS'),
+    suite('schedule', 'Nightly audit', 'FAILURE'),
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'done');
+});
+
+test('the deploy itself failing is named, and linked', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    suite('push', 'Build, Test and Deploy', 'FAILURE'),
+    suite('workflow_run', 'Notify CI Failure on Main', 'SUCCESS'),
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'failed');
+  assert.deepEqual(decorated.pipelineFailure, {
+    workflow: 'Build, Test and Deploy',
+    url: 'https://github.com/o/r/actions/runs/22',
+  });
+  assert.deepEqual(decorated.reasons.map(r => r.kind), ['merge-pipeline']);
+});
+
+test('a failed suite with no workflow run still counts, unnamed', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    { status: 'COMPLETED', conclusion: 'FAILURE', checkRuns: { totalCount: 5 } },
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'failed');
+  assert.equal(decorated.pipelineFailure, null);
+});

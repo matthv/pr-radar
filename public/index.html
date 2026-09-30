@@ -1057,6 +1057,7 @@ const I18N = {
     pipelineRunning: 'release en cours',
     pipelineDone: 'release publiée',
     pipelineFailed: 'release en échec',
+    pipelineFailedNamed: '{workflow} en échec',
     reasonMergePipeline: 'la release a échoué après le merge',
     groupMineWaiting: 'En attente des relecteurs',
     groupReviewAction: 'À faire de mon côté',
@@ -1180,6 +1181,7 @@ const I18N = {
     pipelineRunning: 'release running',
     pipelineDone: 'released',
     pipelineFailed: 'release failed',
+    pipelineFailedNamed: '{workflow} failed',
     reasonMergePipeline: 'the release failed after the merge',
     groupMineWaiting: 'Waiting on the reviewers',
     groupReviewAction: 'On my plate',
@@ -1645,7 +1647,13 @@ function mergeOutcomePills(pr) {
   // a release went out — forest-rails#803 had real green checks yet sat nowhere near
   // main, so the badge above already says what needs saying and this pill stays quiet.
   if (pr.pipelineOutcome === 'failed') {
-    pills.push(pill('alert', t('pipelineFailed')));
+    // Named after the workflow that broke, linking to its run: "release failed" said the
+    // same thing of a broken notifier and of a broken deploy.
+    const failure = pr.pipelineFailure;
+    const label = failure?.workflow ? t('pipelineFailedNamed', { workflow: failure.workflow }) : t('pipelineFailed');
+    pills.push(failure?.url
+      ? `<a class="pill alert" href="${escapeHtml(failure.url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`
+      : pill('alert', escapeHtml(label)));
   } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
     pills.push(
       pr.release

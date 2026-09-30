@@ -46,7 +46,12 @@ query($ids: [ID!]!) {
         oid
         statusCheckRollup { state }
         checkSuites(first: 20) {
-          nodes { status conclusion checkRuns(first: 1) { totalCount } }
+          nodes {
+            status
+            conclusion
+            workflowRun { event url workflow { name } }
+            checkRuns(first: 1) { totalCount }
+          }
         }
       }
       baseRefName
@@ -549,18 +554,36 @@ function truncationOf(pr) {
 // fail without blocking it. Suites with zero check runs (Nx Cloud, Macroscope, ...) never
 // fired for this commit — a push event, not the pull_request one they listen for — and are
 // not a signal either way. Fixtures with no checkSuites data fall back to the rollup.
-function pipelineOutcome(mergeCommit) {
-  const suites = (mergeCommit?.checkSuites?.nodes ?? []).filter(s => (s.checkRuns?.totalCount ?? 0) > 0);
+// Not this commit's pipeline: a workflow reacting to another one's completion, or a cron
+// that happens to land on the branch tip. forestadmin-server#8542 wore red for a deploy
+// that had passed, because "Notify CI Failure on Main" — a workflow_run reaction, broken
+// for a year — had failed beside it. A suite with no workflowRun (an app outside Actions,
+// a fixture) still counts, as before.
+const REACTIVE_EVENTS = new Set(['workflow_run', 'schedule']);
+const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE']);
+
+function pipelineSummary(mergeCommit) {
+  const suites = (mergeCommit?.checkSuites?.nodes ?? [])
+    .filter(s => (s.checkRuns?.totalCount ?? 0) > 0)
+    .filter(s => !REACTIVE_EVENTS.has(s.workflowRun?.event));
   if (suites.length) {
-    if (suites.some(s => s.status !== 'COMPLETED')) return 'running';
-    if (suites.some(s => ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(s.conclusion))) return 'failed';
-    return 'done';
+    if (suites.some(s => s.status !== 'COMPLETED')) return { outcome: 'running', failure: null };
+    const failed = suites.find(s => FAILED_CONCLUSIONS.has(s.conclusion));
+    if (failed) {
+      const run = failed.workflowRun;
+      return {
+        outcome: 'failed',
+        // Named, so the pill can say which workflow broke rather than "release failed".
+        failure: run ? { workflow: run.workflow?.name ?? null, url: run.url ?? null } : null,
+      };
+    }
+    return { outcome: 'done', failure: null };
   }
   const pipeline = mergeCommit?.statusCheckRollup?.state ?? null;
-  if (pipeline === 'FAILURE' || pipeline === 'ERROR') return 'failed';
-  if (pipeline === 'SUCCESS') return 'done';
-  if (pipeline === 'PENDING' || pipeline === 'EXPECTED') return 'running';
-  return 'none';
+  if (pipeline === 'FAILURE' || pipeline === 'ERROR') return { outcome: 'failed', failure: null };
+  if (pipeline === 'SUCCESS') return { outcome: 'done', failure: null };
+  if (pipeline === 'PENDING' || pipeline === 'EXPECTED') return { outcome: 'running', failure: null };
+  return { outcome: 'none', failure: null };
 }
 
 // The newest release of the repo, when it landed after this merge. It is a correlation,
@@ -598,7 +621,8 @@ function baseShape(pr, me) {
     // The raw value kept above for anyone reading it directly; this is what "running" vs
     // "no signal at all" actually means, computed once so the render layer and the sort
     // order cannot drift apart on it.
-    pipelineOutcome: pipelineOutcome(pr.mergeCommit),
+    pipelineOutcome: pipelineSummary(pr.mergeCommit).outcome,
+    pipelineFailure: pipelineSummary(pr.mergeCommit).failure,
     release: releaseAfterMerge(pr),
     // The branch it landed on, but only once merged, and only when that isn't the
     // repo's default: a merge into a stacked feature branch has not shipped the way a

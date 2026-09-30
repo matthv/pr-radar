@@ -240,12 +240,32 @@ know. Amber while it runs — the outcome is unknown, and green would announce a
 that has not happened — with the card breathing to say the decision is live. Green with
 the version tag once published, red and back on your plate if it failed.
 
-**Amber only while something is genuinely in flight.** GitHub's rollup for a merge commit
-is `null`, not `PENDING`, when no check was ever posted to it at all — merging into a
-branch with no CI configured on push, a stacked feature branch used only to collect other
-PRs, say. That is permanent, not a gap before the real answer arrives, so it settles
-straight to green rather than breathing forever for a decision that is never coming
-— seen on forest-rails#796 and #795, stuck amber for good until this was caught.
+**The outcome is read off the check suites, not the commit's rollup.** A suite's own
+conclusion already accounts for `continue-on-error`: it is `SUCCESS` as soon as every
+required job passed, even when an optional one failed. The coarse `statusCheckRollup`
+does not — it flags the whole commit `FAILURE` because one check run inside a passing
+suite failed, which is exactly what a flaky optional test looks like. agent-nodejs#1918
+wore red for a day that way, its release job run and published, because its "LLM
+Integration Tests" are allowed to fail. Any suite still short of `COMPLETED` means
+running; any suite concluded `FAILURE`, `TIMED_OUT` or `STARTUP_FAILURE` means failed.
+Suites with zero check runs — apps that only listen for pull-request events and never
+fired on this push — are not a signal either way. The rollup is only the fallback when no
+suite data is there.
+
+**Only the commit's own pipeline counts.** A workflow triggered by `workflow_run` reacts
+to another workflow finishing, and a `schedule` cron happens to land on whatever the
+branch tip is: neither is what this merge set off, so their suites are left out.
+forestadmin-server#8542 wore red — and sat back on its author's plate — for a deploy that
+had passed, because "Notify CI Failure on Main", a `workflow_run` reaction broken for a
+year, had failed beside it. When a pipeline does fail, the red pill names the workflow and
+opens its run: "Build, Test and Deploy failed" and "release failed" are not the same news.
+
+**Amber only while something is genuinely in flight.** With no check suite and no rollup
+at all — nothing was ever posted to the merge commit, as when merging into a branch with
+no CI configured on push, a stacked feature branch used only to collect other PRs — that
+is permanent, not a gap before the real answer arrives, so it settles straight to green
+rather than breathing forever for a decision that is never coming — seen on
+forest-rails#796 and #795, stuck amber for good until this was caught.
 
 **A merge into anything but the repo's default branch wears a small branch badge**, the
 same recipe as a thread's file-path chip: a location fact, shown whole, never edited down
