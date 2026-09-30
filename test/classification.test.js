@@ -895,3 +895,24 @@ test('a failed suite with no workflow run still counts, unnamed', () => {
   assert.equal(decorated.pipelineOutcome, 'failed');
   assert.equal(decorated.pipelineFailure, null);
 });
+
+// Observed on forestadmin-server#8534, two minutes after its merge: the deploy's suite was
+// queued with no job yet, and was taken for an app that never fires — the card went green.
+test('an Actions workflow queued with no job yet is running, not absent', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    { status: 'QUEUED', conclusion: null, checkRuns: { totalCount: 0 } },
+    suite('push', 'Build, Test and Deploy', null, { status: 'QUEUED', checkRuns: { totalCount: 0 } }),
+    suite('workflow_run', 'Notify CI Failure on Main', 'SKIPPED'),
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'running');
+});
+
+test('an app that never fires on a push — queued, no job, no workflow run — is still ignored', () => {
+  const decorated = decorateMine(baseShape(mergedWith([
+    { status: 'QUEUED', conclusion: null, checkRuns: { totalCount: 0 } },
+    suite('push', 'Build, Test and Deploy', 'SUCCESS'),
+  ]), ME));
+
+  assert.equal(decorated.pipelineOutcome, 'done');
+});

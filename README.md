@@ -249,8 +249,11 @@ wore red for a day that way, its release job run and published, because its "LLM
 Integration Tests" are allowed to fail. Any suite still short of `COMPLETED` means
 running; any suite concluded `FAILURE`, `TIMED_OUT` or `STARTUP_FAILURE` means failed.
 Suites with zero check runs — apps that only listen for pull-request events and never
-fired on this push — are not a signal either way. The rollup is only the fallback when no
-suite data is there.
+fired on this push — are not a signal either way, unless the suite is a GitHub Actions run
+not finished yet: a workflow just queued has no job for a minute or two, and taking it for
+an app that never fires sent forestadmin-server#8534 straight to settled green two minutes
+after its merge, its deploy about to start. The rollup is only the fallback when no suite
+data is there.
 
 **Only the commit's own pipeline counts.** A workflow triggered by `workflow_run` reacts
 to another workflow finishing, and a `schedule` cron happens to land on whatever the

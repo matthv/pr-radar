@@ -565,8 +565,12 @@ const REACTIVE_EVENTS = new Set(['workflow_run', 'schedule']);
 const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE']);
 
 function pipelineSummary(mergeCommit) {
+  // A suite with no check run is usually an app that never fires on a push (Nx Cloud,
+  // Macroscope — no workflow run, QUEUED for ever). But an Actions workflow just queued has
+  // no job yet either: forestadmin-server#8534, two minutes after its merge, read as
+  // settled green while its deploy was about to start. A workflow run tells them apart.
   const suites = (mergeCommit?.checkSuites?.nodes ?? [])
-    .filter(s => (s.checkRuns?.totalCount ?? 0) > 0)
+    .filter(s => (s.checkRuns?.totalCount ?? 0) > 0 || (s.workflowRun && s.status !== 'COMPLETED'))
     .filter(s => !REACTIVE_EVENTS.has(s.workflowRun?.event));
   if (suites.length) {
     if (suites.some(s => s.status !== 'COMPLETED')) return { outcome: 'running', failure: null };
