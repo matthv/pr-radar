@@ -17,9 +17,14 @@ const { fetchDashboard } = require('./github');
 const digest = require('./digest');
 const slack = require('./slack');
 const update = require('./update');
+const demo = require('./demo');
+
+// A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
+// board on the default port and its browser state stay untouched.
+const DEMO = process.env.PR_RADAR_DEMO === 'true';
 
 const PORT = Number(process.env.PORT || 4321);
-const ORG = process.env.PR_RADAR_ORG;
+const ORG = DEMO ? demo.ORG : process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
@@ -98,6 +103,16 @@ function readSlackInBackground(prs) {
 }
 
 async function dashboard(force) {
+  if (DEMO) {
+    return {
+      ...demo.payload(force),
+      refreshSeconds: REFRESH_SECONDS,
+      gitdeckUrl: GITDECK_URL,
+      hideDrafts: false,
+      customSound: Boolean(SOUND_FILE),
+      digestAvailable: true,
+    };
+  }
   if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
   if (inFlight) return inFlight;
 
@@ -197,7 +212,7 @@ const server = http.createServer(async (req, res) => {
       // Added to the response, not the cache: the banner follows the latest check without
       // waiting for a GitHub refresh to rebuild the payload.
       const payload = await dashboard(url.searchParams.get('force') === '1');
-      json(res, 200, { ...payload, update: update.status() }, version);
+      json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
     }
@@ -222,7 +237,8 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
-      json(res, 200, await digestFor(await readJsonBody(req)));
+      const body = await readJsonBody(req);
+      json(res, 200, DEMO ? await demo.notes(body) : await digestFor(body));
     } catch (error) {
       json(res, 502, { error: error.message });
     }
@@ -233,6 +249,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, async () => {
+  if (DEMO) {
+    console.log(`PR Radar DEMO → http://localhost:${PORT}\n  fake board, nothing fetched · a manual refresh brings in (or takes back) a new review`);
+    return;
+  }
   digestAvailable = await digest.available();
   slackMode = slack.mode(digestAvailable);
   const SLACK_MODES = {

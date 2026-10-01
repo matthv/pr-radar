@@ -6,6 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "demo": "PR_RADAR_DEMO=true PORT=${DEMO_PORT:-4322} node server.js",
     "test": "node --test"
   },
   "engines": {

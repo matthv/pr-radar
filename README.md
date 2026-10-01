@@ -48,6 +48,27 @@ packages at all. `npm test` and `npm start` do work, npm not asking for one.
 Authentication reuses your `gh` session (`gh auth status` must be green). A
 `GITHUB_TOKEN` in the environment takes precedence over `gh` if you prefer.
 
+### Demo mode
+
+```bash
+npm run demo        # http://localhost:4322 (DEMO_PORT to change it)
+```
+
+A made-up board showing every state at once, to present the tool without waiting for
+real PRs to reach each one. Nothing is fetched: no GitHub, Slack, Claude or git call,
+and the real board on 4321 keeps running beside it. Being another port, the demo also
+has its own browser state, so snoozes and mute on the real board are left alone.
+
+- The PRs are shaped like GitHub's answer and go through the same classification as
+  real ones, so groups, colours and pills are the board's own, and follow when a rule
+  changes. `test/demo.test.js` fails if a case stops showing.
+- The people are ForestAdmin members who committed recently, avatars included. What
+  they say on the cards is invented.
+- **Rafraîchir** brings in a new review request, with the sound and the glowing rail;
+  the next click takes it back, so the moment can be replayed.
+- Standup notes answer at once, with a line written for each PR.
+- The update banner is shown, on made-up commit titles.
+
 ## Configuration
 
 Everything lives in a **`.env`** file at the root (`.env.example` is a commented
