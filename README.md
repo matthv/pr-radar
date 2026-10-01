@@ -18,8 +18,19 @@ follows reality without any manual step.
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
 | `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, replies to your comments, new commits since your feedback |
+| `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
 | `Waiting` | you replied — the ball is with the reviewers | your open threads / your changes-requested await a fix |
-| `Nothing to report` | everything else | everything else |
+| `Nothing to report` | drafts, shown as `Drafts` | everything else |
+
+**Ready to merge** sits right under *On my plate* and above the merged group. An approved
+PR of yours with nothing left open used to land in *Nothing to report*, green, below
+*Recently merged* — and was read as already done, when it only waited for you to merge
+it. A CI still running keeps it there (its pill says so); a failing one, a conflict or a
+remark sends it back to *On my plate*. Its rail is a gradient, indigo into green: your
+move, because it is approved — no new hue, two that already mean exactly that. It has
+its own counter in the summary band, so *of my PRs to fix* keeps meaning what to fix, and
+it rings and lights its rail when an approval lands, like any card that turns your way.
+On my side *Nothing to report* now only ever holds drafts, so it is labelled *Drafts*.
 
 ## Running it
 

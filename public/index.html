@@ -153,6 +153,8 @@
   .counter .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .counter.todo b { color: var(--indigo); }
   .counter.todo .dot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
+  .counter.ready b { color: var(--indigo); }
+  .counter.ready .dot { background: linear-gradient(135deg, var(--indigo), var(--emerald)); }
   .counter.pending b { color: var(--amber); }
   .counter.pending .dot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
   .counter.zero { color: var(--text-faint); border-color: var(--hairline); }
@@ -470,6 +472,8 @@
   .group-label:first-of-type { margin-top: 18px; }
   .group-label .gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
+  .group-label.ready .gdot { background: linear-gradient(135deg, var(--indigo), var(--emerald)); }
+  .group-label.ready { color: var(--indigo); }
   .group-label.waiting .gdot,
   .group-label.merged .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
   .group-label.idle .gdot { background: var(--border); }
@@ -498,6 +502,10 @@
   }
   .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
   .card.action::before { background: linear-gradient(180deg, var(--indigo), var(--indigo-2)); }
+  /* Ready to merge: indigo for "your move", green for "because it is approved" — no new
+     hue, a recipe of two that already mean exactly those things. */
+  .card.ready::before { background: linear-gradient(180deg, var(--indigo), var(--emerald)); }
+  .card.ready { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--emerald-soft) 14%, var(--surface) 42%); }
   .card.waiting::before,
   .card.merged::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
@@ -624,6 +632,7 @@
     padding: 1.5px 7px;
   }
   .pill.todo { background: var(--indigo-soft); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
+  .pill.ready { background: linear-gradient(90deg, var(--indigo-soft), var(--emerald-soft)); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
   .pill.pending { background: var(--amber-soft); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent); }
   .pill.good { background: var(--emerald-soft); color: var(--emerald); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--emerald) 18%, transparent); }
   .pill.alert { background: var(--rose-soft); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 18%, transparent); }
@@ -1079,6 +1088,7 @@ const I18N = {
     orbit_waiting: 'en attente',
     orbit_merged: 'fusionnée',
     orbit_idle: 'rien à signaler',
+    orbit_ready: 'prête à merger',
     soundOn: 'carillon activé — cliquer pour couper',
     soundOff: 'carillon coupé — cliquer pour activer',
     titleMine: 'Mes PRs',
@@ -1087,6 +1097,8 @@ const I18N = {
     counterReviews_one: 'review à traiter',
     counterReviews_many: 'reviews à traiter',
     counterWaiting: 'en attente d’un fix',
+    counterReady_one: 'prête à merger',
+    counterReady_many: 'prêtes à merger',
     stale_one: '{n} PR sans activité depuis {days} j, ignorée',
     stale_many: '{n} PRs sans activité depuis {days} j, ignorées',
     groupMineAction: 'À traiter de mon côté',
@@ -1103,6 +1115,8 @@ const I18N = {
     pipelineFailedNamed: '{workflow} en échec',
     reasonMergePipeline: 'la release a échoué après le merge',
     groupMineWaiting: 'En attente des relecteurs',
+    groupMineReady: 'Prêtes à merger',
+    groupMineDrafts: 'Brouillons',
     groupReviewAction: 'À faire de mon côté',
     groupReviewWaiting: 'J’attends un fix de l’auteur',
     groupIdle: 'Rien à signaler',
@@ -1205,6 +1219,7 @@ const I18N = {
     orbit_waiting: 'waiting',
     orbit_merged: 'merged',
     orbit_idle: 'nothing to report',
+    orbit_ready: 'ready to merge',
     soundOn: 'chime on — click to mute',
     soundOff: 'chime muted — click to unmute',
     titleMine: 'My PRs',
@@ -1213,6 +1228,8 @@ const I18N = {
     counterReviews_one: 'review to handle',
     counterReviews_many: 'reviews to handle',
     counterWaiting: 'awaiting a fix',
+    counterReady_one: 'ready to merge',
+    counterReady_many: 'ready to merge',
     stale_one: '{n} PR inactive for over {days} days, ignored',
     stale_many: '{n} PRs inactive for over {days} days, ignored',
     groupMineAction: 'On my plate',
@@ -1229,6 +1246,8 @@ const I18N = {
     pipelineFailedNamed: '{workflow} failed',
     reasonMergePipeline: 'the release failed after the merge',
     groupMineWaiting: 'Waiting on the reviewers',
+    groupMineReady: 'Ready to merge',
+    groupMineDrafts: 'Drafts',
     groupReviewAction: 'On my plate',
     groupReviewWaiting: 'Waiting on the author',
     groupIdle: 'Nothing to report',
@@ -1705,8 +1724,8 @@ function resolveMine(pr) {
     displayReasons: pr.reasons
       .filter(r => r.kind === 'changes-requested')
       .map(r => t('reasonChangesRequested', { authors: r.authors.join(', ') })),
-    // Green means "signed off and settled": on my own PR, approved and nothing left.
-    approved: pr.bucket === 'idle' && pr.reviewDecision === 'APPROVED',
+    // My approved PRs have their own group now ("ready to merge"), never a green "idle".
+    approved: false,
   };
 }
 
@@ -1841,6 +1860,7 @@ function filterList(list) {
 
 const FOCUS = {
   mineAction: { column: 'mine', bucket: 'action' },
+  mineReady: { column: 'mine', bucket: 'ready' },
   reviewAction: { column: 'reviews', bucket: 'action' },
   reviewWaiting: { column: 'reviews', bucket: 'waiting' },
 };
@@ -1848,7 +1868,9 @@ const FOCUS = {
 // Ordered by what each state asks of you: your move, then waiting on someone, then a
 // merge to glance at, then nothing. A merge sat second before, which ranked a published
 // release above a PR actually blocked on a reviewer.
-const BUCKET_ORDER = ['action', 'waiting', 'merged', 'idle'];
+// "Ready to merge" sits right under "to act": it is a move of mine too, and below the
+// merged group it read as already done.
+const BUCKET_ORDER = ['action', 'ready', 'waiting', 'merged', 'idle'];
 
 function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket) {
   const filtered = filterList(list).filter(pr => !onlyBucket || pr.bucket === onlyBucket);
@@ -1967,11 +1989,16 @@ function render() {
   const mineAction = filterList(mine).filter(pr => pr.needsAction).length;
   const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
   const waitingFix = filterList(reviews).filter(pr => pr.bucket === 'waiting').length;
-  const total = mineAction + reviewAction;
-  trackGlow([...filterList(mine), ...filterList(reviews)].filter(pr => pr.needsAction).map(pr => pr.id));
+  const mineReady = filterList(mine).filter(pr => pr.bucket === 'ready').length;
+  // An approval landing is news worth the chime and the glow, though it is not a fix: it
+  // rings with the actions, and keeps a counter of its own.
+  const total = mineAction + reviewAction + mineReady;
+  trackGlow([...filterList(mine), ...filterList(reviews)]
+    .filter(pr => pr.needsAction || pr.bucket === 'ready').map(pr => pr.id));
 
   el('counters').innerHTML = [
     counter('mineAction', 'todo', mineAction, t('counterMine')),
+    counter('mineReady', 'ready', mineReady, tn('counterReady', mineReady)),
     counter('reviewAction', 'todo', reviewAction, tn('counterReviews', reviewAction)),
     counter('reviewWaiting', 'pending', waitingFix, t('counterWaiting')),
   ].join('');
@@ -2032,9 +2059,11 @@ function render() {
 
   const shownMine = renderColumn(el('mine'), mine, mineCard, {
     action: t('groupMineAction'),
+    ready: t('groupMineReady'),
     merged: t('groupMineMerged'),
     waiting: t('groupMineWaiting'),
-    idle: t('groupIdle'),
+    // On my side "idle" can only be a draft now: approved ones are ready to merge.
+    idle: t('groupMineDrafts'),
   }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
 
   // The notes summarise what is on screen, so the project picker and the filters double
@@ -2357,6 +2386,7 @@ function restoreCopy() {
 // same colour as the card it stands for.
 const ORBIT_COLOURS = {
   action: ['var(--indigo)', 'var(--indigo-soft)'],
+  ready: ['var(--indigo)', 'var(--emerald-soft)'],
   waiting: ['var(--amber)', 'var(--amber-soft)'],
   merged: ['var(--emerald)', 'var(--emerald-soft)'],
   idle: ['var(--text-faint)', 'var(--surface)'],
@@ -2436,10 +2466,10 @@ function renderOrbits(prs) {
       Number(b === me) - Number(a === me) || right.length - left.length || a.localeCompare(b),
   );
 
-  const legend = ['action', 'waiting', 'merged', 'idle']
+  const legend = ['action', 'ready', 'waiting', 'merged', 'idle']
     .map(
       bucket =>
-        `<span><i style="background:${ORBIT_COLOURS[bucket][0]}"></i>${t(`orbit_${bucket}`)}</span>`,
+        `<span><i style="background:${bucket === 'ready' ? 'linear-gradient(135deg, var(--indigo), var(--emerald))' : ORBIT_COLOURS[bucket][0]}"></i>${t(`orbit_${bucket}`)}</span>`,
     )
     .join('');
 
@@ -2530,6 +2560,7 @@ function activityClock(iso) {
 // and asking prose to carry it would put it a regeneration away and let it go stale.
 const NOTE_STATE = {
   action: ['todo', 'orbit_action'],
+  ready: ['ready', 'orbit_ready'],
   waiting: ['pending', 'orbit_waiting'],
   merged: ['good', 'orbit_merged'],
   idle: ['', 'orbit_idle'],

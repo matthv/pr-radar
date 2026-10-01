@@ -710,8 +710,12 @@ function decorateMine(pr) {
   const needsAction = reasons.length > 0;
 
   // A freshly opened PR asks nothing of me, but I am blocked on a review — "nothing to
-  // report" undersells that. A draft is waiting on no one, and an approved PR is done.
+  // report" undersells that. A draft is waiting on no one.
   const awaitingReview = !pr.merged && !pr.isDraft && pr.reviewDecision !== 'APPROVED';
+  // Approved with nothing left open: the one move left is mine, merging. It used to be
+  // "nothing to report", green, below the merged group — read as already done. A CI still
+  // running keeps it here (its pill says so); a failing one is an action above.
+  const readyToMerge = !pr.merged && !pr.isDraft && pr.reviewDecision === 'APPROVED';
 
   const bucket = needsAction
     ? 'action'
@@ -719,7 +723,9 @@ function decorateMine(pr) {
       ? 'merged'
       : waitingOnThem.length || awaitingReview
         ? 'waiting'
-        : 'idle';
+        : readyToMerge
+          ? 'ready'
+          : 'idle';
 
   return {
     ...pr,

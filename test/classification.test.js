@@ -465,14 +465,41 @@ test('my PR: a freshly opened one is waiting on the reviewers, not settled', () 
   assert.equal(decorated.bucket, 'waiting');
 });
 
-test('my PR: a draft waits on no one, and an approved one is done', () => {
+test('my PR: a draft waits on no one', () => {
   const draft = decorateMine(baseShape(node({ isDraft: true, reviewDecision: 'REVIEW_REQUIRED' }), ME));
   assert.equal(draft.awaitingReview, false);
   assert.equal(draft.bucket, 'idle');
 
-  const approved = decorateMine(baseShape(node({ reviewDecision: 'APPROVED' }), ME));
-  assert.equal(approved.awaitingReview, false);
-  assert.equal(approved.bucket, 'idle');
+  const approvedDraft = decorateMine(baseShape(node({ isDraft: true, reviewDecision: 'APPROVED' }), ME));
+  assert.equal(approvedDraft.bucket, 'idle', 'a draft is not ready to merge, approved or not');
+});
+
+// Observed 2026-10-01 on forestadmin#9997 and agent-ruby#398: approved, CI green, sitting
+// in "nothing to report", green, below the merged group — read as already done.
+const mineWith = overrides => decorateMine(baseShape(node({ author: user(ME), reviewDecision: 'APPROVED', ...overrides }), ME));
+const headCi = state => ({ nodes: [{ commit: { committedDate: ago(1), author: { user: user(ME) }, statusCheckRollup: { state } } }] });
+
+test('my PR: approved with nothing left open is ready to merge, not an action to fix', () => {
+  const ready = mineWith({ head: headCi('SUCCESS') });
+  assert.equal(ready.bucket, 'ready');
+  assert.equal(ready.needsAction, false, 'the "to fix" counter keeps its meaning');
+  assert.equal(ready.awaitingReview, false);
+
+  assert.equal(mineWith({ head: headCi('PENDING') }).bucket, 'ready', 'a CI still running says so in its own pill');
+});
+
+test('my PR: approved but blocked is an action or a wait, never ready', () => {
+  const failing = mineWith({ head: headCi('FAILURE') });
+  assert.equal(failing.bucket, 'action');
+  assert.deepEqual(failing.reasons.map(r => r.kind), ['ci']);
+
+  assert.equal(mineWith({ mergeable: 'CONFLICTING' }).bucket, 'action');
+
+  const toFix = mineWith({ reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(1)]] })] } });
+  assert.equal(toFix.bucket, 'action');
+
+  const waiting = mineWith({ reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(2)], [ME, ago(1)]] })] } });
+  assert.equal(waiting.bucket, 'waiting', 'a reply of mine awaits the reviewer');
 });
 
 test('my PR: a repo with no review policy still counts as awaiting review', () => {
