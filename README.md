@@ -263,6 +263,8 @@ forestadmin-server#8542 wore red — and sat back on its author's plate — for 
 had passed, because "Notify CI Failure on Main", a `workflow_run` reaction broken for a
 year, had failed beside it. When a pipeline does fail, the red pill names the workflow and
 opens its run: "Build, Test and Deploy failed" and "release failed" are not the same news.
+A pill reads as a label, so the few that open something — this one, and the release tag —
+wear a `↗` after their text, and their outline firms up on hover — an underline broke at the gap before the arrow — with a tooltip saying where they lead.
 
 **Amber only while something is genuinely in flight.** With no check suite and no rollup
 at all — nothing was ever posted to the merge commit, as when merging into a branch with

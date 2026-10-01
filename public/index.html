@@ -606,6 +606,14 @@
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
     background: var(--hairline); color: var(--text-soft);
   }
+  /* A pill reads as a label, so the few that open something (the failed run, the release)
+     say so: the arrow a link to another tab usually wears, and a hover that answers. */
+  /* No underline on hover: it broke at the gap before the arrow. The outline answers. */
+  a.pill { text-decoration: none; cursor: pointer; transition: box-shadow .15s, filter .15s; }
+  a.pill::after { content: "↗"; margin-left: 3px; font-size: .92em; opacity: .7; }
+  a.pill:hover { box-shadow: inset 0 0 0 1px currentColor; filter: brightness(.97); }
+  a.pill:hover::after { opacity: 1; }
+  a.pill:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
   /* A draft is provisional, and the neutral chip disappeared on an idle card: hairline on
      sunken is 1.03:1, and no grey in this palette clears 1.8:1 against another. A dashed
      outline reads on any ground — the pattern carries it, not the value — and says "not
@@ -1083,7 +1091,8 @@ const I18N = {
     stale_many: '{n} PRs sans activité depuis {days} j, ignorées',
     groupMineAction: 'À traiter de mon côté',
     groupMineMerged: 'Fusionnées récemment',
-    releaseTag: 'dernière release depuis le merge',
+    releaseTag: 'dernière release depuis le merge — ouvrir la release sur GitHub',
+    pipelineFailedTitle: 'ouvrir le run en échec sur GitHub',
     dismiss: 'retirer cette carte du tableau',
     pillMergedAgo: 'fusionnée il y a {v}',
     mergedTitle: 'fusion de la PR — {date}',
@@ -1208,7 +1217,8 @@ const I18N = {
     stale_many: '{n} PRs inactive for over {days} days, ignored',
     groupMineAction: 'On my plate',
     groupMineMerged: 'Recently merged',
-    releaseTag: 'latest release since the merge',
+    releaseTag: 'latest release since the merge — open the release on GitHub',
+    pipelineFailedTitle: 'open the failed run on GitHub',
     dismiss: 'drop this card from the board',
     pillMergedAgo: 'merged {v} ago',
     mergedTitle: 'PR merged on {date}',
@@ -1759,7 +1769,8 @@ function mergeOutcomePills(pr) {
     const failure = pr.pipelineFailure;
     const label = failure?.workflow ? t('pipelineFailedNamed', { workflow: failure.workflow }) : t('pipelineFailed');
     pills.push(failure?.url
-      ? `<a class="pill alert" href="${escapeHtml(failure.url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`
+      ? `<a class="pill alert" href="${escapeHtml(failure.url)}" target="_blank" rel="noopener"`
+        + ` title="${escapeHtml(t('pipelineFailedTitle'))}">${escapeHtml(label)}</a>`
       : pill('alert', escapeHtml(label)));
   } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
     pills.push(
