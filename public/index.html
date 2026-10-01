@@ -663,10 +663,10 @@
   /* Offered on every card. Visible on hover, and permanently once snoozed — otherwise
      nothing would say which card is asleep while they are revealed. */
   .snooze {
-    display: flex; align-items: center; gap: 6px;
-    flex: none; margin-top: 11px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex: none; box-sizing: border-box; height: 26px; min-width: 26px; margin-top: 11px;
     font: inherit; font-size: 11.5px; line-height: 1.2; color: var(--text-faint);
-    background: none; border: 0; padding: 3px 7px; border-radius: 7px;
+    background: none; border: 0; padding: 0 7px; border-radius: 7px;
     cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
   }
   .card:hover .snooze, .snooze:focus-visible { opacity: 1; }
