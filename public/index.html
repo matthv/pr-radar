@@ -1370,9 +1370,22 @@ function scheduleRefresh(seconds) {
 }
 
 let audio = null;
+let customSound = null;
 
+// PR_RADAR_SOUND set: the reader's own file, played in full. Any failure to play it (the
+// file moved, a format the browser cannot read) falls back to the built-in chime.
 function beep() {
   if (!soundOn) return;
+  if (state.data?.customSound) {
+    customSound ??= new Audio('/sound');
+    customSound.currentTime = 0;
+    customSound.play().catch(chime);
+    return;
+  }
+  chime();
+}
+
+function chime() {
   // One context for the page: a document may only hold a handful, and a tool left open all
   // day would beep its way past the cap.
   audio ??= new (window.AudioContext || window.webkitAudioContext)();

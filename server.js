@@ -3,6 +3,7 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const os = require('node:os');
 const { createHash } = require('node:crypto');
 
 // Variables already exported in the shell keep precedence over the file.
@@ -25,6 +26,13 @@ const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
+// Your own notification sound, a local file. Only this one path is ever served, at a fixed
+// route: the page cannot ask for any other file through it.
+const SOUND_FILE = (process.env.PR_RADAR_SOUND ?? '').trim().replace(/^~(?=\/|$)/, os.homedir());
+const SOUND_TYPES = {
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg',
+  '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.webm': 'audio/webm',
+};
 // Half the interval: otherwise a poll lands on a barely-valid cache and serves data
 // almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
@@ -108,6 +116,7 @@ async function dashboard(force) {
           refreshSeconds: REFRESH_SECONDS,
           gitdeckUrl: GITDECK_URL,
           hideDrafts: HIDE_DRAFTS,
+          customSound: Boolean(SOUND_FILE),
           digestAvailable,
         },
       };
@@ -195,6 +204,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/sound') {
+    try {
+      if (!SOUND_FILE) throw new Error('no PR_RADAR_SOUND');
+      const file = await fs.readFile(SOUND_FILE);
+      res.writeHead(200, {
+        'Content-Type': SOUND_TYPES[path.extname(SOUND_FILE).toLowerCase()] ?? 'application/octet-stream',
+        'Cache-Control': 'no-store',
+      });
+      res.end(file);
+    } catch {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('no sound');
+    }
+    return;
+  }
+
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
       json(res, 200, await digestFor(await readJsonBody(req)));
@@ -221,6 +246,7 @@ server.listen(PORT, async () => {
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +
+      `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
   update.start();

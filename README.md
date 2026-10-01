@@ -49,6 +49,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
+| `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
@@ -568,6 +569,11 @@ cannot update one caller and quietly leave the other stale.
   from `gh pr create` and know it exists. It rings when a reviewer turns it into
   your move. The first render after opening the page is silent too, or every reload
   would chime.
+- **Your own sound**: `PR_RADAR_SOUND=~/Music/ding.mp3` replaces the chime with that
+  file, played in full — no cap, it is your sound. The server serves that one path, at a
+  fixed `/sound` route, and nothing else: the page never names a file. If the browser
+  cannot play it (moved, a format it does not read — `.aiff` among them), the chime plays
+  instead. Like the chime, it only sounds once you have interacted with the page.
 - Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
   in the header, the exact interval on hover.
 
