@@ -2436,8 +2436,10 @@ function showNotes(text, counts) {
         // plain-line fallback, losing the time, repo and state pill on every line.
         // One number or several — a bullet can cover a whole piece of work, "#9977 #8522"
         // or "#9977, #8522:". The model does not always put a space before the sentence
-        // either: "#812: Corrige…" in French, observed 2026-09-29.
-        const bullet = line.match(/^[-*•]\s*(#\d+(?:[\s,]+#\d+)*)\s*(?::\s*|\s)\s*(\S.*)$/);
+        // either: "#812: Corrige…" in French, observed 2026-09-29. Nor always the dash:
+        // on 2026-10-01 the French notes came back as bare "#9977 #8522 …" lines, and every
+        // one fell to the plain fallback. "#" then a digit cannot be a "## MINE" marker.
+        const bullet = line.match(/^(?:[-*•]\s*)?(#\d+(?:[\s,]+#\d+)*)\s*(?::\s*|\s)\s*(\S.*)$/);
         const numbers = bullet ? bullet[1].match(/\d+/g) : [];
         const rest = bullet ? bullet[2] : '';
         const plain = bullet ? `${numbers.map(n => `#${n}`).join(' ')} ${rest}` : line.replace(/^[-*•]\s*/, '');
