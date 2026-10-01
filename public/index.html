@@ -525,6 +525,27 @@
   @media (prefers-reduced-motion: no-preference) {
     .card.pipeline-running::after { animation: breathe 1.8s ease-in-out infinite; }
   }
+
+  /* A card that just rang keeps its rail lit, so a glance says which one it was. Only "to
+     act" cards ever glow, and their rail is indigo already: the halo adds no new colour. */
+  /* The card clips what sits left of it, so the light goes inwards: the rail widens and
+     throws a soft glow onto the card itself. */
+  .card.glow::before { width: 5px; z-index: 2; }
+  @keyframes rail-glow {
+    0%, 100% { width: 4px; box-shadow: 2px 0 8px 0 color-mix(in srgb, var(--indigo) 20%, transparent); }
+    50% { width: 7px; box-shadow: 6px 0 22px 2px color-mix(in srgb, var(--indigo) 45%, transparent); }
+  }
+  @keyframes rail-glow-out {
+    from { width: 5px; box-shadow: 4px 0 14px 1px color-mix(in srgb, var(--indigo) 30%, transparent); }
+    to { width: 3px; box-shadow: 0 0 0 0 transparent; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .card.glow::before { animation: rail-glow 2.4s ease-in-out infinite var(--glow-elapsed, 0s); }
+    .card.glow.glow-ending::before { animation: rail-glow-out 10s ease-out forwards var(--glow-fade-elapsed, 0s); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card.glow::before { width: 6px; filter: saturate(1.5) brightness(1.1); }
+  }
   /* The plain card: it is the others that add something. Receding through a grey fill
      could not work — page, fill and border sit within 1.2:1 of each other in this palette
      — so it recedes through the one channel that carries priority here, colour: no rail,
@@ -895,6 +916,9 @@ let bootVersion = null;
 const state = {
   data: null,
   lastActionCount: null,
+  lastActionIds: null,
+  // id → epoch ms when its rail stops glowing, or null while the tab is in the background.
+  glow: new Map(),
   open: new Set(),
   timer: null,
   intervalMs: null,
@@ -1554,14 +1578,72 @@ function pipelineClass(pr) {
   return ' pipeline-none';
 }
 
+// The chime says something landed on your plate, not which card: those that just did keep
+// their rail glowing for two minutes, so a glance finds them. Same rule as the chime, per
+// card — entered "to act" since the last render, filters applied, never on the first
+// render. Independent of the mute button: a silent board is where it helps most.
+const GLOW_MS = 2 * 60 * 1000;
+const GLOW_FADE_MS = 10 * 1000;
+const GLOW_PULSE_S = 2.4;
+let glowTimer = null;
+
+function trackGlow(actionIds) {
+  const now = Date.now();
+  const current = new Set(actionIds);
+  if (state.lastActionIds) {
+    for (const id of current) {
+      if (!state.lastActionIds.has(id)) state.glow.set(id, document.hidden ? null : now + GLOW_MS);
+    }
+  }
+  // A card that left "to act" — you answered — has nothing left to point at.
+  for (const id of state.glow.keys()) if (!current.has(id)) state.glow.delete(id);
+  state.lastActionIds = current;
+  scheduleGlowExpiry();
+}
+
+function scheduleGlowExpiry() {
+  clearTimeout(glowTimer);
+  const ends = [...state.glow.values()].filter(Boolean);
+  if (!ends.length) return;
+  const next = Math.min(...ends);
+  // Wake once to start the fade, once more to drop the class: no timer runs in between.
+  const fadeAt = next - GLOW_FADE_MS;
+  glowTimer = setTimeout(() => {
+    const now = Date.now();
+    for (const [id, until] of state.glow) if (until && until <= now) state.glow.delete(id);
+    render();
+  }, Math.max(0, (Date.now() < fadeAt ? fadeAt : next) - Date.now()) + 20);
+}
+
+function stopGlow(card) {
+  if (!card || !state.glow.has(card.dataset.id)) return;
+  state.glow.delete(card.dataset.id);
+  card.classList.remove('glow', 'glow-ending');
+  scheduleGlowExpiry();
+}
+
+// Rendered as negative delays: render() rebuilds every card, and an animation restarting
+// at its first frame on each refresh would visibly jump.
+function glowAttrs(pr) {
+  const until = state.glow.get(pr.id);
+  if (!until) return { cls: '', style: '' };
+  const left = until - Date.now();
+  const elapsed = GLOW_MS - left;
+  if (left <= GLOW_FADE_MS) {
+    return { cls: ' glow glow-ending', style: ` style="--glow-fade-elapsed: -${((GLOW_FADE_MS - left) / 1000).toFixed(2)}s"` };
+  }
+  return { cls: ' glow', style: ` style="--glow-elapsed: -${((elapsed / 1000) % GLOW_PULSE_S).toFixed(2)}s"` };
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
   const note = cardNotes.get(pr.id);
   const editingNote = state.editingNote === pr.id;
+  const glow = glowAttrs(pr);
 
   return `
-    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${open}" data-id="${pr.id}">
+    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${glow.cls}${open}" data-id="${pr.id}"${glow.style}>
       <div class="card-top">
         <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -1875,6 +1957,7 @@ function render() {
   const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
   const waitingFix = filterList(reviews).filter(pr => pr.bucket === 'waiting').length;
   const total = mineAction + reviewAction;
+  trackGlow([...filterList(mine), ...filterList(reviews)].filter(pr => pr.needsAction).map(pr => pr.id));
 
   el('counters').innerHTML = [
     counter('mineAction', 'todo', mineAction, t('counterMine')),
@@ -2037,7 +2120,11 @@ async function load(force) {
   }
 }
 
+// Seen it: a hover or a click on a glowing card puts its rail back to normal.
+document.addEventListener('mouseover', event => stopGlow(event.target.closest('.card.glow')));
+
 document.addEventListener('click', event => {
+  stopGlow(event.target.closest('.card.glow'));
   const dismissUpdate = event.target.closest('[data-update-dismiss]');
   if (dismissUpdate) {
     store.set('updateDismissed', dismissUpdate.dataset.updateDismiss);
@@ -2163,7 +2250,20 @@ document.addEventListener('keydown', event => {
 // A laptop waking from sleep leaves setInterval far behind: without this you read
 // forty-minute-old data believing it is fresh. The server cache absorbs the extra call.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') load(false);
+  if (document.visibilityState !== 'visible') return;
+  // A glow that started while the tab was hidden would be over before anyone looked.
+  let started = false;
+  for (const [id, until] of state.glow) {
+    if (until === null) {
+      state.glow.set(id, Date.now() + GLOW_MS);
+      started = true;
+    }
+  }
+  if (started) {
+    scheduleGlowExpiry();
+    render();
+  }
+  load(false);
 });
 
 el('repoTrigger').addEventListener('click', () => openRepoPicker(!state.repoOpen));

@@ -574,6 +574,18 @@ cannot update one caller and quietly leave the other stale.
   fixed `/sound` route, and nothing else: the page never names a file. If the browser
   cannot play it (moved, a format it does not read — `.aiff` among them), the chime plays
   instead. Like the chime, it only sounds once you have interacted with the page.
+- **The cards that rang light up.** The chime says something landed on your plate, not
+  which card: those that just entered *to act* keep their left rail glowing — wider, a
+  slow pulse throwing soft indigo onto the card — for two minutes, then fade. Same rule
+  as the chime, per card: filters apply, nothing lights on the first render. It does not
+  depend on the mute button; a silent board is where it helps most. If the tab was in the
+  background, the two minutes start when you come back to it, or the glow would be over
+  before anyone looked. Hovering or clicking the card puts it out. With reduced motion
+  set in the OS, the rail is simply wider and brighter, without pulsing. It lives in
+  memory: a reload clears it, the way a reload does not replay the chime.
+  The light goes inwards because the card clips anything left of its edge, and every
+  render rebuilds the cards, so the pulse resumes from a negative delay rather than
+  restarting at its first frame on each refresh.
 - Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
   in the header, the exact interval on hover.
 
