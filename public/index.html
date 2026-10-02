@@ -733,6 +733,15 @@
   .linear-link svg { width: 13px; height: 13px; display: block; fill: var(--linear); }
   .linear-link:hover { background: var(--hairline); color: var(--text); }
   .linear-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .claude-link {
+    display: flex; align-items: center; justify-content: center;
+    flex: none; width: 26px; height: 26px; margin-top: 11px; padding: 0;
+    background: none; border: 0; border-radius: 7px; cursor: pointer; transition: background .15s, opacity .15s;
+  }
+  .claude-link svg { width: 14px; height: 14px; display: block; }
+  .claude-link:hover { background: var(--hairline); }
+  .claude-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .claude-link.busy { opacity: .45; cursor: progress; }
 
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a
@@ -1092,6 +1101,9 @@ const I18N = {
     noteTitleEdit: 'modifier la note (visible ici seulement)',
     notePlaceholder: 'Un lien Slack, un rappel pour plus tard…',
     slackTitle: 'ouvrir le message Slack qui annonce cette PR',
+    claudeTitle: 'reprendre la session Claude de cette PR dans un terminal',
+    claudeError: 'Impossible de reprendre la session Claude : {message}',
+    claudeScanFailed: 'Sessions Claude : {message}, certains boutons peuvent manquer.',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
@@ -1224,6 +1236,9 @@ const I18N = {
     noteTitleEdit: 'edit the note (visible here only)',
     notePlaceholder: 'A Slack link, a reminder for later…',
     slackTitle: 'open the Slack message announcing this PR',
+    claudeTitle: 'resume this PR\'s Claude session in a terminal',
+    claudeError: 'Could not resume the Claude session: {message}',
+    claudeScanFailed: 'Claude sessions: {message}, some buttons may be missing.',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
@@ -1537,6 +1552,9 @@ const SLACK_ICON = '<svg viewBox="0 0 127 127" aria-hidden="true">'
 // The Linear mark (Simple Icons), filled from a token: brand indigo, white in dark mode.
 const LINEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"/></svg>';
 
+const CLAUDE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#D97757" stroke-width="2.6"'
+  + ' stroke-linecap="round" d="M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3 5.3 18.7"/></svg>';
+
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
   if (!people.length) return '';
@@ -1728,6 +1746,9 @@ function cardHtml(pr, threadsToShow, extraPills) {
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
           ${linearLink(pr)}
+          ${pr.claudeSession
+            ? `<button type="button" class="claude-link${resuming.has(pr.id) ? ' busy' : ''}" data-claude="${pr.id}" title="${escapeHtml(t('claudeTitle'))}">${CLAUDE_ICON}</button>`
+            : ''}
           ${pr.slackUrl
             ? `<a class="slack-link" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
               + ` title="${escapeHtml(t('slackTitle'))}">${SLACK_ICON}</a>`
@@ -2043,7 +2064,8 @@ function render() {
   // the announcement links are missing, and the fix is on the reader's side.
   const warnings = data.warnings ?? [];
   const slackWarning = warnings.find(w => w.source === 'slack');
-  const sources = [...new Set(warnings.filter(w => w.source !== 'slack').map(w => w.source))];
+  const claudeWarning = warnings.find(w => w.source === 'claude');
+  const sources = [...new Set(warnings.filter(w => w.source !== 'slack' && w.source !== 'claude').map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -2051,6 +2073,7 @@ function render() {
       ? t('slackNoConnector')
       : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
+  if (claudeWarning) lines.push(t('claudeScanFailed', { message: claudeWarning.message }));
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
 
@@ -2193,6 +2216,33 @@ async function load(force) {
   }
 }
 
+// By PR rather than on the button: a refresh landing mid-request redraws the button
+// without its busy state, and a second click would open a second terminal.
+const resuming = new Set();
+
+async function resumeClaudeSession(button) {
+  const id = button.dataset.claude;
+  if (resuming.has(id)) return;
+  resuming.add(id);
+  button.classList.add('busy');
+  try {
+    const response = await fetch('/api/claude-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    alert(t('claudeError', { message: error.message }));
+  } finally {
+    resuming.delete(id);
+    document.querySelector(`.claude-link[data-claude="${id}"]`)?.classList.remove('busy');
+  }
+}
+
 // Seen it: a hover or a click on a glowing card puts its rail back to normal.
 document.addEventListener('mouseover', event => stopGlow(event.target.closest('.card.glow')));
 
@@ -2233,6 +2283,12 @@ document.addEventListener('click', event => {
   if (state.editingNote && !event.target.closest('.note-editor')) {
     state.editingNote = null;
     render();
+    return;
+  }
+
+  const claudeButton = event.target.closest('.claude-link');
+  if (claudeButton) {
+    resumeClaudeSession(claudeButton);
     return;
   }
 

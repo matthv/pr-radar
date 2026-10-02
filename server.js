@@ -18,6 +18,7 @@ const digest = require('./digest');
 const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
+const claudeSessions = require('./claude-sessions');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -32,6 +33,18 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
+const TERMINAL = (process.env.PR_RADAR_TERMINAL ?? '').trim() || 'Terminal';
+const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
+  ? 'off (PR_RADAR_CLAUDE_SESSIONS=false)'
+  : process.platform !== 'darwin'
+    ? 'off (macOS only)'
+    : !(TERMINAL in claudeSessions.TERMINALS)
+      ? `off (PR_RADAR_TERMINAL "${TERMINAL}" unknown: ${Object.keys(claudeSessions.TERMINALS).join(', ')})`
+      : null;
+const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
+// The board waits this long for the transcripts on a refresh; a longer scan, the first one
+// on a big ~/.claude, marks its cards once done.
+const CLAUDE_SCAN_WAIT_MS = 2000;
 // Your own notification sound, a local file. Only this one path is ever served, at a fixed
 // route: the page cannot ask for any other file through it.
 const SOUND_FILE = (process.env.PR_RADAR_SOUND ?? '').trim().replace(/^~(?=\/|$)/, os.homedir());
@@ -67,6 +80,29 @@ let digestAvailable = false;
 let slackMode = 'off';
 let slackWarning = null;
 let slackReading = null;
+let claudeWarning = null;
+
+function withClaudeSessions(payload) {
+  const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
+  const warnings = (payload.warnings ?? []).filter(w => w.source !== 'claude');
+  return {
+    ...payload,
+    mine: payload.mine.map(withSession),
+    reviews: payload.reviews.map(withSession),
+    warnings: claudeWarning ? [...warnings, claudeWarning] : warnings,
+  };
+}
+
+function scanClaudeSessions() {
+  return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
+    ({ unreadable }) => {
+      claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
+    },
+    error => {
+      claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
+    },
+  );
+}
 
 async function withSlackLinks(payload) {
   const links = await slack.linksFor([...payload.mine, ...payload.reviews]);
@@ -118,8 +154,17 @@ async function dashboard(force) {
   if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
   if (inFlight) return inFlight;
 
-  inFlight = fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS })
-    .then(async fetched => {
+  const scanned = CLAUDE_SESSIONS ? scanClaudeSessions() : null;
+  let scanDone = !scanned;
+  scanned?.then(() => {
+    scanDone = true;
+  });
+  inFlight = Promise.all([
+    fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS }),
+    scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
+  ])
+    .then(async ([fetchedBoard]) => {
+      const fetched = CLAUDE_SESSIONS ? withClaudeSessions(fetchedBoard) : fetchedBoard;
       const prs = [...fetched.mine, ...fetched.reviews];
       if (slackMode === 'api') await readSlack(prs);
       if (slackMode === 'claude') readSlackInBackground(prs);
@@ -138,6 +183,11 @@ async function dashboard(force) {
           digestAvailable,
         },
       };
+      if (!scanDone) {
+        scanned.then(() => {
+          if (cache.payload) cache.payload = withClaudeSessions(cache.payload);
+        });
+      }
       return cache.payload;
     })
     .finally(() => {
@@ -244,6 +294,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/claude-session' && req.method === 'POST') {
+    if (DEMO) return json(res, 200, { ok: true });
+    const [status, error] = await claudeSessions.resume(
+      { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
+      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload },
+    );
+    return json(res, status, error ? { error } : { ok: true });
+  }
+
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -276,6 +335,7 @@ server.listen(PORT, async () => {
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +
       `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
+      `  claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
