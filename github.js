@@ -7,6 +7,8 @@ const { randomUUID } = require('node:crypto');
 const { promisify } = require('node:util');
 const execFile = promisify(require('node:child_process').execFile);
 
+const { ticketKey } = require('./ticket');
+
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
 const PR_BATCH_SIZE = 6;
 const ID_BATCH_SIZE = 25;
@@ -55,6 +57,7 @@ query($ids: [ID!]!) {
         }
       }
       baseRefName
+      headRefName
       createdAt
       updatedAt
       mergeable
@@ -630,6 +633,8 @@ function baseShape(pr, me) {
     pipelineOutcome: pipelineSummary(pr.mergeCommit).outcome,
     pipelineFailure: pipelineSummary(pr.mergeCommit).failure,
     release: releaseAfterMerge(pr),
+    // Title, then branch: the board's query leaves the description out for its weight.
+    ticket: ticketKey(pr),
     // The branch it landed on, but only once merged, and only when that isn't the
     // repo's default: a merge into a stacked feature branch has not shipped the way a
     // merge into main has, and the pipeline outcome alone cannot say that — a branch with

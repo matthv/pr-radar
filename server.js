@@ -28,6 +28,7 @@ const ORG = DEMO ? demo.ORG : process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
+const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
@@ -108,6 +109,7 @@ async function dashboard(force) {
       ...demo.payload(force),
       refreshSeconds: REFRESH_SECONDS,
       gitdeckUrl: GITDECK_URL,
+      linearUrl: demo.LINEAR_URL,
       hideDrafts: false,
       customSound: Boolean(SOUND_FILE),
       digestAvailable: true,
@@ -130,6 +132,7 @@ async function dashboard(force) {
           warnings: slackWarning ? [...payload.warnings, slackWarning] : payload.warnings,
           refreshSeconds: REFRESH_SECONDS,
           gitdeckUrl: GITDECK_URL,
+          linearUrl: LINEAR_URL,
           hideDrafts: HIDE_DRAFTS,
           customSound: Boolean(SOUND_FILE),
           digestAvailable,
@@ -235,6 +238,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (DEMO && url.pathname === '/intro') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(await fs.readFile(path.join(__dirname, 'demo-intro.html')));
+    return;
+  }
+
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -250,7 +259,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, async () => {
   if (DEMO) {
-    console.log(`PR Radar DEMO → http://localhost:${PORT}\n  fake board, nothing fetched · a manual refresh brings in (or takes back) a new review`);
+    console.log(`PR Radar DEMO → http://localhost:${PORT}  (waiting page: /intro)\n  fake board, nothing fetched · a manual refresh brings in (or takes back) a new review`);
     return;
   }
   digestAvailable = await digest.available();
@@ -267,6 +276,7 @@ server.listen(PORT, async () => {
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +
       `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
+      `  linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
   update.start();

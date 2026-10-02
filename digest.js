@@ -7,6 +7,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 
 const { fetchDigestInputs } = require('./github');
+const { ticketKey } = require('./ticket');
 
 const MODEL = 'claude-haiku-4-5-20251001';
 // Part of the cache key: reword the prompt and every stored digest is stale, since it
@@ -90,16 +91,6 @@ function blockFor(pr) {
 // A standup is told by piece of work, not by pull request: the back and the front of one
 // change are one thing to say (Alban's feedback, forestadmin#9977 + forestadmin-server#8522).
 // The grouping is decided here, from what can be checked — the model only words it.
-const TICKET_RE = /\b([A-Z]{2,}-\d{2,})\b/;
-const BRANCH_TICKET_RE = /(?:^|\/)([a-z]{2,}-\d{2,})(?=[-_/]|$)/i;
-
-function ticketKey(pr) {
-  return pr.title?.match(TICKET_RE)?.[1]
-    ?? pr.headRefName?.match(BRANCH_TICKET_RE)?.[1]?.toUpperCase()
-    ?? pr.body?.match(TICKET_RE)?.[1]
-    ?? null;
-}
-
 // The same ticket, or the very same title once its conventional prefix is gone: the two
 // halves of one change are opened with one title, and not always with the ticket in it.
 function workKey(pr) {

@@ -66,8 +66,16 @@ has its own browser state, so snoozes and mute on the real board are left alone.
   they say on the cards is invented.
 - **Rafraîchir** brings in a new review request, with the sound and the glowing rail;
   the next click takes it back, so the moment can be replayed.
-- Standup notes answer at once, with a line written for each PR.
+- Standup notes answer at once, with a line written for each PR, and two pieces of work
+  told as one: PRD-812 across two repos, PRD-845 across three PRs.
+- The PRD-812 and PRD-845 cards link to Linear. Those tickets are made up: the link
+  opens whatever Linear has at that number, so do not click it in front of people.
+- Two cards carry a note, one with a link. They are written into a browser that has no
+  notes yet, so a note typed or deleted while rehearsing stays as you left it.
 - The update banner is shown, on made-up commit titles.
+- `/intro` is a waiting page for the start of a talk: the logo as a full radar, its
+  blips lit as the sweep passes, and the name. Space, Enter, a click or a presenter
+  remote's "next" opens the board.
 
 ## Configuration
 
@@ -83,6 +91,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
+| `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
@@ -326,6 +335,20 @@ review side claiming a reply was waiting for you on a closed PR.
 
 A merged card, like any other, can be dropped with the snooze control: no further
 activity will wake it, so there it amounts to dismissing it.
+
+## The Linear ticket
+
+With `PR_RADAR_LINEAR_URL` set, a card whose PR names a ticket gets a link to it in its
+bottom-right corner, beside the Slack one: the Linear mark and the key, `PRD-812`, opening
+`<workspace>/issue/PRD-812`. The key is the one the standup notes already group by
+(`ticket.js`): the title first, then the branch (`feature/prd-1184-…`, where the team's
+tickets mostly live). Not the description, which the notes also read: the board's query
+leaves it out, for the weight it would add to every refresh.
+
+It started as a pill in the card's row and moved: that row says where a PR stands, and a
+ticket says what it is about. Down with Slack, the two ways out of a card sit together.
+The key stays written next to the mark, since it mostly comes from the branch and appears
+nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 
 ## Snoozing a card
 

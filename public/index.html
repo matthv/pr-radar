@@ -8,6 +8,7 @@
 <style>
   :root {
     --bg: #f6f6fb;
+    --linear: #5e6ad2;
     --bg-accent: radial-gradient(1200px 320px at 12% -10%, #e9e7fd 0%, transparent 70%),
                  radial-gradient(900px 280px at 88% -14%, #e2f2f7 0%, transparent 70%);
     --surface: #ffffff;
@@ -41,6 +42,7 @@
 
   :root[data-theme="dark"] {
     --bg: #101219;
+    --linear: #ffffff;
     --bg-accent: radial-gradient(1200px 320px at 12% -10%, #1e1b3d 0%, transparent 70%),
                  radial-gradient(900px 280px at 88% -14%, #102d38 0%, transparent 70%);
     --surface: #191c26;
@@ -719,6 +721,18 @@
   .slack-link svg { width: 14px; height: 14px; display: block; }
   .slack-link:hover { background: var(--hairline); }
   .slack-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  /* Beside Slack, the other way out of the card: the brand mark, and the key, which mostly
+     comes from the branch and is written nowhere else on the card. Left of Slack, so the
+     hover-only buttons appearing never push either. */
+  .linear-link {
+    display: flex; align-items: center; gap: 5px;
+    flex: none; height: 26px; margin-top: 11px; padding: 0 7px; box-sizing: border-box;
+    border-radius: 7px; text-decoration: none; transition: background .15s;
+    font: 550 11px/1 ui-monospace, SFMono-Regular, "SF Mono", monospace; color: var(--text-soft);
+  }
+  .linear-link svg { width: 13px; height: 13px; display: block; fill: var(--linear); }
+  .linear-link:hover { background: var(--hairline); color: var(--text); }
+  .linear-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
 
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a
@@ -1027,6 +1041,11 @@ const cardNotes = {
     else delete map[id];
     cardNotes.write(map);
   },
+  // The demo's starting notes: written once, into a browser that has none yet, so a note
+  // typed or deleted while rehearsing is not undone by the next refresh.
+  seed(map) {
+    if (map && localStorage.getItem('pr-radar:notes') === null) cardNotes.write(map);
+  },
   prune(all) {
     const map = cardNotes.read();
     const live = new Set(all.map(pr => pr.id));
@@ -1104,6 +1123,7 @@ const I18N = {
     groupMineAction: 'À traiter de mon côté',
     groupMineMerged: 'Fusionnées récemment',
     releaseTag: 'dernière release depuis le merge — ouvrir la release sur GitHub',
+    ticketTitle: 'ouvrir {key} dans Linear',
     pipelineFailedTitle: 'ouvrir le run en échec sur GitHub',
     dismiss: 'retirer cette carte du tableau',
     pillMergedAgo: 'fusionnée il y a {v}',
@@ -1235,6 +1255,7 @@ const I18N = {
     groupMineAction: 'On my plate',
     groupMineMerged: 'Recently merged',
     releaseTag: 'latest release since the merge — open the release on GitHub',
+    ticketTitle: 'open {key} in Linear',
     pipelineFailedTitle: 'open the failed run on GitHub',
     dismiss: 'drop this card from the board',
     pillMergedAgo: 'merged {v} ago',
@@ -1513,6 +1534,8 @@ const SLACK_ICON = '<svg viewBox="0 0 127 127" aria-hidden="true">'
   + '<path fill="#2EB67D" d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z"/>'
   + '<path fill="#ECB22E" d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z"/>'
   + '</svg>';
+// The Linear mark (Simple Icons), filled from a token: brand indigo, white in dark mode.
+const LINEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"/></svg>';
 
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
@@ -1664,6 +1687,14 @@ function glowAttrs(pr) {
   return { cls: ' glow', style: ` style="--glow-elapsed: -${((elapsed / 1000) % GLOW_PULSE_S).toFixed(2)}s"` };
 }
 
+function linearLink(pr) {
+  const base = state.data?.linearUrl;
+  if (!pr.ticket || !base) return '';
+  return `<a class="linear-link" href="${escapeHtml(`${base}/issue/${encodeURIComponent(pr.ticket)}`)}"`
+    + ` target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: pr.ticket }))}">`
+    + `${LINEAR_ICON}<span>${escapeHtml(pr.ticket)}</span></a>`;
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
@@ -1696,6 +1727,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+          ${linearLink(pr)}
           ${pr.slackUrl
             ? `<a class="slack-link" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
               + ` title="${escapeHtml(t('slackTitle'))}">${SLACK_ICON}</a>`
@@ -2143,6 +2175,7 @@ async function load(force) {
     if (!response.ok) throw new Error(payload.error || response.statusText);
     el('error').hidden = true;
     state.data = payload;
+    cardNotes.seed(payload.demoNotes);
     renderUpdate(payload.update);
     el('summary').hidden = false;
     scheduleRefresh(payload.refreshSeconds);

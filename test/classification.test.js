@@ -943,3 +943,13 @@ test('an app that never fires on a push — queued, no job, no workflow run — 
 
   assert.equal(decorated.pipelineOutcome, 'done');
 });
+
+test('baseShape: the ticket comes from the title, then the branch, else none', () => {
+  assert.equal(baseShape(node({ title: 'feat(inbox): PRD-812 show the status' }), ME).ticket, 'PRD-812');
+  assert.equal(baseShape(node({ headRefName: 'feature/prd-1184-frontend-inbox' }), ME).ticket, 'PRD-1184');
+  assert.equal(
+    baseShape(node({ title: 'fix: [PRD-1404] keep it', headRefName: 'feature/prd-1184-x' }), ME).ticket,
+    'PRD-1404',
+  );
+  assert.equal(baseShape(node(), ME).ticket, null);
+});
