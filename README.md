@@ -750,6 +750,10 @@ Pills carry the state; a reason line only appears for what no pill already says
 
 ## Implementation notes
 
+- `assets/` holds the mark as source: `pr-radar-tile.svg` is the favicon, inlined as a data
+  URI in `public/index.html` and `demo-intro.html`, so a change there means re-inlining it.
+  The two 128px PNGs are the Slack emoji, transparent, ready to upload; the plain
+  `pr-radar.svg` is the radar alone, without its tile.
 - The PR list goes through the **REST search**: the GraphQL search times out
   (HTTP 499) on a large org. The `node_id` it returns is directly the GraphQL id
   of the `PullRequest`, then loaded in batches of 6.
