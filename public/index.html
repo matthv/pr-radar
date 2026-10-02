@@ -589,6 +589,8 @@
     font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
     background: var(--cyan-soft); color: var(--cyan); white-space: nowrap;
   }
+  /* Grey, not cyan: cyan is the org's repos, and a state colour would lie about the PR. */
+  .repo.external { background: var(--hairline); color: var(--text-soft); }
   .title { font-weight: 620; font-size: 14.5px; letter-spacing: -.15px; flex: 1 1 240px; }
   .title:hover { color: var(--link); }
 
@@ -1705,6 +1707,13 @@ function glowAttrs(pr) {
   return { cls: ' glow', style: ` style="--glow-elapsed: -${((elapsed / 1000) % GLOW_PULSE_S).toFixed(2)}s"` };
 }
 
+// The board's own org needs no owner; a repo added through PR_RADAR_EXTRA_REPOS does, or
+// `pr-radar` would read as one of the org's.
+const isExternal = repo => Boolean(state.data?.org) && !repo.startsWith(`${state.data.org}/`);
+const repoName = repo => (isExternal(repo) ? repo : repo.replace(/^.*\//, ''));
+const repoChip = pr =>
+  `<span class="repo${isExternal(pr.repo) ? ' external' : ''}">${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
+
 function linearLink(pr) {
   const base = state.data?.linearUrl;
   if (!pr.ticket || !base) return '';
@@ -1723,7 +1732,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   return `
     <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${glow.cls}${open}" data-id="${pr.id}"${glow.style}>
       <div class="card-top">
-        <span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>
+        ${repoChip(pr)}
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
         <span class="age" title="${t('openedTitle', { date: onDate(pr.createdAt) })}">${t('opened', { v: ago(pr.createdAt) })}</span>
       </div>
@@ -1954,7 +1963,7 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
 
 function repoOptions() {
   const query = state.repoQuery.trim().toLowerCase();
-  const shortName = repo => repo.replace(/^.*\//, '');
+  const shortName = repoName;
   const all = { repo: null, label: t('allProjects', { n: state.repoTotal }), count: null };
   const matching = state.repos
     .filter(entry => !query || shortName(entry.repo).toLowerCase().includes(query))
@@ -1965,7 +1974,7 @@ function repoOptions() {
 
 function renderRepoTrigger() {
   const label = state.repo
-    ? `${state.repo.replace(/^.*\//, '')} (${state.repos.find(e => e.repo === state.repo)?.count ?? 0})`
+    ? `${repoName(state.repo)} (${state.repos.find(e => e.repo === state.repo)?.count ?? 0})`
     : t('allProjects', { n: state.repoTotal });
 
   const trigger = el('repoTrigger');
@@ -2506,7 +2515,7 @@ function orbitCell(login, avatarUrl, prs) {
         + ` x2="${to[0].toFixed(1)}" y2="${to[1].toFixed(1)}" stroke="${stroke}" opacity=".45"/>`
         + `<a class="sat" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer"`
         + ` data-peek="${escapeHtml(pr.id)}">`
-        + `<title>${escapeHtml(`${pr.repo.replace(/^.*\//, '')} #${pr.number} — ${pr.title}`)}</title>`
+        + `<title>${escapeHtml(`${repoName(pr.repo)} #${pr.number} — ${pr.title}`)}</title>`
         + `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${SAT_R}" fill="${fill}" stroke="${stroke}"/>`
         + `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${stroke}">${pr.number}</text></a>`;
     })
@@ -2579,7 +2588,7 @@ function peekHtml(pr) {
   ].filter(Boolean);
 
   return `<div class="peek-top">`
-    + `<span class="repo">${escapeHtml(pr.repo.replace(/^.*\//, ''))} #${pr.number}</span>`
+    + repoChip(pr)
     + `</div>`
     + `<div class="peek-title">${escapeHtml(pr.title)}</div>`
     + `<div class="meta">${pills.join('')}`
@@ -2696,9 +2705,7 @@ function showNotes(text, counts) {
         }
         const entries = numbers.map(number => {
           const pr = find(section.group, number);
-          // A repo is a location, the same cyan as a thread's file path elsewhere on the
-          // board — stripped of the owner, since every repo here is already on this org.
-          const label = pr ? `${pr.repo.replace(/^.*\//, '')} #${number}` : `#${number}`;
+          const label = pr ? `${repoName(pr.repo)} #${number}` : `#${number}`;
           return { number, pr, label, state: NOTE_STATE[pr?.bucket] ?? [] };
         });
         const known = entries.filter(entry => entry.pr);
