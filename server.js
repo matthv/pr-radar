@@ -266,7 +266,7 @@ const server = http.createServer(async (req, res) => {
         const pr = [...(cache.payload?.mine ?? []), ...(cache.payload?.reviews ?? [])].find(entry => entry.id === id);
         const session = pr && claudeSessions.sessionFor(pr.url);
         if (!session) throw new Error('no Claude session linked to this PR');
-        await claudeSessions.openInTerminal(session, TERMINAL);
+        if (!(await claudeSessions.focusRunning(session.sessionId))) await claudeSessions.openInTerminal(session, TERMINAL);
       }
       json(res, 200, { ok: true });
     } catch (error) {

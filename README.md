@@ -256,7 +256,7 @@ functions that module exports and none of its network calls:
 - `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge,
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
-  incrementally, and the request guard;
+  incrementally, a running copy and the terminal it runs in, and the request guard;
 - `test/update.test.js` — reading `git` output into "behind by N".
 
 Every real case named in this file has its fixture there, under its PR number.
@@ -357,8 +357,20 @@ nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 ## The Claude session
 
 With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a Claude Code
-session gets a button beside the Linear one. A click opens a new `PR_RADAR_TERMINAL` window
-and types `cd <session dir> && claude --resume <id>` into your shell.
+session gets a button beside the Linear one. When that session is already running, a click
+brings it forward; otherwise it opens a new `PR_RADAR_TERMINAL` window and types
+`cd <session dir> && claude --resume <id>` into your shell.
+
+A running session is found in Claude Code's own registry, `~/.claude/sessions/<pid>.json`, by
+its current id only: after a `/clear` the same window holds another conversation. Where it
+runs is read from its process ancestry:
+
+| Running in | A click |
+| --- | --- |
+| herdr | focuses its pane (`herdr agent focus`), then the terminal app herdr runs in |
+| Terminal, iTerm | selects the tab whose tty is the session's |
+| a plain Ghostty tab | only brings Ghostty forward: its AppleScript dictionary names no tty |
+| anything else | says it is open elsewhere, rather than opening a second copy |
 
 The link is not guessed. Claude Code appends a `pr-link` record to a session's transcript
 (`~/.claude/projects/*/*.jsonl`) for every PR made or viewed in it, and that is what is read.

@@ -6,7 +6,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, resumeCommand, openInTerminal, refusal } = require('../claude-sessions');
+const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -111,6 +111,136 @@ test('only a JSON request from this machine, to localhost, is let through', () =
 
 test('a session whose folder is gone says so instead of opening a terminal', async () => {
   await assert.rejects(openInTerminal({ sessionId: OLDER, cwd: '/nowhere/agent-nodejs-prd1183' }, 'Terminal'), /no longer exists/);
+});
+
+test('a running copy is found by its current session id only, most recently active first', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+  const register = (file, record) => fs.writeFile(path.join(dir, `${file}.json`), JSON.stringify(record));
+  await register('a', { pid: process.pid, sessionId: OLDER, updatedAt: 1 });
+  await register('b', { pid: process.ppid, sessionId: OLDER, updatedAt: 2 });
+  await register('dead', { pid: 2 ** 22 + 1, sessionId: OLDER, updatedAt: 3 });
+  await register('cleared', { pid: process.pid, sessionId: NEWER, formerNames: [{ sessionId: OLDER }], updatedAt: 4 });
+  await fs.writeFile(path.join(dir, 'half.json'), '{ half written');
+
+  assert.deepEqual(await runningPids(OLDER, dir), [process.ppid, process.pid]);
+});
+
+// The shape of `ps -axo pid=,ppid=,tty=,comm=`: the herdr and plain Ghostty rows as read on a
+// real machine, the Terminal and VS Code ones written after them.
+const PS = `
+    1     0 ??       /sbin/launchd
+  882     1 ??       /Applications/Ghostty.app/Contents/MacOS/ghostty
+ 1049   882 ttys000  /usr/bin/login
+ 1050  1049 ttys000  -/bin/zsh
+ 6055  1050 ttys000  herdr
+ 6056  6055 ??       /opt/homebrew/bin/herdr
+ 6073  6056 ttys011  -zsh
+24347  6073 ttys011  claude
+61638   882 ttys023  /usr/bin/login
+61674 61638 ttys023  -/bin/zsh
+62319 61674 ttys023  claude
+  700     1 ??       /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
+  701   700 ttys030  /usr/bin/login
+  702   701 ttys030  -zsh
+  703   702 ttys030  claude
+  900     1 ??       /Applications/Visual Studio Code.app/Contents/Framework/Code Helper
+  901   900 ttys040  claude
+`;
+
+test('the terminals a session runs in are read from its process ancestry, innermost first', () => {
+  const processes = parseProcesses(PS);
+  assert.deepEqual(hostsOf(24347, processes), ['herdr', 'Ghostty']);
+  assert.deepEqual(hostsOf(62319, processes), ['Ghostty']);
+  assert.deepEqual(hostsOf(703, processes), ['Terminal']);
+  assert.equal(processes.get(703).tty, 'ttys030');
+  assert.deepEqual(hostsOf(901, processes), []);
+  assert.deepEqual(hostsOf(424242, processes), []);
+});
+
+// A registry holding this test process as the running session, and a `ps` placing it under
+// the given parent rows; every other command answers from `replies`.
+async function fakeMachine(parentRows, replies = {}) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+  await fs.writeFile(path.join(dir, 'me.json'), JSON.stringify({ pid: process.pid, sessionId: OLDER, kind: 'interactive' }));
+  const calls = [];
+  const exec = async (command, args) => {
+    calls.push([command, ...args]);
+    if (command === 'ps') return `${parentRows}\n${process.pid} 5 ttys030  claude\n`;
+    const reply = replies[`${command} ${args.join(' ')}`] ?? (command === 'osascript' ? '' : undefined);
+    if (reply instanceof Error) throw reply;
+    if (reply === undefined) throw new Error(`unexpected ${command} ${args.join(' ')}`);
+    return typeof reply === 'string' ? reply : JSON.stringify(reply);
+  };
+  return { dir, exec, calls };
+}
+
+const IN_HERDR = `  2 1 ??  /Applications/Ghostty.app/Contents/MacOS/ghostty
+  3 2 ttys000  herdr
+  4 3 ??  /opt/homebrew/bin/herdr
+  5 4 ttys030  -zsh`;
+const herdrPanes = { result: { panes: [
+  { pane_id: 'w1:p1', terminal_id: 'term_shell' },
+  { pane_id: 'w1:p2', terminal_id: 'term_other', agent: 'claude' },
+  { pane_id: 'w1:p3', terminal_id: 'term_mine', agent: 'claude' },
+] } };
+const holding = pid => ({ result: { process_info: { foreground_processes: [{ pid }] } } });
+
+test('a session running in herdr gets its pane focused, then the app herdr runs in', async () => {
+  const { dir, exec, calls } = await fakeMachine(IN_HERDR, {
+    '/opt/homebrew/bin/herdr pane list': herdrPanes,
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p2': new Error('pane closed'),
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p3': holding(process.pid),
+    '/opt/homebrew/bin/herdr agent focus term_mine': '{}',
+  });
+
+  assert.equal(await focusRunning(OLDER, { exec, dir }), true);
+  const asked = calls.map(call => call.slice(1).join(' '));
+  assert.deepEqual(asked.slice(1), [
+    'pane list',
+    'pane process-info --pane w1:p2',
+    'pane process-info --pane w1:p3',
+    'agent focus term_mine',
+    '-e tell application "Ghostty" to activate',
+  ]);
+});
+
+test('a herdr pane that cannot be found still brings the app forward', async () => {
+  const { dir, exec, calls } = await fakeMachine(IN_HERDR, {
+    '/opt/homebrew/bin/herdr pane list': herdrPanes,
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p1': holding(1),
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p2': holding(1),
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p3': holding(1),
+  });
+
+  assert.equal(await focusRunning(OLDER, { exec, dir }), true);
+  assert.equal(calls.at(-1).join(' '), 'osascript -e tell application "Ghostty" to activate');
+});
+
+const IN_TERMINAL = `  2 1 ??  /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
+  5 2 ttys030  -zsh`;
+
+test('in Terminal, the tab holding the session\'s tty is selected', async () => {
+  const { dir, exec, calls } = await fakeMachine(IN_TERMINAL);
+  const found = async (command, args) => (command === 'osascript' ? (await exec(command, args), 'found\n') : exec(command, args));
+
+  assert.equal(await focusRunning(OLDER, { exec: found, dir }), true);
+  assert.equal(calls.at(-1).at(-1), '/dev/ttys030');
+});
+
+test('a running session no terminal can bring forward is an error, not a second copy', async () => {
+  const inTerminal = await fakeMachine(IN_TERMINAL);
+  await assert.rejects(focusRunning(OLDER, inTerminal), /already open/);
+
+  const inVsCode = await fakeMachine(`  5 1 ??  /Applications/Visual Studio Code.app/Contents/Framework/Code Helper`);
+  await assert.rejects(focusRunning(OLDER, inVsCode), /already open/);
+});
+
+test('a registry pid now held by something other than claude counts as not running', async () => {
+  const { dir } = await fakeMachine(IN_HERDR);
+  const exec = async () => `${process.pid} 1 ??  /usr/sbin/cupsd\n`;
+
+  assert.equal(await focusRunning(OLDER, { exec, dir }), false);
+  assert.equal(await focusRunning(NEWER, { exec: () => assert.fail('nothing runs it'), dir }), false);
 });
 
 test('the resume command quotes the directory for the shell', () => {

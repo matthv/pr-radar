@@ -8,7 +8,9 @@ const { execFile } = require('node:child_process');
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it: the link is read from there, never guessed from a branch, since
 // a session started outside a repository records no branch at all.
-const PROJECTS_DIR = path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'projects');
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
+const RUNNING_DIR = path.join(CLAUDE_DIR, 'sessions');
 const DAY_MS = 86_400_000;
 const CHUNK_BYTES = 1 << 20;
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -154,10 +156,172 @@ async function openInTerminal(session, terminal) {
   await fs.access(session.cwd).catch(() => {
     throw new Error(`${session.cwd} no longer exists`);
   });
-  const script = ['on run argv', ...lines, 'end run'].flatMap(line => ['-e', line]);
-  return new Promise((resolve, reject) => {
-    execFile('osascript', [...script, resumeCommand(session)], error => (error ? reject(error) : resolve()));
-  });
+  await run('osascript', osascriptArgs(lines, resumeCommand(session)));
 }
 
-module.exports = { scan, sessionFor, resumeCommand, openInTerminal, refusal, TERMINALS };
+const run = (command, args) =>
+  new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 16 << 20 }, (error, stdout) => (error ? reject(error) : resolve(stdout)));
+  });
+
+const isAlive = pid => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+};
+
+// A `/clear` gives the running process a new session id and moves the old one to
+// `formerNames`: that window no longer shows the PR's conversation, so only the current id
+// counts. Most recently active first, since a session can be resumed in several places.
+async function runningPids(sessionId, dir = RUNNING_DIR) {
+  const names = await fs.readdir(dir).catch(() => []);
+  const running = [];
+  for (const name of names.filter(entry => entry.endsWith('.json'))) {
+    try {
+      const record = JSON.parse(await fs.readFile(path.join(dir, name), 'utf8'));
+      if (record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
+      if (Number.isInteger(record.pid) && record.pid > 0 && isAlive(record.pid)) running.push(record);
+    } catch {
+      continue;
+    }
+  }
+  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(record => record.pid);
+}
+
+function parseProcesses(psOutput) {
+  const processes = new Map();
+  for (const row of psOutput.split('\n')) {
+    const match = row.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+    if (match) processes.set(Number(match[1]), { ppid: Number(match[2]), tty: match[3], command: match[4] });
+  }
+  return processes;
+}
+
+const CLAUDE = /(^|\/)claude(\.exe)?$/;
+const HERDR = /(^|\/)herdr$/;
+// iTerm2 3.4+ parents its shells to an iTermServer living outside the app bundle.
+const HOSTS = [
+  ['herdr', HERDR],
+  ['Terminal', /\/Terminal\.app\//],
+  ['iTerm', /\/iTerm\.app\/|iTermServer/],
+  ['Ghostty', /\/Ghostty\.app\//],
+];
+
+function hostsOf(pid, processes) {
+  const hosts = [];
+  const seen = new Set();
+  for (let current = processes.get(pid); current && !seen.has(current.ppid); current = processes.get(current.ppid)) {
+    seen.add(current.ppid);
+    const parent = processes.get(current.ppid);
+    const host = parent && HOSTS.find(([, pattern]) => pattern.test(parent.command))?.[0];
+    if (host && hosts.at(-1) !== host) hosts.push(host);
+  }
+  return hosts;
+}
+
+// herdr's own panes first, but any pane may hold the process: herdr only tags a pane once
+// it has recognised the agent in it. A pane closing mid-search is skipped, not fatal.
+async function focusHerdrPane(pid, herdr, exec) {
+  let panes;
+  try {
+    panes = JSON.parse(await exec(herdr, ['pane', 'list'])).result.panes;
+  } catch {
+    return false;
+  }
+  panes.sort((a, b) => Number(b.agent === 'claude') - Number(a.agent === 'claude'));
+  for (const pane of panes) {
+    try {
+      const info = JSON.parse(await exec(herdr, ['pane', 'process-info', '--pane', pane.pane_id])).result.process_info;
+      if (!info.foreground_processes.some(processInfo => processInfo.pid === pid)) continue;
+      await exec(herdr, ['agent', 'focus', pane.terminal_id]);
+      return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+// Terminal and iTerm name each tab's tty; Ghostty's dictionary does not, so a session in a
+// plain Ghostty tab only gets its app brought forward.
+const FOCUS_TTY = {
+  Terminal: [
+    'tell application "Terminal"',
+    'repeat with w in windows',
+    'repeat with t in tabs of w',
+    'if tty of t is (item 1 of argv) then',
+    'set selected of t to true',
+    'set index of w to 1',
+    'activate',
+    'return "found"',
+    'end if',
+    'end repeat',
+    'end repeat',
+    'end tell',
+  ],
+  iTerm: [
+    'tell application "iTerm"',
+    'repeat with w in windows',
+    'repeat with t in tabs of w',
+    'repeat with s in sessions of t',
+    'if tty of s is (item 1 of argv) then',
+    'select s',
+    'select t',
+    'select w',
+    'activate',
+    'return "found"',
+    'end if',
+    'end repeat',
+    'end repeat',
+    'end repeat',
+    'end tell',
+  ],
+};
+
+const osascriptArgs = (lines, ...args) => [...['on run argv', ...lines, 'end run'].flatMap(line => ['-e', line]), ...args];
+const activate = (app, exec) => exec('osascript', ['-e', `tell application "${app}" to activate`]);
+
+// A copy that runs where it cannot be reached is an error, not a reason to open another:
+// two processes on one session fork its history.
+async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
+  const pids = await runningPids(sessionId, dir);
+  if (!pids.length) return false;
+  const processes = parseProcesses(await exec('ps', ['-axo', 'pid=,ppid=,tty=,comm=']));
+  const claudePids = pids.filter(pid => CLAUDE.test(processes.get(pid)?.command ?? ''));
+  if (!claudePids.length) return false;
+  const herdr = [...processes.values()].find(entry => entry.command.startsWith('/') && HERDR.test(entry.command))?.command ?? 'herdr';
+
+  for (const pid of claudePids) {
+    const [host, outer] = hostsOf(pid, processes);
+    if (host === 'herdr') {
+      const focused = await focusHerdrPane(pid, herdr, exec);
+      if (outer) await activate(outer, exec);
+      if (focused || outer) return true;
+    }
+    if (FOCUS_TTY[host]) {
+      const answer = await exec('osascript', osascriptArgs(FOCUS_TTY[host], `/dev/${processes.get(pid).tty}`));
+      if (answer.trim() === 'found') return true;
+    }
+    if (host === 'Ghostty') {
+      await activate('Ghostty', exec);
+      return true;
+    }
+  }
+  throw new Error('this session is already open, in a terminal PR Radar cannot bring forward');
+}
+
+module.exports = {
+  scan,
+  sessionFor,
+  resumeCommand,
+  openInTerminal,
+  focusRunning,
+  runningPids,
+  parseProcesses,
+  hostsOf,
+  refusal,
+  TERMINALS,
+};
