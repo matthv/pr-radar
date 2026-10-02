@@ -13,7 +13,7 @@ try {
   /* no .env: fall back to the defaults */
 }
 
-const { fetchDashboard } = require('./github');
+const { fetchDashboard, ownerScope, parseExtraRepos } = require('./github');
 const digest = require('./digest');
 const slack = require('./slack');
 const update = require('./update');
@@ -26,6 +26,7 @@ const DEMO = process.env.PR_RADAR_DEMO === 'true';
 
 const PORT = Number(process.env.PORT || 4321);
 const ORG = DEMO ? demo.ORG : process.env.PR_RADAR_ORG;
+const EXTRA_REPOS = DEMO ? [] : parseExtraRepos(process.env.PR_RADAR_EXTRA_REPOS);
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
@@ -160,7 +161,7 @@ async function dashboard(force) {
     scanDone = true;
   });
   inFlight = Promise.all([
-    fetchDashboard({ org: ORG, maxAgeDays: MAX_AGE_DAYS }),
+    fetchDashboard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ])
     .then(async ([fetchedBoard]) => {
@@ -256,6 +257,15 @@ if (!ORG) {
   process.exit(1);
 }
 
+// Checked here rather than on the first refresh: a bad value would otherwise surface as a
+// GitHub search error banner, far from the setting that caused it.
+try {
+  ownerScope(ORG, EXTRA_REPOS);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
@@ -330,7 +340,7 @@ server.listen(PORT, async () => {
   };
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · refresh ${REFRESH_SECONDS}s\n` +
+      `  org ${ORG}${EXTRA_REPOS.length ? ` + ${EXTRA_REPOS.join(', ')}` : ''} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · refresh ${REFRESH_SECONDS}s\n` +
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +

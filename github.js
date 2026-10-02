@@ -856,8 +856,32 @@ function mergedSince() {
   return since.getTime();
 }
 
-async function fetchDashboard({ org, maxAgeDays }) {
-  const scope = `org:${org} is:pr is:open`;
+// Extra qualifiers of different kinds are ORed by GitHub search: `org:A repo:b/c` returns
+// both, at no extra call. GitHub refuses a query longer than 256 characters.
+const SEARCH_LIMIT = 256;
+const REPO_RE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+const LONGEST_SUFFIX = ' is:pr is:open review-requested:@me -author:@me';
+
+function parseExtraRepos(value) {
+  return String(value ?? '')
+    .split(',')
+    .map(repo => repo.trim())
+    .filter(Boolean);
+}
+
+function ownerScope(org, extraRepos = []) {
+  const bad = extraRepos.filter(repo => !REPO_RE.test(repo));
+  if (bad.length) throw new Error(`PR_RADAR_EXTRA_REPOS: not an owner/name: ${bad.join(', ')}`);
+  const owners = [`org:${org}`, ...extraRepos.map(repo => `repo:${repo}`)].join(' ');
+  if (owners.length + LONGEST_SUFFIX.length > SEARCH_LIMIT) {
+    throw new Error(`PR_RADAR_EXTRA_REPOS: too many repos for one GitHub search (${SEARCH_LIMIT} characters at most)`);
+  }
+  return owners;
+}
+
+async function fetchDashboard({ org, extraRepos = [], maxAgeDays }) {
+  const owners = ownerScope(org, extraRepos);
+  const scope = `${owners} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
   // commented never shows up there. `commenter:` covers that case.
   const me = (await gh(['api', '/user', '--jq', '.login'])).trim();
@@ -875,11 +899,11 @@ async function fetchDashboard({ org, maxAgeDays }) {
     () => searchPullRequests(`${scope} assignee:@me -author:@me`),
     () => searchPullRequests(`${scope} commenter:@me -author:@me`),
     // Merged PRs are searched separately: `scope` pins `is:open`.
-    () => searchPullRequests(`org:${org} is:pr is:merged author:@me`),
+    () => searchPullRequests(`${owners} is:pr is:merged author:@me`),
     // A PR I reviewed vanished the moment it merged, though "the one I reviewed shipped"
     // is worth a line at a standup. Only a submitted review counts here: for a PR I
     // merely commented on, its landing is not really my news.
-    () => searchPullRequests(`org:${org} is:pr is:merged reviewed-by:@me -author:@me`),
+    () => searchPullRequests(`${owners} is:pr is:merged reviewed-by:@me -author:@me`),
     () => recentlyTouchedPullRequests(org, me),
   ]);
 
@@ -1056,6 +1080,9 @@ async function fetchDashboard({ org, maxAgeDays }) {
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  ownerScope,
+  parseExtraRepos,
+  SEARCH_LIMIT,
   byActionThenFreshness,
   baseShape,
   decorateMine,

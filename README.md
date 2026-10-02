@@ -85,6 +85,7 @@ copy). A variable already exported in your shell wins over the file.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PR_RADAR_ORG` | — | GitHub org to scan (**required**) |
+| `PR_RADAR_EXTRA_REPOS` | — | Repos outside that org to scan too, `owner/name`, comma-separated (`matthv/pr-radar`); their chip shows the owner — see [Repos outside the org](#repos-outside-the-org) |
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
@@ -339,6 +340,21 @@ review side claiming a reply was waiting for you on a closed PR.
 
 A merged card, like any other, can be dropped with the snooze control: no further
 activity will wake it, so there it amounts to dismissing it.
+
+## Repos outside the org
+
+`PR_RADAR_EXTRA_REPOS=matthv/pr-radar,matthv/gitdeck` puts the PRs of a few repos outside
+`PR_RADAR_ORG` on the board, the tool's own repo for one. Each is added to every search as a
+`repo:` qualifier beside `org:`, which GitHub ORs: no extra call. The recent-activity feed
+stays on the org, which the searches already cover.
+
+GitHub refuses a query over 256 characters, which leaves room for five or six repos; the
+server refuses at startup a list that would not fit, or an entry that is not `owner/name`,
+rather than failing on every refresh. Listing repos one by one rather than `user:` keeps a
+personal account's other repos, and their dependency bots, off the board.
+
+Their chip looks like any other and carries the owner, `matthv/pr-radar #1`: without it,
+`pr-radar` would read as one of the org's repos.
 
 ## The Linear ticket
 
