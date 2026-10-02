@@ -88,6 +88,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
+| `PR_RADAR_CLAUDE_SESSIONS` | `false` | A button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
+| `PR_RADAR_TERMINAL` | `Terminal` | Where that session opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
@@ -253,6 +255,8 @@ functions that module exports and none of its network calls:
 - `test/digest.test.js` — shaping a board into what the standup notes take;
 - `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge,
   permalinks, the model's transcription, and the retry schedule;
+- `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
+  incrementally, and the request guard;
 - `test/update.test.js` — reading `git` output into "behind by N".
 
 Every real case named in this file has its fixture there, under its PR number.
@@ -349,6 +353,26 @@ It started as a pill in the card's row and moved: that row says where a PR stand
 ticket says what it is about. Down with Slack, the two ways out of a card sit together.
 The key stays written next to the mark, since it mostly comes from the branch and appears
 nowhere else on the card. The mark is Linear's indigo, white in dark mode.
+
+## The Claude session
+
+With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a Claude Code
+session gets a button beside the Linear one. A click opens a new `PR_RADAR_TERMINAL` window
+and types `cd <session dir> && claude --resume <id>` into your shell.
+
+The link is not guessed. Claude Code appends a `pr-link` record to a session's transcript
+(`~/.claude/projects/*/*.jsonl`) for every PR made or viewed in it, and that is what is read.
+A branch would not do: a session started from a folder above the repositories records none.
+When several sessions touched the same PR, the most recently active one wins.
+
+Transcripts reach a hundred megabytes, so each is read once, then only from where the last
+scan stopped. The first scan takes a few seconds, in parallel with GitHub's. Only sessions
+active within `PR_RADAR_MAX_AGE_DAYS` are read.
+
+The endpoint only resumes a session linked to a PR already on the board, and only for a
+request from this machine, addressed to `localhost`, with a JSON body: the network, a DNS
+rebinding and a page from another site are each turned away. A session whose folder is gone,
+a removed worktree, says so instead of opening a terminal that fails.
 
 ## Snoozing a card
 

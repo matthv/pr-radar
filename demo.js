@@ -292,6 +292,8 @@ function payload(force) {
   const unannounced = new Set([1955, 8561]);
   const announced = pr => !pr.isDraft && !unannounced.has(pr.number);
   const withSlack = pr => ({ ...pr, slackUrl: announced(pr) ? 'https://app.slack.com/client' : null });
+  // Your own PRs are the ones written in a Claude session; a review seldom is.
+  const withLinks = pr => ({ ...withSlack(pr), claudeSession: pr.side === 'mine' });
 
   return {
     me: ME,
@@ -304,8 +306,8 @@ function payload(force) {
       'DEMO_forestadmin_10008': 'Merger après la démo produit de vendredi : Christophe veut la montrer avant.',
       'DEMO_forestadmin-server_8549': 'Demandé en DM, à repasser dès son push : https://app.slack.com/client',
     },
-    mine: mine.map(withSlack),
-    reviews: reviews.map(withSlack),
+    mine: mine.map(withLinks),
+    reviews: reviews.map(withLinks),
     counts: {
       hiddenStale: 7,
       seenTotal: mine.length + reviews.length + 7,
