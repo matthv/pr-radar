@@ -54,3 +54,9 @@ test('demo: ticket pills have a workspace to link to', () => {
   assert.deepEqual([...tickets].sort(), ['PRD-812', 'PRD-845']);
   assert.match(demo.LINEAR_URL, /^https:\/\/linear\.app\//);
 });
+
+test('demo: my PRs offer their Claude session, the reviews do not', () => {
+  const { mine, reviews } = demo.payload(false);
+  assert.ok(mine.every(pr => pr.claudeSession === true));
+  assert.ok(reviews.every(pr => pr.claudeSession === false));
+});

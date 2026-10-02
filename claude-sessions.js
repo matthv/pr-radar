@@ -5,9 +5,6 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 
-// Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
-// created or opened in it: the link is read from there, never guessed from a branch, since
-// a session started outside a repository records no branch at all.
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 const RUNNING_DIR = path.join(CLAUDE_DIR, 'sessions');
@@ -15,11 +12,14 @@ const DAY_MS = 86_400_000;
 const CHUNK_BYTES = 1 << 20;
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// Transcripts run to a hundred megabytes and only ever grow, so each one is read once and
+// Transcripts run to a hundred megabytes and are appended to, so each one is read once and
 // then only from where the last scan stopped.
 const transcripts = new Map();
 let scanning = null;
 
+// Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
+// created or opened in it. The link is read from there rather than from a branch: a session
+// started in a folder above the repositories records none.
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
     const wantsCwd = !entry.cwd && line.includes('"cwd":');
@@ -74,9 +74,12 @@ async function readNewLines(file, stat) {
   }
 }
 
+// One transcript that cannot be read, deleted with its worktree mid-scan or unreadable, is
+// dropped and counted; the others still get read.
 async function scanNow(dir, maxAgeDays) {
   const since = Date.now() - maxAgeDays * DAY_MS;
   const seen = new Set();
+  let unreadable = 0;
   const projects = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const project of projects.filter(entry => entry.isDirectory())) {
     const folder = path.join(dir, project.name);
@@ -85,11 +88,16 @@ async function scanNow(dir, maxAgeDays) {
       const file = path.join(folder, name);
       const stat = await fs.stat(file).catch(() => null);
       if (!stat || stat.mtimeMs < since) continue;
-      seen.add(file);
-      await readNewLines(file, stat);
+      try {
+        await readNewLines(file, stat);
+        seen.add(file);
+      } catch (error) {
+        if (error.code !== 'ENOENT') unreadable += 1;
+      }
     }
   }
   for (const file of transcripts.keys()) if (!seen.has(file)) transcripts.delete(file);
+  return { unreadable };
 }
 
 function scan({ dir = PROJECTS_DIR, maxAgeDays }) {
@@ -99,15 +107,13 @@ function scan({ dir = PROJECTS_DIR, maxAgeDays }) {
   return scanning;
 }
 
-// The most recently active one: a PR revisited in a later session is picked up where it
-// was last worked on.
 function sessionFor(prUrl) {
-  let best = null;
+  let latest = null;
   for (const entry of transcripts.values()) {
     if (!entry.cwd || !SESSION_ID.test(entry.sessionId) || !entry.prUrls.has(prUrl)) continue;
-    if (!best || entry.mtimeMs > best.mtimeMs) best = entry;
+    if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
   }
-  return best && { sessionId: best.sessionId, cwd: best.cwd };
+  return latest && { sessionId: latest.sessionId, cwd: latest.cwd };
 }
 
 const shellQuote = value => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -137,8 +143,8 @@ const TERMINALS = {
   ],
 };
 
-// The content type stops a page from another site, which cannot send JSON without a
-// preflight this server never answers. The address stops the rest of the network, the
+// The content type stops a page from another site: sending JSON takes a preflight, which
+// this server answers without granting. The address stops the rest of the network, the
 // server listening on every interface, and the host a DNS rebinding.
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function refusal({ contentType, remoteAddress, host }) {
@@ -148,7 +154,22 @@ function refusal({ contentType, remoteAddress, host }) {
   return null;
 }
 
-async function openInTerminal(session, terminal) {
+// execFile's own message spells out the whole command line, the AppleScript included.
+const run = (command, args) =>
+  new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 16 << 20 }, (error, stdout, stderr) => {
+      if (!error) return resolve(stdout);
+      const reason = String(stderr).trim() || error.message;
+      reject(new Error(/-1743\b/.test(reason)
+        ? `macOS refused PR Radar control of the terminal: allow it under System Settings › Privacy & Security › Automation (${reason})`
+        : `${command} failed: ${reason}`));
+    });
+  });
+
+const osascriptArgs = (lines, ...args) => [...['on run argv', ...lines, 'end run'].flatMap(line => ['-e', line]), ...args];
+const activate = (app, exec) => exec('osascript', ['-e', `tell application "${app}" to activate`]);
+
+async function openInTerminal(session, terminal, exec = run) {
   const lines = TERMINALS[terminal];
   if (!lines) throw new Error(`PR_RADAR_TERMINAL "${terminal}" unknown: ${Object.keys(TERMINALS).join(', ')}`);
   // Sessions often start in a worktree removed since: the `cd` would fail in a terminal
@@ -156,13 +177,8 @@ async function openInTerminal(session, terminal) {
   await fs.access(session.cwd).catch(() => {
     throw new Error(`${session.cwd} no longer exists`);
   });
-  await run('osascript', osascriptArgs(lines, resumeCommand(session)));
+  await exec('osascript', osascriptArgs(lines, resumeCommand(session)));
 }
-
-const run = (command, args) =>
-  new Promise((resolve, reject) => {
-    execFile(command, args, { maxBuffer: 16 << 20 }, (error, stdout) => (error ? reject(error) : resolve(stdout)));
-  });
 
 const isAlive = pid => {
   try {
@@ -173,20 +189,47 @@ const isAlive = pid => {
   }
 };
 
+const cannotCheck = reason => new Error(`could not check whether the session is already running: ${reason}`);
+
+// Not knowing is not "not running": guessing wrong would open a second copy, which forks the
+// session. Only a missing registry, or a record gone with its process, means none.
+// A record caught mid-write gets one more read before it counts as unreadable.
+async function readRecord(file) {
+  for (let attempt = 0; ; attempt += 1) {
+    let text;
+    try {
+      text = await fs.readFile(file, 'utf8');
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw cannotCheck(error.message);
+    }
+    try {
+      const record = JSON.parse(text);
+      if (typeof record.sessionId !== 'string' || !Number.isInteger(record.pid)) throw new Error(`unexpected record in ${file}`);
+      return record;
+    } catch (error) {
+      if (attempt) throw cannotCheck(error.message);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+}
+
 // A `/clear` gives the running process a new session id and moves the old one to
 // `formerNames`: that window no longer shows the PR's conversation, so only the current id
 // counts. Most recently active first, since a session can be resumed in several places.
 async function runningPids(sessionId, dir = RUNNING_DIR) {
-  const names = await fs.readdir(dir).catch(() => []);
+  let names;
+  try {
+    names = await fs.readdir(dir);
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw cannotCheck(error.message);
+  }
   const running = [];
   for (const name of names.filter(entry => entry.endsWith('.json'))) {
-    try {
-      const record = JSON.parse(await fs.readFile(path.join(dir, name), 'utf8'));
-      if (record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
-      if (Number.isInteger(record.pid) && record.pid > 0 && isAlive(record.pid)) running.push(record);
-    } catch {
-      continue;
-    }
+    const record = await readRecord(path.join(dir, name));
+    if (!record || record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
+    if (record.pid > 0 && isAlive(record.pid)) running.push(record);
   }
   return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(record => record.pid);
 }
@@ -233,13 +276,18 @@ async function focusHerdrPane(pid, herdr, exec) {
   }
   panes.sort((a, b) => Number(b.agent === 'claude') - Number(a.agent === 'claude'));
   for (const pane of panes) {
+    let info;
     try {
-      const info = JSON.parse(await exec(herdr, ['pane', 'process-info', '--pane', pane.pane_id])).result.process_info;
-      if (!info.foreground_processes.some(processInfo => processInfo.pid === pid)) continue;
+      info = JSON.parse(await exec(herdr, ['pane', 'process-info', '--pane', pane.pane_id])).result.process_info;
+    } catch {
+      continue;
+    }
+    if (!info.foreground_processes.some(processInfo => processInfo.pid === pid)) continue;
+    try {
       await exec(herdr, ['agent', 'focus', pane.terminal_id]);
       return true;
     } catch {
-      continue;
+      return false;
     }
   }
   return false;
@@ -281,9 +329,6 @@ const FOCUS_TTY = {
   ],
 };
 
-const osascriptArgs = (lines, ...args) => [...['on run argv', ...lines, 'end run'].flatMap(line => ['-e', line]), ...args];
-const activate = (app, exec) => exec('osascript', ['-e', `tell application "${app}" to activate`]);
-
 // A copy that runs where it cannot be reached is an error, not a reason to open another:
 // two processes on one session fork its history.
 async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
@@ -299,7 +344,8 @@ async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
     if (host === 'herdr') {
       const focused = await focusHerdrPane(pid, herdr, exec);
       if (outer) await activate(outer, exec);
-      if (focused || outer) return true;
+      if (focused) return true;
+      throw new Error(`this session is already open in herdr, but its pane could not be found${outer ? `: ${outer} is in front, look for it there` : ''}`);
     }
     if (FOCUS_TTY[host]) {
       const answer = await exec('osascript', osascriptArgs(FOCUS_TTY[host], `/dev/${processes.get(pid).tty}`));
@@ -313,6 +359,30 @@ async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
   throw new Error('this session is already open, in a terminal PR Radar cannot bring forward');
 }
 
+// The route, kept here with its guards so a test can drive it end to end.
+async function resume({ headers, remoteAddress, readBody }, { enabled, terminal, board, exec = run, runningDir = RUNNING_DIR }) {
+  if (!enabled) return [403, 'Claude sessions are off (PR_RADAR_CLAUDE_SESSIONS, macOS only)'];
+  const refused = refusal({ contentType: headers['content-type'], remoteAddress, host: headers.host });
+  if (refused) return [403, refused];
+  let id;
+  try {
+    ({ id } = await readBody());
+  } catch {
+    return [400, 'invalid JSON body'];
+  }
+  if (!board) return [503, 'the board has not loaded yet'];
+  const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
+  if (!pr) return [404, 'this PR is not on the board'];
+  const session = sessionFor(pr.url);
+  if (!session) return [404, 'no Claude session linked to this PR'];
+  try {
+    if (!(await focusRunning(session.sessionId, { exec, dir: runningDir }))) await openInTerminal(session, terminal, exec);
+    return [200, null];
+  } catch (error) {
+    return [502, error.message];
+  }
+}
+
 module.exports = {
   scan,
   sessionFor,
@@ -323,5 +393,6 @@ module.exports = {
   parseProcesses,
   hostsOf,
   refusal,
+  resume,
   TERMINALS,
 };

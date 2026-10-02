@@ -88,8 +88,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
-| `PR_RADAR_CLAUDE_SESSIONS` | `false` | A button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
-| `PR_RADAR_TERMINAL` | `Terminal` | Where that session opens: `Terminal`, `iTerm` or `Ghostty` |
+| `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
+| `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
@@ -256,7 +256,7 @@ functions that module exports and none of its network calls:
 - `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge,
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
-  incrementally, a running copy and the terminal it runs in, and the request guard;
+  incrementally, a running copy and the terminal it runs in, and the route with its guards;
 - `test/update.test.js` — reading `git` output into "behind by N".
 
 Every real case named in this file has its fixture there, under its PR number.
@@ -356,21 +356,11 @@ nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 
 ## The Claude session
 
-With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a Claude Code
-session gets a button beside the Linear one. When that session is already running, a click
-brings it forward; otherwise it opens a new `PR_RADAR_TERMINAL` window and types
-`cd <session dir> && claude --resume <id>` into your shell.
-
-A running session is found in Claude Code's own registry, `~/.claude/sessions/<pid>.json`, by
-its current id only: after a `/clear` the same window holds another conversation. Where it
-runs is read from its process ancestry:
-
-| Running in | A click |
-| --- | --- |
-| herdr | focuses its pane (`herdr agent focus`), then the terminal app herdr runs in |
-| Terminal, iTerm | selects the tab whose tty is the session's |
-| a plain Ghostty tab | only brings Ghostty forward: its AppleScript dictionary names no tty |
-| anything else | says it is open elsewhere, rather than opening a second copy |
+macOS only. With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a
+Claude Code session gets a button beside the Linear one. When that session is already running,
+a click brings it forward; otherwise it opens a new `PR_RADAR_TERMINAL` window and types
+`cd <session dir> && claude --resume <id>` into your shell. Elsewhere than macOS, or with an
+unknown `PR_RADAR_TERMINAL`, the startup line says it is off and no button shows.
 
 The link is not guessed. Claude Code appends a `pr-link` record to a session's transcript
 (`~/.claude/projects/*/*.jsonl`) for every PR made or viewed in it, and that is what is read.
@@ -378,13 +368,30 @@ A branch would not do: a session started from a folder above the repositories re
 When several sessions touched the same PR, the most recently active one wins.
 
 Transcripts reach a hundred megabytes, so each is read once, then only from where the last
-scan stopped. The first scan takes a few seconds, in parallel with GitHub's. Only sessions
-active within `PR_RADAR_MAX_AGE_DAYS` are read.
+scan stopped. Only sessions active within `PR_RADAR_MAX_AGE_DAYS` are read. A refresh waits
+two seconds for the scan at most: the first one on a big `~/.claude` can take longer, and marks
+its cards once done. A transcript that cannot be read is skipped, and the banner says some
+buttons may be missing.
+
+A running session is found in Claude Code's own registry, `~/.claude/sessions/<pid>.json`, by
+its current id only: after a `/clear` the same window holds another conversation. A registry
+that cannot be read is an error rather than "not running", which would open a second copy and
+fork the session. Where it runs is read from its process ancestry, once `ps` confirms the
+pid is still a `claude`:
+
+| Running in | A click |
+| --- | --- |
+| herdr | focuses its pane (`herdr agent focus`), then the terminal app herdr runs in; a pane it cannot find brings that app forward and says so |
+| Terminal, iTerm | selects the tab whose tty is the session's |
+| a plain Ghostty tab | only brings Ghostty forward: its AppleScript dictionary names no tty |
+| anything else | says it is open elsewhere, rather than opening a second copy |
 
 The endpoint only resumes a session linked to a PR already on the board, and only for a
 request from this machine, addressed to `localhost`, with a JSON body: the network, a DNS
 rebinding and a page from another site are each turned away. A session whose folder is gone,
-a removed worktree, says so instead of opening a terminal that fails.
+a removed worktree, says so instead of opening a terminal that fails. A terminal macOS has
+not let PR Radar control (error -1743) points to System Settings › Privacy & Security ›
+Automation.
 
 ## Snoozing a card
 

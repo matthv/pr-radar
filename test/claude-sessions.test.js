@@ -1,12 +1,13 @@
 'use strict';
 
 const test = require('node:test');
+const { describe } = test;
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning } = require('../claude-sessions');
+const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -120,9 +121,24 @@ test('a running copy is found by its current session id only, most recently acti
   await register('b', { pid: process.ppid, sessionId: OLDER, updatedAt: 2 });
   await register('dead', { pid: 2 ** 22 + 1, sessionId: OLDER, updatedAt: 3 });
   await register('cleared', { pid: process.pid, sessionId: NEWER, formerNames: [{ sessionId: OLDER }], updatedAt: 4 });
-  await fs.writeFile(path.join(dir, 'half.json'), '{ half written');
 
   assert.deepEqual(await runningPids(OLDER, dir), [process.ppid, process.pid]);
+  assert.deepEqual(await runningPids(OLDER, path.join(dir, 'no-registry-here')), []);
+});
+
+test('a registry that cannot be read is an error, never "not running": that would fork the session', async () => {
+  const halfWritten = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+  await fs.writeFile(path.join(halfWritten, '12.json'), '{ "pid": 12, "sessi');
+  await assert.rejects(runningPids(OLDER, halfWritten), /could not check/);
+
+  const reshaped = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+  await fs.writeFile(path.join(reshaped, '12.json'), JSON.stringify({ process: 12, session: OLDER }));
+  await assert.rejects(runningPids(OLDER, reshaped), /could not check/);
+
+  const locked = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+  await fs.chmod(locked, 0o000);
+  await assert.rejects(runningPids(OLDER, locked), /could not check/);
+  await fs.chmod(locked, 0o700);
 });
 
 // The shape of `ps -axo pid=,ppid=,tty=,comm=`: the herdr and plain Ghostty rows as read on a
@@ -157,8 +173,6 @@ test('the terminals a session runs in are read from its process ancestry, innerm
   assert.deepEqual(hostsOf(424242, processes), []);
 });
 
-// A registry holding this test process as the running session, and a `ps` placing it under
-// the given parent rows; every other command answers from `replies`.
 async function fakeMachine(parentRows, replies = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
   await fs.writeFile(path.join(dir, 'me.json'), JSON.stringify({ pid: process.pid, sessionId: OLDER, kind: 'interactive' }));
@@ -204,16 +218,20 @@ test('a session running in herdr gets its pane focused, then the app herdr runs 
   ]);
 });
 
-test('a herdr pane that cannot be found still brings the app forward', async () => {
+test('a herdr pane that cannot be focused brings the app forward, and says it missed the pane', async () => {
   const { dir, exec, calls } = await fakeMachine(IN_HERDR, {
     '/opt/homebrew/bin/herdr pane list': herdrPanes,
     '/opt/homebrew/bin/herdr pane process-info --pane w1:p1': holding(1),
     '/opt/homebrew/bin/herdr pane process-info --pane w1:p2': holding(1),
-    '/opt/homebrew/bin/herdr pane process-info --pane w1:p3': holding(1),
+    '/opt/homebrew/bin/herdr pane process-info --pane w1:p3': holding(process.pid),
+    '/opt/homebrew/bin/herdr agent focus term_mine': new Error('no such terminal'),
   });
 
-  assert.equal(await focusRunning(OLDER, { exec, dir }), true);
+  await assert.rejects(focusRunning(OLDER, { exec, dir }), /pane could not be found: Ghostty is in front/);
   assert.equal(calls.at(-1).join(' '), 'osascript -e tell application "Ghostty" to activate');
+
+  const noHerdr = await fakeMachine(IN_HERDR, { '/opt/homebrew/bin/herdr pane list': new Error('spawn ENOENT') });
+  await assert.rejects(focusRunning(OLDER, noHerdr), /pane could not be found/);
 });
 
 const IN_TERMINAL = `  2 1 ??  /System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal
@@ -248,6 +266,74 @@ test('the resume command quotes the directory for the shell', () => {
     resumeCommand({ sessionId: OLDER, cwd: "/Users/me/it's here" }),
     `cd '/Users/me/it'\\''s here' && claude --resume ${OLDER}`,
   );
+  assert.equal(resumeCommand({ sessionId: OLDER, cwd: '/a\n; rm -rf ~' }), `cd '/a\n; rm -rf ~' && claude --resume ${OLDER}`);
+});
+
+test('a transcript that cannot be read is counted and skipped, the others still read', async () => {
+  const dir = await projectsDir();
+  const locked = await writeSession(dir, NEWER, start('/Users/me/Projects') + prLink(NEWER, 'https://github.com/o/r/pull/2'));
+  await fs.chmod(locked, 0o000);
+  await writeSession(dir, OLDER, start('/Users/me/Projects') + prLink(OLDER, PR));
+
+  assert.deepEqual(await scan({ dir, maxAgeDays: 60 }), { unreadable: 1 });
+  assert.equal(sessionFor(PR)?.sessionId, OLDER);
+  await fs.chmod(locked, 0o600);
+});
+
+describe('the resume route', () => {
+  const request = (overrides = {}) => ({
+    headers: { 'content-type': 'application/json', host: 'localhost:4321' },
+    remoteAddress: '127.0.0.1',
+    readBody: async () => ({ id: 'PR_1' }),
+    ...overrides,
+  });
+  let board;
+  let runningDir;
+  test.before(async () => {
+    const dir = await projectsDir();
+    await writeSession(dir, OLDER, start(os.tmpdir()) + prLink(OLDER, PR));
+    await scan({ dir, maxAgeDays: 60 });
+    board = { mine: [{ id: 'PR_1', url: PR }, { id: 'PR_2', url: 'https://github.com/o/r/pull/2' }], reviews: [] };
+    runningDir = path.join(dir, 'no-registry');
+  });
+  const context = overrides => ({ enabled: true, terminal: 'Ghostty', board, runningDir, exec: () => assert.fail('nothing should run'), ...overrides });
+
+  test('turned off, or asked the wrong way, it does nothing', async () => {
+    assert.equal((await resume(request(), context({ enabled: false })))[0], 403);
+    assert.deepEqual(await resume(request({ headers: { host: 'localhost:4321' } }), context()), [403, 'JSON body expected']);
+    assert.deepEqual(await resume(request({ remoteAddress: '10.0.0.4' }), context()), [403, 'only from this machine']);
+    assert.deepEqual(await resume(request({ readBody: async () => JSON.parse('{') }), context()), [400, 'invalid JSON body']);
+  });
+
+  test('it says what is missing: the board, the PR, or a session', async () => {
+    assert.deepEqual(await resume(request(), context({ board: null })), [503, 'the board has not loaded yet']);
+    assert.deepEqual(await resume(request({ readBody: async () => ({ id: 'PR_X' }) }), context()), [404, 'this PR is not on the board']);
+    assert.deepEqual(await resume(request({ readBody: async () => ({ id: 'PR_2' }) }), context()), [404, 'no Claude session linked to this PR']);
+  });
+
+  test('a session not running opens in the terminal, the command as an argument', async () => {
+    const calls = [];
+    const exec = async (command, args) => {
+      calls.push([command, ...args]);
+      return '';
+    };
+
+    assert.deepEqual(await resume(request(), context({ exec })), [200, null]);
+    assert.equal(calls.length, 1);
+    const [command, ...args] = calls[0];
+    assert.equal(command, 'osascript');
+    assert.ok(args.includes('tell application "Ghostty"'));
+    assert.equal(args.at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
+  });
+
+  test('a terminal that fails is reported, not swallowed', async () => {
+    const exec = async () => {
+      throw new Error('osascript failed: Not authorized to send Apple events to Ghostty. (-1743)');
+    };
+    const [status, message] = await resume(request(), context({ exec }));
+    assert.equal(status, 502);
+    assert.match(message, /-1743/);
+  });
 });
 
 test('an unknown terminal is refused before anything runs', async () => {

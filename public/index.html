@@ -1103,6 +1103,7 @@ const I18N = {
     slackTitle: 'ouvrir le message Slack qui annonce cette PR',
     claudeTitle: 'reprendre la session Claude de cette PR dans un terminal',
     claudeError: 'Impossible de reprendre la session Claude : {message}',
+    claudeScanFailed: 'Sessions Claude : {message}, certains boutons peuvent manquer.',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
@@ -1237,6 +1238,7 @@ const I18N = {
     slackTitle: 'open the Slack message announcing this PR',
     claudeTitle: 'resume this PR\'s Claude session in a terminal',
     claudeError: 'Could not resume the Claude session: {message}',
+    claudeScanFailed: 'Claude sessions: {message}, some buttons may be missing.',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
@@ -2062,7 +2064,8 @@ function render() {
   // the announcement links are missing, and the fix is on the reader's side.
   const warnings = data.warnings ?? [];
   const slackWarning = warnings.find(w => w.source === 'slack');
-  const sources = [...new Set(warnings.filter(w => w.source !== 'slack').map(w => w.source))];
+  const claudeWarning = warnings.find(w => w.source === 'claude');
+  const sources = [...new Set(warnings.filter(w => w.source !== 'slack' && w.source !== 'claude').map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -2070,6 +2073,7 @@ function render() {
       ? t('slackNoConnector')
       : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
+  if (claudeWarning) lines.push(t('claudeScanFailed', { message: claudeWarning.message }));
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
 
@@ -2227,8 +2231,10 @@ async function resumeClaudeSession(button) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || response.statusText);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `${response.status} ${response.statusText}`);
+    }
   } catch (error) {
     alert(t('claudeError', { message: error.message }));
   } finally {
