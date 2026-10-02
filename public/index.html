@@ -589,8 +589,6 @@
     font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace;
     background: var(--cyan-soft); color: var(--cyan); white-space: nowrap;
   }
-  /* Grey, not cyan: cyan is the org's repos, and a state colour would lie about the PR. */
-  .repo.external { background: var(--hairline); color: var(--text-soft); }
   .title { font-weight: 620; font-size: 14.5px; letter-spacing: -.15px; flex: 1 1 240px; }
   .title:hover { color: var(--link); }
 
@@ -1709,10 +1707,12 @@ function glowAttrs(pr) {
 
 // The board's own org needs no owner; a repo added through PR_RADAR_EXTRA_REPOS does, or
 // `pr-radar` would read as one of the org's.
-const isExternal = repo => Boolean(state.data?.org) && !repo.startsWith(`${state.data.org}/`);
+// GitHub's `org:` ignores case, `pr.repo` carries the org's own spelling.
+const isExternal = repo =>
+  Boolean(state.data?.org) && !repo.toLowerCase().startsWith(`${state.data.org.toLowerCase()}/`);
 const repoName = repo => (isExternal(repo) ? repo : repo.replace(/^.*\//, ''));
 const repoChip = pr =>
-  `<span class="repo${isExternal(pr.repo) ? ' external' : ''}">${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
+  `<span class="repo">${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
 
 function linearLink(pr) {
   const base = state.data?.linearUrl;

@@ -85,7 +85,7 @@ copy). A variable already exported in your shell wins over the file.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PR_RADAR_ORG` | — | GitHub org to scan (**required**) |
-| `PR_RADAR_EXTRA_REPOS` | — | Repos outside that org to scan too, `owner/name`, comma-separated (`matthv/pr-radar`); their chip shows the owner, in grey — see [Repos outside the org](#repos-outside-the-org) |
+| `PR_RADAR_EXTRA_REPOS` | — | Repos outside that org to scan too, `owner/name`, comma-separated (`matthv/pr-radar`); their chip shows the owner — see [Repos outside the org](#repos-outside-the-org) |
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
@@ -353,8 +353,8 @@ server refuses at startup a list that would not fit, or an entry that is not `ow
 rather than failing on every refresh. Listing repos one by one rather than `user:` keeps a
 personal account's other repos, and their dependency bots, off the board.
 
-Their chip carries the owner, `matthv/pr-radar #1`, and is grey: cyan is the org's repos, and
-a state colour would say something about the PR it does not mean.
+Their chip looks like any other and carries the owner, `matthv/pr-radar #1`: without it,
+`pr-radar` would read as one of the org's repos.
 
 ## The Linear ticket
 
