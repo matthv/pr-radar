@@ -188,10 +188,11 @@ Your own moves and bots are left out: they are not news to you, and bots have th
   Without more, the times are in the line's tooltip. A CI or a conflict has no moment of its
   own in the data, so it is listed without one.
 - **One block with the reasons.** What moved is the last entry of the card's reasons block,
-  in its colour and with its bar, not a second line beside it. When the news is something
-  the card already says, it is marked there instead of being said twice:
-  - a change request or a re-check reason gets a **new** badge;
-  - a red CI, a conflict or a failed release pill gets a small dot.
+  in its colour and with its bar, not a second line beside it.
+  - **When a reason already says it word for word** (a change request, a re-check), the
+    reason gets a **new** badge instead of being said twice.
+  - **A pill only gives the state.** So a red CI, a conflict or a failed release is still
+    said on the line, and its pill gets a dot in its own colour to point at it.
 
   Once you have seen it, the mark goes and the reason or the pill stays: it is why the card
   is here.

@@ -736,11 +736,11 @@
     border-radius: 4px; font-size: 10px; line-height: 1; font-weight: 650; letter-spacing: .04em;
     text-transform: uppercase; background: var(--indigo-soft); color: var(--indigo);
   }
-  /* A pill the card already had, newly true since you looked: a dot, not a second line. */
+  /* A pill newly true since you looked, in its own colour: the line below says what it is. */
   .pill.fresh { position: relative; }
   .pill.fresh::before {
     content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
-    border-radius: 50%; background: var(--indigo); box-shadow: 0 0 0 2px var(--surface);
+    border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--surface);
   }
   .since-list {
     list-style: none; margin: 0; padding: 7px 10px; display: grid; gap: 4px;
@@ -2024,17 +2024,21 @@ const repoChip = pr => {
 
 const changesOf = pr => PRRadarSince.changesSince(state.seen?.[pr.id], pr, state.data.me);
 
-// A change the card already says, through its reason or a pill: marked there as new rather
-// than said twice. The reason or the pill stays once seen — it is why the card is here —
-// and only its mark goes.
-const SAID_BY_CARD = {
+// A change a reason already says word for word: marked new on the reason instead of said
+// twice. The reason stays once seen — it is why the card is here — and only its mark goes.
+const SAID_BY_REASON = {
   changesRequested: pr => pr.side === 'mine' && pr.reasons.some(r => r.kind === 'changes-requested'),
   pushed: pr => pr.side === 'review' && pr.reasons.some(r => r.kind === 'recheck'),
+};
+// A pill only gives the state; that it is news is still said on the line, and the pill gets
+// a dot in its own colour to point at it.
+const SHOWN_BY_PILL = {
   ciFailed: pr => !pr.merged && (pr.ciState === 'FAILURE' || pr.ciState === 'ERROR'),
   conflict: pr => pr.side === 'mine' && pr.mergeable === 'CONFLICTING',
   releaseFailed: pr => pr.merged && pr.pipelineOutcome === 'failed',
 };
-const freshOn = (pr, kind) => Boolean(SAID_BY_CARD[kind]?.(pr)) && changesOf(pr).some(change => change.kind === kind);
+const freshOn = (pr, kind) =>
+  Boolean((SAID_BY_REASON[kind] ?? SHOWN_BY_PILL[kind])?.(pr)) && changesOf(pr).some(change => change.kind === kind);
 const freshBadge = () => `<span class="fresh-badge">${escapeHtml(t('sinceFresh'))}</span>`;
 
 function sincePhrase(change) {
@@ -2064,7 +2068,7 @@ function reasonsHtml(pr) {
   const fresh = freshOn(pr, 'changesRequested') || freshOn(pr, 'pushed');
   const rows = pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}${fresh ? freshBadge() : ''}</div>`);
 
-  const changes = changesOf(pr).filter(change => !SAID_BY_CARD[change.kind]?.(pr));
+  const changes = changesOf(pr).filter(change => !SAID_BY_REASON[change.kind]?.(pr));
   if (changes.length) {
     const hidden = changes.length - SINCE_SHOWN;
     const open = hidden > 0 && state.sinceOpen.has(pr.id);
