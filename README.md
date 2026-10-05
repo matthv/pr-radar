@@ -317,7 +317,9 @@ that module exports and none of its network calls:
 - `test/fetch.test.js` — spending less: a search reusing the PRs it holds, the light status
   read of a running CI, the event feed read again only when it changed;
 - `test/scope.test.js` — `PR_RADAR_EXTRA_REPOS` and the search scope it builds;
-- `test/demo.test.js` — the demo board still showing every case.
+- `test/demo.test.js` — the demo board still showing every case;
+- `test/since.test.js` — what a card says moved since you looked: others' comments, reviews and
+  commits but never yours or a bot's, a CI reaching an outcome, a conflict, a merge, a release.
 
 Every real case named in this file has its fixture there, under its PR number.
 
@@ -501,6 +503,46 @@ only, like the notes. Its first section is **repo colours**.
   red already say "your move", "waiting", "done" and "failing", so a red repo beside a
   failing CI would blur the reading. The ready-made hues all stay clear of them, and a test
   holds them to it.
+
+## Since you looked
+
+A card that moved since you last looked at it says what moved, in one discreet line:
+`◦ since you looked: Scra3 commented · CI turned red · new commits from Alban`.
+
+- **What it reports**:
+  - a comment or a review from someone else;
+  - commits pushed by someone else;
+  - a CI reaching an outcome (green or red, not starting again);
+  - a conflict appearing;
+  - the merge;
+  - the release published or failed.
+- **What it ignores**: your own moves and bots, which already have their own pill.
+- **What shows**: the two most pressing changes, what asks for something first. When there
+  are more, **▸ N more** opens the full list under the line, latest first, each with when.
+  Without more, the times are in the line's tooltip.
+- **How it knows**: the browser keeps a photo of each card as you saw it (`localStorage`,
+  `pr-radar:seen`), and the line is the difference with the card now. No GitHub call of its
+  own: it reads what the board already loaded. A card met for the first time is a baseline,
+  not news; it already gets the chime and the glowing rail when it asks for something.
+- **One block with the reasons.** What moved is the last entry of the card's reasons block,
+  in its colour and with its bar, not a second line beside it. When the news is something
+  the card already says, it is marked there instead of being said twice:
+  - a change request or a re-check reason gets a **new** badge;
+  - a red CI, a conflict or a failed release pill gets a small dot.
+
+  Once you have seen it, the mark goes and the reason or the pill stays: it is why the card
+  is here.
+- **When it goes**, and nothing else clears it:
+  - opening the PR from the card, a middle click included;
+  - **mark all as seen** in the band, after an absence.
+
+  A hover does not count: moving the mouse across the board would wipe what the line is
+  there to keep.
+
+The logic is a small pure module, `public/since.js`, loaded by the page and tested by
+`node --test`; the details are in [docs/live-refresh.md](docs/live-refresh.md#since-you-looked).
+In the demo, a few cards start with older photos, written again whenever the
+demo server restarts, since its dates start from the restart.
 
 ## A note on a card
 

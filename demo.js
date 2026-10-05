@@ -5,12 +5,16 @@
 // through the real classification, so the demo cannot drift from what the board does.
 
 const { baseShape, decorateMine, decorateReview, byActionThenFreshness, mergedSince } = require('./github');
+const { snapshotOf } = require('./public/since');
 
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
 const LINEAR_URL = 'https://linear.app/forestadmin';
 const MIN = 60 * 1000;
-const ago = minutes => new Date(Date.now() - minutes * MIN).toISOString();
+// Fixed when the demo starts: dates recomputed on every poll would make every card look
+// changed to the "since you looked" line.
+const STARTED_AT = Date.now();
+const ago = minutes => new Date(STARTED_AT - minutes * MIN).toISOString();
 
 // ForestAdmin members who committed in the last two weeks, with their GitHub ids pinned
 // here: the demo makes no call, so it cannot look them up.
@@ -30,7 +34,6 @@ const avatarOf = login => (GITHUB_IDS[login] ? `https://avatars.githubuserconten
 const user = login => ({ __typename: 'User', login, avatarUrl: avatarOf(login) });
 const bot = login => ({ __typename: 'Bot', login });
 
-let seq = 0;
 
 function node({
   repo,
@@ -89,8 +92,8 @@ function node({
     },
     recent: { nodes: [author, ...coAuthors, committer].map(login => ({ commit: { author: { user: user(login) } } })) },
     reviews: {
-      nodes: reviews.map(([login, state, min, body = '']) => ({
-        id: `R_${++seq}`,
+      nodes: reviews.map(([login, state, min, body = ''], index) => ({
+        id: `R_${number}_${index}`,
         author: login.endsWith('app') ? bot(login) : user(login),
         state,
         body,
@@ -107,8 +110,9 @@ function node({
       })),
     },
     reviewThreads: {
-      nodes: threads.map(({ path, line = 42, resolved = false, messages }) => ({
-        id: `T_${++seq}`,
+      // Stable across polls: the "since you looked" line tells threads apart by id.
+      nodes: threads.map(({ path, line = 42, resolved = false, messages }, index) => ({
+        id: `T_${number}_${index}`,
         isResolved: resolved,
         isOutdated: false,
         path,
@@ -280,6 +284,26 @@ const surprise = () => [node({
 
 let surpriseShown = false;
 
+// Older photos of a few cards, as if they had been looked at before these changes: the
+// "since you looked" line has something to say on the presentation's first screen.
+function demoSeen(prs) {
+  const older = (number, change) => {
+    const pr = prs.find(entry => entry.number === number);
+    if (!pr) return [];
+    const photo = snapshotOf(pr);
+    change(photo);
+    return [[pr.id, photo]];
+  };
+  return Object.fromEntries([
+    ...older(1951, photo => { photo.ci = 'SUCCESS'; }),
+    ...older(8561, photo => { photo.reviews = []; photo.threads = {}; }),
+    ...older(10012, photo => { photo.threads = {}; photo.ci = 'PENDING'; }),
+    ...older(1943, photo => { photo.threads = {}; photo.ci = 'PENDING'; photo.commitAt = '2000-01-01T00:00:00Z'; }),
+    ...older(8549, photo => { photo.commitAt = '2000-01-01T00:00:00Z'; }),
+    ...older(1945, photo => { photo.merged = false; photo.pipeline = 'none'; }),
+  ]);
+}
+
 function payload(force) {
   if (force) surpriseShown = !surpriseShown;
 
@@ -311,6 +335,8 @@ function payload(force) {
       'DEMO_forestadmin_10008': 'Merger après la démo produit de vendredi : Christophe veut la montrer avant.',
       'DEMO_forestadmin-server_8549': 'Demandé en DM, à repasser dès son push : https://app.slack.com/client',
     },
+    demoSeen: demoSeen([...mine, ...reviews]),
+    demoStartedAt: STARTED_AT,
     mine: mine.map(withLinks),
     reviews: reviews.map(withLinks),
     counts: {

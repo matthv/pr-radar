@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const demo = require('../demo');
+const { changesSince } = require('../public/since');
 
 const kinds = prs => new Set(prs.flatMap(pr => pr.reasons.map(reason => reason.kind)));
 const buckets = prs => new Set(prs.map(pr => pr.bucket));
@@ -65,4 +66,20 @@ test('demo: the repos it colours are on the board', () => {
   const board = demo.payload(false);
   const repos = new Set([...board.mine, ...board.reviews].map(pr => pr.repo));
   for (const repo of Object.keys(board.demoRepoColors)) assert.ok(repos.has(repo), repo);
+});
+
+test('demo: its older photos sit on cards the board shows, each with something to say', () => {
+  const board = demo.payload(false);
+  const prs = new Map([...board.mine, ...board.reviews].map(pr => [pr.id, pr]));
+  const photos = Object.entries(board.demoSeen);
+  assert.ok(photos.length >= 4);
+  for (const [id, photo] of photos) {
+    assert.ok(prs.has(id), id);
+    assert.ok(changesSince(photo, prs.get(id), board.me).length, `${id} says nothing`);
+  }
+});
+
+test('demo: two polls give the same cards, so nothing reads as changed between them', () => {
+  const strip = board => JSON.stringify([board.mine, board.reviews]);
+  assert.equal(strip(demo.payload(false)), strip(demo.payload(false)));
 });
