@@ -294,13 +294,20 @@ function demoSeen(prs) {
     change(photo);
     return [[pr.id, photo]];
   };
+  const OLD = '2000-01-01T00:00:00Z';
   return Object.fromEntries([
     ...older(1951, photo => { photo.ci = 'SUCCESS'; }),
     ...older(8561, photo => { photo.reviews = []; photo.threads = {}; }),
     ...older(10012, photo => { photo.threads = {}; photo.ci = 'PENDING'; }),
-    ...older(1943, photo => { photo.threads = {}; photo.ci = 'PENDING'; photo.commitAt = '2000-01-01T00:00:00Z'; }),
-    ...older(8549, photo => { photo.commitAt = '2000-01-01T00:00:00Z'; }),
+    ...older(1943, photo => { photo.threads = {}; photo.ci = 'PENDING'; photo.commitAt = OLD; }),
+    ...older(8549, photo => { photo.commitAt = OLD; photo.ci = 'PENDING'; }),
+    ...older(830, photo => { photo.commitAt = OLD; photo.ci = 'PENDING'; }),
+    ...older(404, photo => { photo.commitAt = OLD; photo.ci = 'FAILURE'; }),
+    ...older(10004, photo => { photo.commitAt = OLD; photo.ci = 'PENDING'; }),
     ...older(1945, photo => { photo.merged = false; photo.pipeline = 'none'; }),
+    ...older(395, photo => { photo.pipeline = 'running'; photo.release = null; }),
+    ...older(8557, photo => { photo.pipeline = 'running'; }),
+    ...older(8528, photo => { photo.merged = false; photo.pipeline = 'none'; photo.release = null; }),
   ]);
 }
 

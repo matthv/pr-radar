@@ -590,7 +590,6 @@
   .card.pipeline-none::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
   .card.pipeline-failed { background: linear-gradient(100deg, var(--rose-soft) -10%, var(--surface) 45%); }
   .card.pipeline-failed::before { background: linear-gradient(180deg, var(--rose), var(--rose-2)); }
-  .card.pipeline-failed .reason { color: var(--rose); }
 
   /* A gradient's stops cannot be animated, so the breathing lives on an overlay whose
      opacity can. Content is lifted above it. */
@@ -711,7 +710,15 @@
   }
   @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
-  .reasons { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+  /* One bar for the whole block, however many lines it holds: a bar per line broke at each gap. */
+  .reasons {
+    margin-top: 10px; display: flex; flex-direction: column; gap: 5px;
+    position: relative; padding-left: 11px; color: var(--text-soft);
+  }
+  .reasons::before {
+    content: ""; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px;
+    border-radius: 2px; background: currentColor; opacity: .4;
+  }
   /* What moved since you looked, as the reasons' last entry: same bar and colour, a lighter
      weight, so the reason above still reads first. */
   .reason.since { font-weight: 450; }
@@ -736,15 +743,18 @@
     border-radius: 50%; background: var(--indigo); box-shadow: 0 0 0 2px var(--surface);
   }
   .since-list {
-    list-style: none; margin: 0 0 0 11px; padding: 7px 10px; display: grid; gap: 4px;
+    list-style: none; margin: 0; padding: 7px 10px; display: grid; gap: 4px;
     background: var(--sunken); border-radius: 8px; font-size: 12px; color: var(--text-soft);
   }
   .since-list li { display: flex; gap: 12px; justify-content: space-between; }
   .since-at { color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .reason { font-size: 12.5px; font-weight: 500; color: var(--text-soft); display: flex; gap: 8px; }
-  .reason::before { content: ""; flex: none; width: 3px; border-radius: 2px; background: currentColor; opacity: .4; }
-  .card.action .reason { color: var(--indigo); }
-  .card.waiting .reason, .card.merged .reason { color: var(--amber); }
+  .reason { font-size: 12.5px; font-weight: 500; display: flex; gap: 8px; }
+  .card.action .reasons { color: var(--indigo); }
+  .card.waiting .reasons, .card.merged .reasons { color: var(--amber); }
+  /* A merged card takes the colour of its release, as its rail does: amber only while it runs.
+     Declared after the line above, which would otherwise win at equal specificity. */
+  .card.pipeline-done .reasons, .card.pipeline-none .reasons { color: var(--emerald); }
+  .card.pipeline-failed .reasons { color: var(--rose); }
 
   .expander {
     font: inherit; font-size: 12px; font-weight: 520; color: var(--text-faint);
