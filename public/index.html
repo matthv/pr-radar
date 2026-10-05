@@ -467,10 +467,18 @@
   .column-title .bar { width: 4px; height: 15px; border-radius: 3px; background: linear-gradient(180deg, var(--col), var(--col-2)); }
 
   .group-label {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 11px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    font: inherit; font-size: 11px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase;
     color: var(--text-faint); margin: 24px 0 10px;
+    background: none; border: 0; padding: 0; text-align: left; cursor: pointer;
   }
+  .group-label .gchev {
+    width: 6px; height: 6px; margin-left: 2px; flex: none; opacity: .6;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
+  }
+  .group-label.collapsed .gchev { transform: rotate(-45deg); }
+  .group-label.collapsed + .group-cards { display: none; }
   .group-label:first-of-type { margin-top: 18px; }
   .group-label .gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
@@ -984,6 +992,24 @@ const store = {
   },
   set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
 };
+
+const collapsedGroups = new Set((() => {
+  try {
+    return JSON.parse(localStorage.getItem('pr-radar:collapsed') ?? '[]');
+  } catch {
+    return [];
+  }
+})());
+
+function toggleGroup(label) {
+  const key = label.dataset.group;
+  const collapsed = !collapsedGroups.has(key);
+  if (collapsed) collapsedGroups.add(key);
+  else collapsedGroups.delete(key);
+  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  label.classList.toggle('collapsed', collapsed);
+  label.setAttribute('aria-expanded', String(!collapsed));
+}
 
 // Snoozing records the activity timestamp seen at the time. A PR stays hidden only
 // while that timestamp holds: any new commit, comment or review brings it straight
@@ -1951,10 +1977,13 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
       // to the action group; a merge with no CI signal at all settles immediately too,
       // since it is never going to produce one.
       const settled = bucket === 'merged' && group.every(pr => pr.pipelineOutcome !== 'running');
-      return `<div class="group-label ${bucket}${settled ? ' settled' : ''}">`
+      const key = `${target.id}:${bucket}`;
+      const collapsed = collapsedGroups.has(key);
+      return `<button type="button" class="group-label ${bucket}${settled ? ' settled' : ''}`
+        + `${collapsed ? ' collapsed' : ''}" data-group="${key}" aria-expanded="${!collapsed}">`
         + `<span class="gdot"></span>${groupLabels[bucket]}`
-        + `<span class="gcount">${group.length}</span></div>`
-        + group.map(cardFn).join('');
+        + `<span class="gcount">${group.length}</span><span class="gchev"></span></button>`
+        + `<div class="group-cards">${group.map(cardFn).join('')}</div>`;
     })
     .join('');
 
@@ -2274,6 +2303,12 @@ document.addEventListener('click', event => {
         copyUpdate.classList.remove('done');
       }, 1500);
     });
+    return;
+  }
+
+  const groupLabel = event.target.closest('.group-label[data-group]');
+  if (groupLabel) {
+    toggleGroup(groupLabel);
     return;
   }
 
