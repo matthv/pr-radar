@@ -467,10 +467,18 @@
   .column-title .bar { width: 4px; height: 15px; border-radius: 3px; background: linear-gradient(180deg, var(--col), var(--col-2)); }
 
   .group-label {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 11px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    font: inherit; font-size: 11px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase;
     color: var(--text-faint); margin: 24px 0 10px;
+    background: none; border: 0; padding: 0; text-align: left; cursor: pointer;
   }
+  .group-label .gchev {
+    width: 6px; height: 6px; margin-left: 2px; flex: none; opacity: .6;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
+  }
+  .group-label.collapsed .gchev { transform: rotate(-45deg); }
+  .group-label.collapsed + .group-cards { display: none; }
   .group-label:first-of-type { margin-top: 18px; }
   .group-label .gdot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
@@ -984,6 +992,35 @@ const store = {
   },
   set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
 };
+
+const collapsedGroups = new Set((() => {
+  try {
+    return JSON.parse(localStorage.getItem('pr-radar:collapsed') ?? '[]');
+  } catch {
+    return [];
+  }
+})());
+
+function saveCollapsed() {
+  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+}
+
+function toggleGroup(label) {
+  const key = label.dataset.group;
+  const collapsed = !collapsedGroups.has(key);
+  if (collapsed) collapsedGroups.add(key);
+  else collapsedGroups.delete(key);
+  saveCollapsed();
+  label.classList.toggle('collapsed', collapsed);
+  label.setAttribute('aria-expanded', String(!collapsed));
+}
+
+// Takes effect on the next render, which every caller is about to run.
+function expandGroups(keys) {
+  let changed = false;
+  for (const key of keys) changed = collapsedGroups.delete(key) || changed;
+  if (changed) saveCollapsed();
+}
 
 // Snoozing records the activity timestamp seen at the time. A PR stays hidden only
 // while that timestamp holds: any new commit, comment or review brings it straight
@@ -1660,15 +1697,19 @@ let glowTimer = null;
 function trackGlow(actionIds) {
   const now = Date.now();
   const current = new Set(actionIds);
+  const arrived = new Set();
   if (state.lastActionIds) {
     for (const id of current) {
-      if (!state.lastActionIds.has(id)) state.glow.set(id, document.hidden ? null : now + GLOW_MS);
+      if (state.lastActionIds.has(id)) continue;
+      state.glow.set(id, document.hidden ? null : now + GLOW_MS);
+      arrived.add(id);
     }
   }
   // A card that left "to act" — you answered — has nothing left to point at.
   for (const id of state.glow.keys()) if (!current.has(id)) state.glow.delete(id);
   state.lastActionIds = current;
   scheduleGlowExpiry();
+  return arrived;
 }
 
 function scheduleGlowExpiry() {
@@ -1951,10 +1992,13 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
       // to the action group; a merge with no CI signal at all settles immediately too,
       // since it is never going to produce one.
       const settled = bucket === 'merged' && group.every(pr => pr.pipelineOutcome !== 'running');
-      return `<div class="group-label ${bucket}${settled ? ' settled' : ''}">`
+      const key = `${target.id}:${bucket}`;
+      const collapsed = collapsedGroups.has(key);
+      return `<button type="button" class="group-label ${bucket}${settled ? ' settled' : ''}`
+        + `${collapsed ? ' collapsed' : ''}" data-group="${key}" aria-expanded="${!collapsed}">`
         + `<span class="gdot"></span>${groupLabels[bucket]}`
-        + `<span class="gcount">${group.length}</span></div>`
-        + group.map(cardFn).join('');
+        + `<span class="gcount">${group.length}</span><span class="gchev"></span></button>`
+        + `<div class="group-cards">${group.map(cardFn).join('')}</div>`;
     })
     .join('');
 
@@ -2055,8 +2099,13 @@ function render() {
   // An approval landing is news worth the chime and the glow, though it is not a fix: it
   // rings with the actions, and keeps a counter of its own.
   const total = mineAction + reviewAction + mineReady;
-  trackGlow([...filterList(mine), ...filterList(reviews)]
+  const arrived = trackGlow([...filterList(mine), ...filterList(reviews)]
     .filter(pr => pr.needsAction || pr.bucket === 'ready').map(pr => pr.id));
+  // A card that just landed is the news: a folded section would hide it behind the chime.
+  expandGroups([
+    ...mine.filter(pr => arrived.has(pr.id)).map(pr => `mine:${pr.bucket}`),
+    ...reviews.filter(pr => arrived.has(pr.id)).map(pr => `reviews:${pr.bucket}`),
+  ]);
 
   el('counters').innerHTML = [
     counter('mineAction', 'todo', mineAction, t('counterMine')),
@@ -2277,6 +2326,12 @@ document.addEventListener('click', event => {
     return;
   }
 
+  const groupLabel = event.target.closest('.group-label[data-group]');
+  if (groupLabel) {
+    toggleGroup(groupLabel);
+    return;
+  }
+
   const noteButton = event.target.closest('.note-btn');
   if (noteButton) {
     // Any open editor already saved itself on the focusout this click just caused, so
@@ -2343,6 +2398,7 @@ document.addEventListener('click', event => {
   if (focusButton) {
     const { focus } = focusButton.dataset;
     state.focus = state.focus === focus ? null : focus;
+    if (state.focus) expandGroups([`${FOCUS[focus].column}:${FOCUS[focus].bucket}`]);
     render();
     return;
   }
