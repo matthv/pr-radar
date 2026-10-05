@@ -16,6 +16,10 @@ const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 // then only from where the last scan stopped.
 const transcripts = new Map();
 let scanning = null;
+// PR links already met, per projects dir, so a scan can tell which ones are new: a PR just
+// made or opened in a session, worth a refresh now. A transcript read again from its start
+// (rewritten shorter) only meets links already known.
+const knownLinks = new Map();
 
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it. The link is read from there rather than from a branch: a session
@@ -97,7 +101,13 @@ async function scanNow(dir, maxAgeDays) {
     }
   }
   for (const file of transcripts.keys()) if (!seen.has(file)) transcripts.delete(file);
-  return { unreadable };
+
+  const links = [...transcripts.values()].flatMap(entry => [...entry.prUrls]);
+  const known = knownLinks.get(dir);
+  // The first scan meets every link of the last weeks at once: none of them is news.
+  const touched = known ? [...new Set(links.filter(url => !known.has(url)))] : [];
+  knownLinks.set(dir, new Set([...(known ?? []), ...links]));
+  return { unreadable, touched };
 }
 
 function scan({ dir = PROJECTS_DIR, maxAgeDays }) {

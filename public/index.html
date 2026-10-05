@@ -1594,6 +1594,11 @@ function applyStampTitle() {
 // A failed fetch raises the banner; a merely late one would age in silence. Computed only
 // at render time the mark would never show, a render following its fetch by milliseconds,
 // so it runs on its own clock.
+function renderStamp() {
+  el('stamp').textContent = new Date(state.data.fetchedAt).toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
+  renderStampAge();
+}
+
 function renderStampAge() {
   const fetchedAt = state.data && new Date(state.data.fetchedAt).getTime();
   el('stamp').classList.toggle(
@@ -2336,9 +2341,7 @@ function render() {
 
   document.title = total ? `(${total}) PR Radar` : 'PR Radar';
   applyStampTitle();
-  const fetchedAt = new Date(data.fetchedAt);
-  el('stamp').textContent = fetchedAt.toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' });
-  renderStampAge();
+  renderStamp();
 
   // Only the projects actually on the board, so the list never offers an empty result.
   const all = [...data.mine, ...data.reviews];
@@ -2427,10 +2430,19 @@ function renderUpdate(update) {
   box.hidden = false;
 }
 
-async function load(force) {
-  el('refresh').classList.add('busy');
+// What a render depends on, minus the check time: the page polls the server every few
+// seconds, and redrawing an unchanged board would close an open note editor for nothing.
+const boardSignature = payload => JSON.stringify([payload.mine, payload.reviews, payload.warnings, payload.update, payload.counts]);
+
+async function load(force, { check = false } = {}) {
+  // Only an asked-for refresh spins the button: the background polls would make it twitch.
+  if (force) el('refresh').classList.add('busy');
   try {
-    const response = await fetch('/api/prs' + (force ? '?force=1' : ''));
+    const params = new URLSearchParams();
+    if (force) params.set('force', '1');
+    if (check) params.set('check', '1');
+    if (document.hidden) params.set('hidden', '1');
+    const response = await fetch(`/api/prs${params.size ? `?${params}` : ''}`);
     const version = response.headers.get('x-pr-radar-version');
     if (version) {
       bootVersion ??= version;
@@ -2440,12 +2452,17 @@ async function load(force) {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || response.statusText);
     el('error').hidden = true;
+    const unchanged = state.data && boardSignature(state.data) === boardSignature(payload);
     state.data = payload;
+    scheduleRefresh(payload.pageRefreshSeconds ?? payload.refreshSeconds);
+    if (unchanged) {
+      renderStamp();
+      return;
+    }
     cardNotes.seed(payload.demoNotes);
     repoColors.seed(payload.demoRepoColors);
     renderUpdate(payload.update);
     el('summary').hidden = false;
-    scheduleRefresh(payload.refreshSeconds);
     render();
   } catch (error) {
     el('error').hidden = false;
@@ -2663,8 +2680,14 @@ document.addEventListener('change', event => {
 
 // A laptop waking from sleep leaves setInterval far behind: without this you read
 // forty-minute-old data believing it is fresh. The server cache absorbs the extra call.
+let hiddenSince = null;
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') {
+    hiddenSince = Date.now();
+    return;
+  }
+  const away = hiddenSince ? Date.now() - hiddenSince : 0;
+  hiddenSince = null;
   // A glow that started while the tab was hidden would be over before anyone looked.
   let started = false;
   for (const [id, until] of state.glow) {
@@ -2677,7 +2700,8 @@ document.addEventListener('visibilitychange', () => {
     scheduleGlowExpiry();
     render();
   }
-  load(false);
+  // Back after a while, likely from GitHub itself: ask for a check now, not at the next tick.
+  load(false, { check: away > 60_000 });
 });
 
 el('repoTrigger').addEventListener('click', () => openRepoPicker(!state.repoOpen));

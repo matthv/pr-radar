@@ -88,7 +88,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_EXTRA_REPOS` | — | Repos outside that org to scan too, `owner/name`, comma-separated (`matthv/pr-radar`); their chip shows the owner — see [Repos outside the org](#repos-outside-the-org) |
 | `PORT` | `4321` | Server port |
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
-| `PR_RADAR_REFRESH_SECONDS` | `300` | Auto-refresh interval |
+| `PR_RADAR_REFRESH_SECONDS` | `300` | Full search interval — see [How fresh the board is](#how-fresh-the-board-is) |
+| `PR_RADAR_CHECK_SECONDS` | `60` | Free change checks between two full searches; `0` goes back to a full refresh every `PR_RADAR_REFRESH_SECONDS` and nothing else |
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
@@ -103,9 +104,46 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
 | `GITHUB_TOKEN` | — | Bypasses `gh` |
 
-The server caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`.
-Otherwise a poll would land on a barely-valid cache and serve data almost twice
-as old as the advertised interval. The **Refresh** button bypasses the cache.
+The **Refresh** button always runs a full search. With `PR_RADAR_CHECK_SECONDS=0`, the server
+caches its response for **half** of `PR_RADAR_REFRESH_SECONDS`: otherwise a poll would land
+on a barely-valid cache and serve data almost twice as old as the advertised interval.
+
+## How fresh the board is
+
+The mechanism, with diagrams, is in [docs/live-refresh.md](docs/live-refresh.md).
+
+A full search — eight GitHub searches, the event feed, every PR's details — runs every
+`PR_RADAR_REFRESH_SECONDS`, and is the only way to find a **new** PR. In between, the server
+keeps the board fresh with requests GitHub answers for free when nothing changed:
+
+| Every | What | Cost |
+| --- | --- | --- |
+| `PR_RADAR_CHECK_SECONDS` (60 s, never under `/notifications`' `X-Poll-Interval`) | one `GET pulls/{n}` per card with `If-None-Match`, and `GET /notifications` with `If-Modified-Since` | a `304` costs nothing; a change costs one request, then a reload of **that PR only** |
+| 30 s, only while something is in flight | a reload of the cards whose head CI is pending or whose release is running | a few PRs, only while they exist |
+| `PR_RADAR_REFRESH_SECONDS` | the full search | unchanged |
+
+- **Searches, the scarce quota** (30 a minute, and a secondary limit hit once already),
+  never run more often than before. A notification on a PR missing from the board brings
+  the next full search forward, but no sooner than 90 s after the last one, so a burst of
+  them cannot loop the searches.
+- **Your own moves show at once**: a PR made or opened in a Claude session, read from the
+  same transcripts as [The Claude session](#the-claude-session), when that feature is on.
+  So does a return to the tab after a minute away, likely from GitHub itself.
+- **The checks only run while a page is looking.**
+  - Each poll of the page renews a ten-minute lease, and a hidden tab spaces the checks
+    to five minutes.
+  - With no page, the server calls GitHub not at all; the next page to open runs a full
+    search.
+- **The page asks the server every 20 s.** It is answered from the cache, without a GitHub
+  call, and redraws only when the board actually changed: an unchanged board would close a
+  note being edited.
+- **A reload is reshaped into the board** from the last search's sources (`shapeBoard`).
+  A PR the reload does not return is kept as it was, since a lost batch is not a closed PR,
+  and the next full search settles it.
+
+`gh api -i` exits with code 1 on a `304`, with the headers on stdout: `watch.js` reads that
+as an answer, not a failure. A check that genuinely fails is logged on the server, and the
+5-minute full search stays the safety net.
 
 ## Where your feedback is looked for
 
@@ -256,8 +294,8 @@ goes to the server's console, and the next tick tries again.
 node --test         # or: npm test
 ```
 
-Node's built-in runner, no dependency. Four files, one per module, each testing the pure
-functions that module exports and none of its network calls:
+Node's built-in runner, no dependency. One file per module, each testing the pure functions
+that module exports and none of its network calls:
 
 - `test/classification.test.js` — the board's rules, where most bugs have lived:
   `updated_at` overstating freshness, bot comments faking activity, feedback left in the
@@ -272,7 +310,12 @@ functions that module exports and none of its network calls:
 - `test/update.test.js` — reading `git` output into "behind by N";
 - `test/colors.test.js` — a picked colour turned into a repo's tint: sRGB to OKLCH, the hue
   kept and the intensity capped, no ready-made hue reading as a state, the warning for one
-  that does.
+  that does;
+- `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
+  baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
+  of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
+- `test/scope.test.js` — `PR_RADAR_EXTRA_REPOS` and the search scope it builds;
+- `test/demo.test.js` — the demo board still showing every case.
 
 Every real case named in this file has its fixture there, under its PR number.
 
@@ -737,8 +780,8 @@ cannot update one caller and quietly leave the other stale.
   The light goes inwards because the card clips anything left of its edge, and every
   render rebuilds the cards, so the pulse resumes from a negative delay rather than
   restarting at its first frame on each refresh.
-- Auto-refresh is driven by `PR_RADAR_REFRESH_SECONDS`; the last fetch time sits
-  in the header, the exact interval on hover.
+- The time in the header is the last check, free or not; see
+  [How fresh the board is](#how-fresh-the-board-is).
 
 ## The summary band
 
