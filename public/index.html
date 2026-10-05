@@ -1001,14 +1001,25 @@ const collapsedGroups = new Set((() => {
   }
 })());
 
+function saveCollapsed() {
+  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+}
+
 function toggleGroup(label) {
   const key = label.dataset.group;
   const collapsed = !collapsedGroups.has(key);
   if (collapsed) collapsedGroups.add(key);
   else collapsedGroups.delete(key);
-  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  saveCollapsed();
   label.classList.toggle('collapsed', collapsed);
   label.setAttribute('aria-expanded', String(!collapsed));
+}
+
+// Takes effect on the next render, which every caller is about to run.
+function expandGroups(keys) {
+  let changed = false;
+  for (const key of keys) changed = collapsedGroups.delete(key) || changed;
+  if (changed) saveCollapsed();
 }
 
 // Snoozing records the activity timestamp seen at the time. A PR stays hidden only
@@ -1686,15 +1697,19 @@ let glowTimer = null;
 function trackGlow(actionIds) {
   const now = Date.now();
   const current = new Set(actionIds);
+  const arrived = new Set();
   if (state.lastActionIds) {
     for (const id of current) {
-      if (!state.lastActionIds.has(id)) state.glow.set(id, document.hidden ? null : now + GLOW_MS);
+      if (state.lastActionIds.has(id)) continue;
+      state.glow.set(id, document.hidden ? null : now + GLOW_MS);
+      arrived.add(id);
     }
   }
   // A card that left "to act" — you answered — has nothing left to point at.
   for (const id of state.glow.keys()) if (!current.has(id)) state.glow.delete(id);
   state.lastActionIds = current;
   scheduleGlowExpiry();
+  return arrived;
 }
 
 function scheduleGlowExpiry() {
@@ -2084,8 +2099,13 @@ function render() {
   // An approval landing is news worth the chime and the glow, though it is not a fix: it
   // rings with the actions, and keeps a counter of its own.
   const total = mineAction + reviewAction + mineReady;
-  trackGlow([...filterList(mine), ...filterList(reviews)]
+  const arrived = trackGlow([...filterList(mine), ...filterList(reviews)]
     .filter(pr => pr.needsAction || pr.bucket === 'ready').map(pr => pr.id));
+  // A card that just landed is the news: a folded section would hide it behind the chime.
+  expandGroups([
+    ...mine.filter(pr => arrived.has(pr.id)).map(pr => `mine:${pr.bucket}`),
+    ...reviews.filter(pr => arrived.has(pr.id)).map(pr => `reviews:${pr.bucket}`),
+  ]);
 
   el('counters').innerHTML = [
     counter('mineAction', 'todo', mineAction, t('counterMine')),
@@ -2378,6 +2398,7 @@ document.addEventListener('click', event => {
   if (focusButton) {
     const { focus } = focusButton.dataset;
     state.focus = state.focus === focus ? null : focus;
+    if (state.focus) expandGroups([`${FOCUS[focus].column}:${FOCUS[focus].bucket}`]);
     render();
     return;
   }
