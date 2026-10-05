@@ -176,6 +176,8 @@ function nextDiscoveryAt(lastDiscoveryAt, early, regularMs) {
 
 module.exports = {
   createWatcher,
+  conditionalGet,
+  runGh,
   inFlight,
   toFollow,
   nextDiscoveryAt,

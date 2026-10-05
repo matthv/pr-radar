@@ -58,7 +58,7 @@ flowchart LR
 | Cadence | Why it exists |
 | --- | --- |
 | **Checks, every 60 s** | Catch any human change on a card already on the board: a comment, a review, a push, a merge. `60` is also the floor `/notifications` sets through `X-Poll-Interval`. |
-| **In flight, every 30 s** | A running CI or release changes state with no human event. A PR's `ETag` does not move when its checks finish, so these cards are reloaded directly, for 30 minutes at most each. |
+| **In flight, every 30 s** | A running CI or release changes state with no human event. A PR's `ETag` does not move when its checks finish, so these cards have their **status only** read directly, for 30 minutes at most each, and are reloaded in full once it moves. |
 | **Full search** | The only way to discover a **new** PR, such as one just opened or a review just requested. A notification about a PR missing from the board brings it forward, but never sooner than 90 s after the previous one. |
 
 ## The path of a change
@@ -144,10 +144,15 @@ Per hour, with a tab open. A full search costs about 22 to 24 calls on a board o
   - `createWatcher` holds the `ETag`s and the notifications' `Last-Modified`;
   - `inFlight` and `toFollow` pick the cards to follow;
   - `nextDiscoveryAt` enforces the gap between full searches.
-- **`github.js`**: `discover`, `loadNodes`, `shapeBoard`, `fetchBoard`.
+- **`github.js`**:
+  - `discover`, `loadNodes`, `shapeBoard`, `fetchBoard` (with the PRs it may reuse);
+  - `STATUS_QUERY`, `statusFingerprint`, `fetchStatusFingerprints` for the cards in flight;
+  - the event feed's conditional first page in `recentlyTouchedPullRequests`.
 - **`server.js`**:
   - `patchPrs` reloads a few PRs into the cached board;
+  - `reusableNodes` picks what a scheduled search may reuse (`REUSE_MS`);
   - `liveStep` and `liveTick` run the loop;
   - the `/api/prs` route renews the page lease.
 - **`claude-sessions.js`**: `scan()` returns the PR links new since the last scan (`touched`).
-- **Tests**: `test/watch.test.js`, and the reshaping case in `test/classification.test.js`.
+- **Tests**: `test/watch.test.js`, `test/fetch.test.js` (reuse, status fingerprint, event
+  feed), and the reshaping cases in `test/classification.test.js`.

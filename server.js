@@ -13,7 +13,7 @@ try {
   /* no .env: fall back to the defaults */
 }
 
-const { fetchBoard, loadNodes, shapeBoard, ownerScope, parseExtraRepos } = require('./github');
+const { fetchBoard, loadNodes, shapeBoard, ownerScope, parseExtraRepos, fetchStatusFingerprints, statusFingerprint } = require('./github');
 const watch = require('./watch');
 const digest = require('./digest');
 const slack = require('./slack');
@@ -35,6 +35,10 @@ const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
 const CHECK_SECONDS = DEMO ? 0 : Number(process.env.PR_RADAR_CHECK_SECONDS ?? 60);
 const LIVE = CHECK_SECONDS > 0;
 const IN_FLIGHT_MS = 30_000;
+// A scheduled search reuses the PRs the checks already keep current, but none older than this:
+// what no check sees (a conflict appearing as the base moves, a release tag) gets a full
+// reload at least this often.
+const REUSE_MS = 30 * 60_000;
 const HIDDEN_CHECK_MS = 300_000;
 // Past this long with no page asking, nobody is looking: the checks stop.
 const LEASE_MS = 600_000;
@@ -179,7 +183,15 @@ async function layered(board, discoveredAt) {
   };
 }
 
-async function dashboard(force) {
+function reusableNodes() {
+  if (!LIVE || !store) return new Map();
+  const now = Date.now();
+  return new Map([...store.nodes].filter(([id]) => now - (store.loadedAt.get(id) ?? 0) < REUSE_MS));
+}
+
+// `reuse`: the live loop's own searches only. The Refresh button, a lapsed lease and the first
+// search reload everything.
+async function dashboard(force, { reuse = false } = {}) {
   if (DEMO) {
     return {
       ...demo.payload(force),
@@ -200,11 +212,14 @@ async function dashboard(force) {
     scanDone = true;
   });
   inFlight = exclusive(() => Promise.all([
-    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }),
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }, reuse ? reusableNodes() : new Map()),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
-      store = { context: fetched.context, nodes: fetched.nodes, detailWarnings: fetched.board.warnings.slice(fetched.context.warnings.length) };
+      const loadedNow = Date.now();
+      const loadedAt = new Map([...fetched.nodes.keys()].map(id => [id, store?.loadedAt.get(id) ?? loadedNow]));
+      for (const id of fetched.loaded) loadedAt.set(id, loadedNow);
+      store = { context: fetched.context, nodes: fetched.nodes, loadedAt, detailWarnings: fetched.board.warnings.slice(fetched.context.warnings.length) };
       const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
       if (slackMode === 'claude') readSlackInBackground(prs);
@@ -232,7 +247,10 @@ function patchPrs(ids) {
     if (!store || !cache.payload) return;
     const detailWarnings = [];
     const reloaded = await loadNodes([...ids], detailWarnings);
-    for (const [id, node] of reloaded) store.nodes.set(id, node);
+    for (const [id, node] of reloaded) {
+      store.nodes.set(id, node);
+      store.loadedAt.set(id, Date.now());
+    }
     const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });
@@ -253,7 +271,7 @@ async function liveStep() {
   const now = Date.now();
   if (now >= watch.nextDiscoveryAt(cache.at, live.earlyDiscovery, REFRESH_SECONDS * 1000)) {
     live.earlyDiscovery = false;
-    await dashboard(true);
+    await dashboard(true, { reuse: true });
     return;
   }
 
@@ -283,7 +301,9 @@ async function liveStep() {
   const flying = watch.toFollow(cache.payload, live.flyingSince, now);
   if (flying.length && now - live.inFlightAt >= IN_FLIGHT_MS) {
     live.inFlightAt = now;
-    await patchOrForget(new Set(flying.map(pr => pr.id)));
+    const prints = await fetchStatusFingerprints(flying.map(pr => pr.id));
+    const moved = flying.filter(pr => prints.has(pr.id) && prints.get(pr.id) !== statusFingerprint(store.nodes.get(pr.id)));
+    if (moved.length) await patchOrForget(new Set(moved.map(pr => pr.id)));
   }
 }
 

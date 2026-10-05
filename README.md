@@ -314,6 +314,8 @@ that module exports and none of its network calls:
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
+- `test/fetch.test.js` — spending less: a search reusing the PRs it holds, the light status
+  read of a running CI, the event feed read again only when it changed;
 - `test/scope.test.js` — `PR_RADAR_EXTRA_REPOS` and the search scope it builds;
 - `test/demo.test.js` — the demo board still showing every case.
 
