@@ -1024,3 +1024,21 @@ test('board: reshaped from reloaded nodes, a taken-over PR goes back once its au
   assert.deepEqual([after.mine.length, after.reviews.length], [0, 1]);
   assert.deepEqual([...context.reviewSet], [id], 'the discovery context is left as found');
 });
+
+test('board: a PR I reviewed that merges between two searches stays on the board', () => {
+  const id = 'PR_9';
+  const context = {
+    me: ME, org: 'o', maxAgeDays: 60, warnings: [], cutoff: Date.now() - 60 * DAY, mergedCutoff: Date.now() - DAY,
+    stale: new Set(), mineSet: new Set(), reviewSet: new Set([id]), requestedSet: new Set(), assignedSet: new Set(),
+    // The last search saw it open: it is not among the merged-and-reviewed ones yet.
+    mergedReviewedIds: new Set(), extraIds: new Set(),
+  };
+  const merged = node({
+    id, state: 'MERGED', merged: true, mergedAt: ago(0.01),
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'APPROVED', body: '', submittedAt: ago(0.5), url: 'u' }] },
+  });
+  assert.equal(shapeBoard(new Map([[id, merged]]), context).reviews.length, 1);
+
+  const notMine = node({ id, state: 'MERGED', merged: true, mergedAt: ago(0.01) });
+  assert.equal(shapeBoard(new Map([[id, notMine]]), context).reviews.length, 0, 'a merge I never reviewed is not my news');
+});

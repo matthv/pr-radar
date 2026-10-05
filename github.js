@@ -1061,9 +1061,13 @@ function shapeBoard(nodes, context, detailWarnings = []) {
       // and colour it another.
       const mine = shaped.author === me || shaped.headCommitAuthor === me;
       const fresh = new Date(shaped.mergedAt).getTime() >= mergedCutoff;
+      // Read on the PR itself, not only from the last search: a PR I reviewed that merges
+      // between two searches is reloaded on its own, and the search that would have listed
+      // it as merged-and-reviewed has not run yet — the card vanished until it did.
+      const reviewedByMe = shaped.reviews.some(review => review.author === me);
       // Kept whatever the outcome: dropping it on success would make "it passed"
       // indistinguishable from "I never saw it".
-      if (fresh && (mine || mergedReviewedIds.has(id))) shapes.set(id, shaped);
+      if (fresh && (mine || mergedReviewedIds.has(id) || reviewedByMe)) shapes.set(id, shaped);
       continue;
     }
 
