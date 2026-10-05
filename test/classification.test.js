@@ -194,6 +194,39 @@ test('reviewing: commits pushed after my feedback need a re-check', () => {
   assert.ok(decorated.reasons.some(r => r.kind === 'recheck'));
 });
 
+// forestadmin-server#8561: three remarks of mine, answered by the author, resolved by me, then
+// new commits. Nothing was left open and my verdict was only "commented", so the card sat in
+// "nothing to report" while the PR still waited on my approval.
+test('reviewing: my remarks answered and resolved, then new commits: a re-check, not nothing', () => {
+  const remark = () => thread({ comments: [[ME, ago(0.5)], ['author', ago(0.3)]], isResolved: true });
+  const pr = node({
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'COMMENTED', body: '', submittedAt: ago(0.5), url: 'u' }] },
+    reviewThreads: { nodes: [remark(), remark(), remark()] },
+    head: { nodes: [{ commit: { committedDate: ago(0.1), author: { user: user('author') }, statusCheckRollup: null } }] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, true);
+
+  assert.ok(decorated.reasons.some(r => r.kind === 'recheck'));
+  assert.equal(decorated.bucket, 'action');
+});
+
+test('reviewing: a passing comment of mine, or an approval, does not ask for a re-check on a push', () => {
+  const pushed = { nodes: [{ commit: { committedDate: ago(0.1), author: { user: user('author') }, statusCheckRollup: null } }] };
+
+  const replied = node({
+    reviewThreads: { nodes: [thread({ comments: [['author', ago(1)], [ME, ago(0.5)], ['author', ago(0.4)]], isResolved: true })] },
+    head: pushed,
+  });
+  assert.equal(decorateReview(baseShape(replied, ME), ME, false).reasons.some(r => r.kind === 'recheck'), false);
+
+  const approved = node({
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'APPROVED', body: '', submittedAt: ago(0.4), url: 'u' }] },
+    reviewThreads: { nodes: [thread({ comments: [[ME, ago(0.5)], ['author', ago(0.45)]], isResolved: true })] },
+    head: pushed,
+  });
+  assert.equal(decorateReview(baseShape(approved, ME), ME, false).reasons.some(r => r.kind === 'recheck'), false);
+});
+
 // The bug: `pushedSinceMyFeedback` only compared dates, never the commit author — a PR
 // you had just fixed yourself asked you to re-read your own work.
 test('reviewing: my own commits are never something for me to re-check', () => {

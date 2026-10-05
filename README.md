@@ -182,6 +182,17 @@ real activity: last commit, last human comment, last review. In short,
 "New commits since my feedback" ignores commits **you** authored. Without that
 guard, a PR you have taken over asks you to re-check your own work.
 
+It fires when someone else pushed after your last word, and one of these holds:
+- a remark of yours still waits on the author;
+- your last verdict requested changes;
+- you raised remarks on it and have not approved since. A passing comment does not count
+  here: it should not ring on every push.
+
+The last case is forestadmin-server#8561. The author answered all three remarks, the
+reviewer resolved them, then new commits came. With nothing left open and a verdict of only
+"commented", the card sat in "nothing to report" while the PR waited on that reviewer's
+approval.
+
 GitHub's `updated_at` will not do: it moves when a label is added, when
 `mergeable` is recomputed, or when CI is re-run. A PR with no commit and no
 comment for 204 days still claimed it had been "updated 2 days ago". Bot comments
