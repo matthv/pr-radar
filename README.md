@@ -269,7 +269,10 @@ functions that module exports and none of its network calls:
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
   incrementally, a running copy and the terminal it runs in, and the route with its guards;
-- `test/update.test.js` — reading `git` output into "behind by N".
+- `test/update.test.js` — reading `git` output into "behind by N";
+- `test/colors.test.js` — a picked colour turned into a repo's tint: sRGB to OKLCH, the hue
+  kept and the intensity capped, no ready-made hue reading as a state, the warning for one
+  that does.
 
 Every real case named in this file has its fixture there, under its PR number.
 
@@ -432,6 +435,27 @@ that asks something of you: nothing else would bring it back. So the count sits 
 the summary band, next to the counters, with the snoozed cards one click away and a
 **wake all** next to them. Entries whose PR has moved on are pruned on every render,
 so the store cannot drift out of sync with the board.
+
+## Settings
+
+The ⚙ button in the header opens a panel of personal settings. They are kept in this browser
+only, like the notes. Its first section is **repo colours**.
+
+- **Each repo can take its own colour** on its chip: the cards, the orbit view's peek, the
+  project picker and the standup notes all follow. The panel lists the repos on the board
+  and those already coloured. A colour stays when its repo leaves the board, so it is there
+  when the repo comes back.
+- **Eight ready-made hues**, or **other…** for any colour from the native picker. **default**
+  goes back to the cyan.
+- **The hue and its intensity are yours; the lightness is the theme's.** A picked colour is
+  read as OKLCH: its lightness is thrown away and recomputed, a pale background and a dark
+  text in light mode, the reverse in dark. So any colour stays readable. Even a bright yellow
+  keeps a contrast of 6.5:1, against the 4.5:1 that text needs. The intensity is capped
+  between grey and fluorescent (`public/colors.js`, `toTint`).
+- **A hue close to a state colour gets a warning, not a refusal.** Indigo, amber, green and
+  red already say "your move", "waiting", "done" and "failing", so a red repo beside a
+  failing CI would blur the reading. The ready-made hues all stay clear of them, and a test
+  holds them to it.
 
 ## A note on a card
 

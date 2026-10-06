@@ -302,6 +302,11 @@ function payload(force) {
     mergedSince: new Date(mergedSince()).toISOString(),
     warnings: [],
     fetchedAt: new Date().toISOString(),
+    // Two repos already coloured, so the board and the settings panel show the result.
+    demoRepoColors: {
+      'ForestAdmin/forestadmin': { h: 250, c: 0.13, preset: 'blue' },
+      'ForestAdmin/agent-ruby': { h: 45, c: 0.13, preset: 'coral' },
+    },
     demoNotes: {
       'DEMO_forestadmin_10008': 'Merger après la démo produit de vendredi : Christophe veut la montrer avant.',
       'DEMO_forestadmin-server_8549': 'Demandé en DM, à repasser dès son push : https://app.slack.com/client',

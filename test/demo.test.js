@@ -60,3 +60,9 @@ test('demo: my PRs offer their Claude session, the reviews do not', () => {
   assert.ok(mine.every(pr => pr.claudeSession === true));
   assert.ok(reviews.every(pr => pr.claudeSession === false));
 });
+
+test('demo: the repos it colours are on the board', () => {
+  const board = demo.payload(false);
+  const repos = new Set([...board.mine, ...board.reviews].map(pr => pr.repo));
+  for (const repo of Object.keys(board.demoRepoColors)) assert.ok(repos.has(repo), repo);
+});

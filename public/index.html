@@ -245,6 +245,54 @@
   }
   .controls button:hover { color: var(--indigo); border-color: var(--indigo); transform: translateY(-1px); }
   #theme { width: 32px; padding: 0; justify-content: center; font-size: 13px; }
+  #settings { width: 32px; padding: 0; justify-content: center; }
+  #settings svg { width: 15px; height: 15px; }
+  #settings.on { color: var(--indigo); border-color: var(--indigo); }
+
+  /* A repo's own colour: its hue and intensity are the user's, the lightness the theme's,
+     so whatever was picked stays readable on both. */
+  :root { --repo-bg-l: 94%; --repo-fg-l: 44%; --swatch-l: 68%; }
+  :root[data-theme="dark"] { --repo-bg-l: 27%; --repo-fg-l: 84%; --swatch-l: 72%; }
+  .repo.tinted {
+    background: oklch(var(--repo-bg-l) calc(var(--repo-c) * .45) var(--repo-h));
+    color: oklch(var(--repo-fg-l) var(--repo-c) var(--repo-h));
+  }
+  .repo-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: oklch(var(--swatch-l) var(--repo-c) var(--repo-h)); margin-right: 6px; vertical-align: 0;
+  }
+
+  .settings-panel {
+    position: absolute; top: calc(100% - 4px); right: 28px; z-index: 30;
+    width: min(460px, calc(100vw - 32px)); max-height: min(70vh, 620px); overflow: auto;
+    padding: 14px 16px 16px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow-md);
+  }
+  .settings-panel h2 { margin: 0 0 2px; font-size: 13.5px; font-weight: 650; }
+  .settings-panel .hint { margin: 0 0 12px; font-size: 12px; color: var(--text-faint); }
+  .color-row { display: grid; gap: 6px; padding: 9px 0; border-top: 1px solid var(--hairline); }
+  .color-row:first-of-type { border-top: 0; }
+  .color-row .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .color-row .repo { margin-right: auto; }
+  .swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .swatch {
+    width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer;
+    border: 2px solid transparent; background: oklch(var(--swatch-l) var(--repo-c) var(--repo-h));
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .swatch.on { border-color: var(--surface); box-shadow: 0 0 0 2px var(--text); }
+  .swatch:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .swatch-other {
+    position: relative; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    font-size: 11.5px; color: var(--text-soft);
+  }
+  .swatch-other input { width: 22px; height: 20px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .color-reset {
+    font: inherit; font-size: 11.5px; color: var(--text-faint); background: none; border: 0;
+    padding: 0 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  }
+  .color-reset:hover { color: var(--text); }
+  .color-warn { font-size: 11.5px; color: var(--amber); }
   /* The mirror of PR Radar's own button on gitdeck: each tool points at the other with a
      soft-tinted pill in the host's accent, so the pair reads as one family. */
   a.link-out {
@@ -445,6 +493,7 @@
     color: var(--cyan); padding-top: 1px;
   }
   #notesBody .num:hover { text-decoration: underline; }
+  #notesBody .num.tinted { color: oklch(var(--repo-fg-l) var(--repo-c) var(--repo-h)); }
 
   /* An active counter isolates its column: full width, the other collapsed. */
   main[data-focus="mine"], main[data-focus="reviews"] { grid-template-columns: minmax(0, 1fr); }
@@ -896,6 +945,7 @@
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
+    <button type="button" id="settings" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 4h3.5M8.5 4H14M2 8h7.5M12.5 8H14M2 12h1.5M6.5 12H14"/><circle cx="7" cy="4" r="1.5"/><circle cx="11" cy="8" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></button>
     <button id="reload" hidden></button>
     <span id="stamp"></span>
     <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
@@ -916,6 +966,8 @@
       <span>gitdeck</span>
     </a>
   </div>
+  <!-- Outside .controls, whose button style would dress every swatch. -->
+  <div class="settings-panel" id="settingsPanel" role="dialog" aria-labelledby="settingsHead" hidden></div>
 </header>
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
@@ -956,12 +1008,14 @@
   </section>
 </main>
 
+<script src="/colors.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
 let bootVersion = null;
 
 const state = {
+  settingsOpen: false,
   data: null,
   lastActionCount: null,
   lastActionIds: null,
@@ -1067,6 +1121,37 @@ const snoozes = {
 // with whoever else opens this same board. Unlike a snooze it survives ordinary activity
 // on the PR (that is not what it is for); it only goes away once the PR itself is gone
 // from the tool, pruned the same way a stale snooze is.
+// Per browser, like the notes: a colour is a personal reading aid. Never pruned, so a repo
+// that leaves the board and comes back keeps its colour.
+const repoColors = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem('pr-radar:repoColors') ?? '{}');
+    } catch {
+      return {};
+    }
+  },
+  write(map) {
+    try {
+      localStorage.setItem('pr-radar:repoColors', JSON.stringify(map));
+    } catch {
+      /* storage refused: the colour lasts until the page reloads */
+    }
+  },
+  get(repo) {
+    return repoColors.read()[repo] ?? null;
+  },
+  set(repo, tint) {
+    const map = repoColors.read();
+    if (tint) map[repo] = tint;
+    else delete map[repo];
+    repoColors.write(map);
+  },
+  seed(map) {
+    if (map && localStorage.getItem('pr-radar:repoColors') === null) repoColors.write(map);
+  },
+};
+
 const cardNotes = {
   read() {
     try {
@@ -1126,6 +1211,16 @@ const I18N = {
     updateMore: 'et {n} de plus',
     updateDismiss: 'masquer jusqu’à la prochaine version',
     themeTitle: 'Thème clair / sombre',
+    settingsTitle: 'Réglages',
+    settingsRepoColors: 'Couleur des repos',
+    settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
+    settingsNoRepo: 'Aucun repo sur le tableau pour l\u2019instant.',
+    colorOther: 'autre…',
+    colorDefault: 'par défaut',
+    colorNearState: 'proche de la couleur « {state} » : on pourrait la confondre avec un état',
+    state_indigo: 'à traiter', state_amber: 'en attente', state_emerald: 'réglé', state_rose: 'en échec',
+    color_blue: 'bleu', color_slate: 'ardoise', color_plum: 'prune', color_magenta: 'magenta',
+    color_coral: 'corail', color_ochre: 'ocre', color_olive: 'olive', color_teal: 'sarcelle',
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
     openProfile: 'ouvrir le profil de {login}',
@@ -1261,6 +1356,16 @@ const I18N = {
     updateMore: 'and {n} more',
     updateDismiss: 'hide until the next version',
     themeTitle: 'Light / dark theme',
+    settingsTitle: 'Settings',
+    settingsRepoColors: 'Repo colours',
+    settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
+    settingsNoRepo: 'No repo on the board yet.',
+    colorOther: 'other…',
+    colorDefault: 'default',
+    colorNearState: 'close to the “{state}” colour: it could pass for a state',
+    state_indigo: 'to handle', state_amber: 'waiting', state_emerald: 'done', state_rose: 'failing',
+    color_blue: 'blue', color_slate: 'slate', color_plum: 'plum', color_magenta: 'magenta',
+    color_coral: 'coral', color_ochre: 'ochre', color_olive: 'olive', color_teal: 'teal',
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
     openProfile: 'open {login}’s profile',
@@ -1441,6 +1546,8 @@ function applyLang(next) {
   }
   el('lang').title = t('langTitle');
   el('theme').title = t('themeTitle');
+  el('settings').title = t('settingsTitle');
+  if (state.settingsOpen) renderSettings();
   el('gitdeck').title = t('gitdeckTitle');
   applyStampTitle();
   el('refreshLabel').textContent = t('refresh');
@@ -1752,8 +1859,20 @@ function glowAttrs(pr) {
 const isExternal = repo =>
   Boolean(state.data?.org) && !repo.toLowerCase().startsWith(`${state.data.org.toLowerCase()}/`);
 const repoName = repo => (isExternal(repo) ? repo : repo.replace(/^.*\//, ''));
-const repoChip = pr =>
-  `<span class="repo">${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
+// The class and inline variables a repo's coloured element takes; empty for the default cyan.
+function repoTint(repo) {
+  const tint = repoColors.get(repo);
+  return tint ? { cls: ' tinted', style: ` style="--repo-h:${Number(tint.h)};--repo-c:${Number(tint.c)}"` } : { cls: '', style: '' };
+}
+const repoDot = repo => {
+  const tint = repoTint(repo);
+  return tint.cls ? `<span class="repo-dot"${tint.style}></span>` : '';
+};
+
+const repoChip = pr => {
+  const tint = repoTint(pr.repo);
+  return `<span class="repo${tint.cls}"${tint.style}>${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
+};
 
 function linearLink(pr) {
   const base = state.data?.linearUrl;
@@ -2022,7 +2141,7 @@ function renderRepoTrigger() {
     : t('allProjects', { n: state.repoTotal });
 
   const trigger = el('repoTrigger');
-  trigger.innerHTML = `<span>${escapeHtml(label)}</span><span class="caret">▾</span>`;
+  trigger.innerHTML = `<span>${state.repo ? repoDot(state.repo) : ''}${escapeHtml(label)}</span><span class="caret">▾</span>`;
   trigger.classList.toggle('on', Boolean(state.repo));
   trigger.setAttribute('aria-expanded', String(state.repoOpen));
 }
@@ -2038,11 +2157,66 @@ function renderRepoList() {
           const selected = (option.repo ?? null) === state.repo;
           return `<button type="button" class="picker-option${index === state.repoActive ? ' active' : ''}"`
             + ` role="option" aria-selected="${selected}" data-repo="${escapeHtml(option.repo ?? '')}">`
-            + `<span class="label">${escapeHtml(option.label)}</span>`
+            + `<span class="label">${option.repo ? repoDot(option.repo) : ''}${escapeHtml(option.label)}</span>`
             + `${option.count === null ? '' : `<span class="n">${option.count}</span>`}</button>`;
         })
         .join('')
     : `<div class="picker-empty">${t('noProject')}</div>`;
+}
+
+// The repos to colour: those on the board, and those already coloured, which may have left it.
+function settingsRepos() {
+  return [...new Set([...state.repos.map(entry => entry.repo), ...Object.keys(repoColors.read())])]
+    .sort((a, b) => repoName(a).localeCompare(repoName(b)));
+}
+
+function colorRowHtml(repo) {
+  const tint = repoColors.get(repo);
+  const chip = repoTint(repo);
+  const swatches = PRRadarColors.PRESETS.map(preset => `<button type="button" class="swatch${tint?.preset === preset.id ? ' on' : ''}"`
+    + ` style="--repo-h:${preset.h};--repo-c:${preset.c}" data-color-preset="${preset.id}" data-color-repo="${escapeHtml(repo)}"`
+    + ` title="${escapeHtml(t(`color_${preset.id}`))}" aria-label="${escapeHtml(t(`color_${preset.id}`))}"></button>`).join('');
+  const near = tint && PRRadarColors.nearState(tint);
+  return `<div class="color-row" data-row-repo="${escapeHtml(repo)}"><div class="top">`
+    + `<span class="repo${chip.cls}"${chip.style}>${escapeHtml(repoName(repo))}</span>`
+    + `<span class="swatches">${swatches}`
+    + `<label class="swatch-other" title="${escapeHtml(t('colorOther'))}"><input type="color" value="${escapeHtml(tint?.hex ?? '#0d7490')}"`
+    + ` data-color-pick="${escapeHtml(repo)}" aria-label="${escapeHtml(t('colorOther'))}">${escapeHtml(t('colorOther'))}</label>`
+    + `${tint ? `<button type="button" class="color-reset" data-color-reset="${escapeHtml(repo)}">${escapeHtml(t('colorDefault'))}</button>` : ''}`
+    + `</span></div>`
+    + `${near ? `<div class="color-warn">${escapeHtml(t('colorNearState', { state: t(`state_${near}`) }))}</div>` : ''}</div>`;
+}
+
+function renderSettings() {
+  const repos = settingsRepos();
+  el('settingsPanel').innerHTML = `<h2 id="settingsHead">${escapeHtml(t('settingsRepoColors'))}</h2>`
+    + `<p class="hint">${escapeHtml(t('settingsRepoColorsHint'))}</p>`
+    + (repos.length ? repos.map(colorRowHtml).join('') : `<p class="hint">${escapeHtml(t('settingsNoRepo'))}</p>`);
+}
+
+function openSettings(open) {
+  state.settingsOpen = open;
+  el('settingsPanel').hidden = !open;
+  el('settings').classList.toggle('on', open);
+  el('settings').setAttribute('aria-expanded', String(open));
+  if (open) renderSettings();
+}
+
+// A colour changed: the board and the panel's own row redraw; the rest of the panel stays,
+// so a native colour picker being dragged is not closed under the mouse.
+function applyRepoColor(repo, tint, { redrawRow = true } = {}) {
+  repoColors.set(repo, tint);
+  render();
+  const row = document.querySelector(`.color-row[data-row-repo="${CSS.escape(repo)}"]`);
+  if (!row) return;
+  if (redrawRow) {
+    row.outerHTML = colorRowHtml(repo);
+    return;
+  }
+  const chip = row.querySelector('.repo');
+  const live = repoTint(repo);
+  chip.className = `repo${live.cls}`;
+  chip.setAttribute('style', live.style.replace(/^ style="|"$/g, ''));
 }
 
 function openRepoPicker(open) {
@@ -2257,6 +2431,7 @@ async function load(force) {
     el('error').hidden = true;
     state.data = payload;
     cardNotes.seed(payload.demoNotes);
+    repoColors.seed(payload.demoRepoColors);
     renderUpdate(payload.update);
     el('summary').hidden = false;
     scheduleRefresh(payload.refreshSeconds);
@@ -2394,6 +2569,24 @@ document.addEventListener('click', event => {
   const insidePicker = event.composedPath().some(node => node.id === 'picker');
   if (state.repoOpen && !insidePicker) openRepoPicker(false);
 
+  const path = event.composedPath();
+  if (path.some(node => node.id === 'settings')) {
+    openSettings(!state.settingsOpen);
+    return;
+  }
+  const preset = event.target.closest('[data-color-preset]');
+  if (preset) {
+    const chosen = PRRadarColors.PRESETS.find(entry => entry.id === preset.dataset.colorPreset);
+    applyRepoColor(preset.dataset.colorRepo, { h: chosen.h, c: chosen.c, preset: chosen.id });
+    return;
+  }
+  const reset = event.target.closest('[data-color-reset]');
+  if (reset) {
+    applyRepoColor(reset.dataset.colorReset, null);
+    return;
+  }
+  if (state.settingsOpen && !path.some(node => node.id === 'settingsPanel')) openSettings(false);
+
   const focusButton = event.target.closest('.counter[data-focus]');
   if (focusButton) {
     const { focus } = focusButton.dataset;
@@ -2436,9 +2629,25 @@ document.addEventListener('keydown', event => {
     el('repoTrigger').focus();
     return;
   }
+  if (state.settingsOpen) {
+    openSettings(false);
+    el('settings').focus();
+    return;
+  }
   if (!state.focus) return;
   state.focus = null;
   render();
+});
+
+// Dragging in the native picker fires `input` continuously: the chips follow live, and the
+// row's warning is settled on `change`, once the colour is let go.
+document.addEventListener('input', event => {
+  const pick = event.target.closest?.('[data-color-pick]');
+  if (pick) applyRepoColor(pick.dataset.colorPick, PRRadarColors.toTint(pick.value), { redrawRow: false });
+});
+document.addEventListener('change', event => {
+  const pick = event.target.closest?.('[data-color-pick]');
+  if (pick) applyRepoColor(pick.dataset.colorPick, PRRadarColors.toTint(pick.value));
 });
 
 // A laptop waking from sleep leaves setInterval far behind: without this you read
@@ -2779,7 +2988,7 @@ function showNotes(text, counts) {
         copied.push(`- ${marked}`);
 
         const links = entries.map(entry => (entry.pr
-          ? `<a class="num" href="${escapeHtml(entry.pr.url)}" target="_blank" rel="noopener"`
+          ? `<a class="num${repoTint(entry.pr.repo).cls}"${repoTint(entry.pr.repo).style} href="${escapeHtml(entry.pr.url)}" target="_blank" rel="noopener"`
             + ` title="${escapeHtml(entry.pr.repo)}">${escapeHtml(entry.label)}</a>`
           : `<span class="num">${escapeHtml(entry.label)}</span>`)).join('');
 
