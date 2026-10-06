@@ -130,6 +130,7 @@ overnight, with nothing else running).
 | A reload fails | The card reads as changed on the next round, so the change is not lost |
 | The tab is hidden | Checks every 5 minutes |
 | No page for 10 minutes | No GitHub call at all; the next page opened runs a full search |
+| `PR_RADAR_WEBHOOK_URL` set | The checks never stop, at their regular pace even behind a hidden tab: the webhook is always looking |
 | A note being edited | The page redraws only when the board changed, so the editor stays open |
 | `gh` exits 1 on a `304` | Read as an answer, not an error (`watch.js`, `parseResponse`) |
 | A check genuinely fails | Logged on the server; the full search stays the safety net |
@@ -226,13 +227,14 @@ Your own moves and bots are left out: they are not news to you, and bots have th
 - **`watch.js`**:
   - `createWatcher` holds the `ETag`s and the notifications' `Last-Modified`;
   - `inFlight` and `toFollow` pick the cards to follow;
-  - `nextDiscoveryAt` enforces the gap between full searches.
+  - `nextDiscoveryAt` enforces the gap between full searches;
+  - `watched` says whether the checks still run: a page lease, or a webhook.
 - **`github.js`**:
   - `discover`, `loadNodes`, `shapeBoard`, `fetchBoard` (with the PRs it may reuse);
   - `STATUS_QUERY`, `statusFingerprint`, `fetchStatusFingerprints` for the cards in flight;
   - the event feed's conditional first page in `recentlyTouchedPullRequests`.
 - **`server.js`**:
-  - `patchPrs` reloads a few PRs into the cached board;
+  - `patchPrs` reloads a few PRs into the cached board, and sends the webhook its changes;
   - `reusableNodes` picks what a scheduled search may reuse (`REUSE_MS`);
   - `liveStep` and `liveTick` run the loop;
   - the `/api/prs` route renews the page lease.

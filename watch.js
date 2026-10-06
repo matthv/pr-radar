@@ -174,8 +174,14 @@ function nextDiscoveryAt(lastDiscoveryAt, early, regularMs) {
   return lastDiscoveryAt + (early ? Math.min(MIN_DISCOVERY_GAP_MS, regularMs) : regularMs);
 }
 
+// A webhook is someone always looking: the checks never stop for want of a page.
+function watched(lastSeenAt, now, leaseMs, webhook) {
+  return webhook || now - lastSeenAt <= leaseMs;
+}
+
 module.exports = {
   createWatcher,
+  watched,
   conditionalGet,
   runGh,
   inFlight,

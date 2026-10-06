@@ -20,6 +20,7 @@ const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
+const webhook = require('./webhook');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -60,6 +61,7 @@ const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
 // The board waits this long for the transcripts on a refresh; a longer scan, the first one
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
+const WEBHOOK_URL = DEMO ? '' : (process.env.PR_RADAR_WEBHOOK_URL ?? '').trim();
 // Your own notification sound, a local file. Only this one path is ever served, at a fixed
 // route: the page cannot ask for any other file through it.
 const SOUND_FILE = (process.env.PR_RADAR_SOUND ?? '').trim().replace(/^~(?=\/|$)/, os.homedir());
@@ -104,6 +106,16 @@ let slackMode = 'off';
 let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
+let webhookStatuses = [];
+let webhookSnapshot = null;
+
+function notifyWebhook(board) {
+  if (!WEBHOOK_URL) return;
+  const current = webhook.snapshot(board, { hideDrafts: HIDE_DRAFTS });
+  const events = webhook.eventsBetween(webhookSnapshot, current, webhookStatuses);
+  webhookSnapshot = webhook.nextSnapshot(webhookSnapshot, current, board.warnings.length > 0);
+  if (events.length) webhook.send(WEBHOOK_URL, events);
+}
 
 function withClaudeSessions(payload) {
   const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
@@ -219,6 +231,7 @@ async function dashboard(force, { reuse = false } = {}) {
       const loadedNow = Date.now();
       const loadedAt = new Map([...fetched.nodes.keys()].map(id => [id, store?.loadedAt.get(id) ?? loadedNow]));
       for (const id of fetched.loaded) loadedAt.set(id, loadedNow);
+      notifyWebhook(fetched.board);
       store = { context: fetched.context, nodes: fetched.nodes, loadedAt, detailWarnings: fetched.board.warnings.slice(fetched.context.warnings.length) };
       const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
@@ -252,6 +265,7 @@ function patchPrs(ids) {
       store.loadedAt.set(id, Date.now());
     }
     const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
+    notifyWebhook(board);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });
 }
@@ -275,7 +289,7 @@ async function liveStep() {
     return;
   }
 
-  const interval = live.hidden ? HIDDEN_CHECK_MS : Math.max(CHECK_SECONDS, watcher.pollSeconds) * 1000;
+  const interval = live.hidden && !WEBHOOK_URL ? HIDDEN_CHECK_MS : Math.max(CHECK_SECONDS, watcher.pollSeconds) * 1000;
   if (live.checkNow || now - live.checkedAt >= interval) {
     live.checkNow = false;
     live.checkedAt = now;
@@ -319,7 +333,7 @@ async function patchOrForget(ids) {
 }
 
 function liveTick() {
-  if (live.working || !cache.payload || Date.now() - live.pageAt > LEASE_MS) return;
+  if (live.working || !cache.payload || !watch.watched(live.pageAt, Date.now(), LEASE_MS, Boolean(WEBHOOK_URL))) return;
   live.working = liveStep()
     .catch(error => console.error(`[${new Date().toISOString()}] live refresh: ${error.message}`))
     .finally(() => {
@@ -386,6 +400,19 @@ if (!ORG) {
   process.exit(1);
 }
 
+try {
+  if (WEBHOOK_URL && !/^https?:$/.test(new URL(WEBHOOK_URL).protocol)) throw new Error('not http(s)');
+} catch (error) {
+  console.error(`PR_RADAR_WEBHOOK_URL: not a valid URL (${error.message})`);
+  process.exit(1);
+}
+try {
+  webhookStatuses = webhook.parseStatuses(process.env.PR_RADAR_WEBHOOK_STATUSES);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 // Checked here rather than on the first refresh: a bad value would otherwise surface as a
 // GitHub search error banner, far from the setting that caused it.
 try {
@@ -405,7 +432,7 @@ const server = http.createServer(async (req, res) => {
       // waiting for a GitHub refresh to rebuild the payload.
       const now = Date.now();
       // Nobody looked for a while: the checks had stopped, so the cache is as old as that.
-      const lapsed = LIVE && now - Math.max(live.pageAt, cache.at) > LEASE_MS;
+      const lapsed = LIVE && !watch.watched(Math.max(live.pageAt, cache.at), now, LEASE_MS, Boolean(WEBHOOK_URL));
       live.pageAt = now;
       live.hidden = url.searchParams.get('hidden') === '1';
       if (url.searchParams.get('check') === '1') {
@@ -485,9 +512,16 @@ server.listen(PORT, async () => {
       `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
+      `  webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
   update.start();
   if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
+  // Webhooks go out with no tab open. Live, the checks never stop; otherwise the server polls.
+  if (WEBHOOK_URL && !LIVE) {
+    setInterval(() => {
+      dashboard(false).catch(error => console.error('Webhook refresh failed:', error.message));
+    }, REFRESH_SECONDS * 1000).unref();
+  }
 });

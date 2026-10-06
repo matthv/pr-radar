@@ -93,6 +93,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
+| `PR_RADAR_WEBHOOK_URL` | — | POSTs each status change to that URL — see [The webhook](#the-webhook). Empty, no call |
+| `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
@@ -134,6 +136,8 @@ keeps the board fresh with requests GitHub answers for free when nothing changed
     to five minutes.
   - With no page, the server calls GitHub not at all; the next page to open runs a full
     search.
+  - A [webhook](#the-webhook) is the exception: while `PR_RADAR_WEBHOOK_URL` is set the
+    checks never stop, and keep their regular pace even behind a hidden tab.
 - **The page asks the server every 20 s.** It is answered from the cache, without a GitHub
   call, and redraws only when the board actually changed: an unchanged board would close a
   note being edited.
@@ -827,6 +831,47 @@ cannot update one caller and quietly leave the other stale.
   restarting at its first frame on each refresh.
 - The time in the header is the last check, free or not; see
   [How fresh the board is](#how-fresh-the-board-is).
+
+### The webhook
+
+`PR_RADAR_WEBHOOK_URL` makes the server POST a status change to that URL, for a Slack
+workflow, an n8n flow or anything else that takes JSON:
+
+```json
+{
+  "status": "reviews.action",
+  "url": "https://github.com/ForestAdmin/agent-nodejs/pull/1912",
+  "project": "ForestAdmin/agent-nodejs",
+  "pr_number": 1912
+}
+```
+
+- **The status** is the column and the group the card sits in, `side.bucket`:
+  `mine.action`, `mine.ready`, `mine.waiting`, `mine.idle`, `mine.merged`,
+  `reviews.action`, `reviews.waiting`, `reviews.idle`, `reviews.merged`. The side is
+  part of it: a PR to fix and a review to do are not the same news.
+- **`project`** is the repo as `owner/name`, so a repo from `PR_RADAR_EXTRA_REPOS` is
+  told apart from the org's own; **`pr_number`** is the number, as an integer.
+- **An event** is a PR whose status changed since the previous refresh, or that just
+  appeared on the board. The first refresh after startup only takes a picture, the way
+  the first render does not chime.
+- **One call per status.** When several PRs reach the same status in one refresh, only
+  the first one in board order is sent.
+- **`PR_RADAR_WEBHOOK_STATUSES`** keeps only the listed statuses — the first PR is then
+  picked among those kept. An unknown value stops the server at startup rather than
+  silently sending nothing.
+- It is the server's view: `PR_RADAR_HIDE_DRAFTS` applies, but snoozes, "hide bots"
+  and the search filter live in the browser and do not.
+- **It follows the live refresh.** A change found by the checks is sent within
+  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search. While the URL is set the
+  checks never stop, so calls go out with no tab open; they cost little when nothing
+  moved, but a full search still runs every `PR_RADAR_REFRESH_SECONDS`. With
+  `PR_RADAR_CHECK_SECONDS=0`, the server runs that full search on its own instead.
+- A board missing some of its GitHub sources keeps the last known status of the PRs it
+  lost: they would otherwise come back as new on the next full refresh.
+- A failed call (timeout at 5 s, non-2xx) is logged, never retried, and never touches the
+  board. The startup line only shows the URL's host, since hook URLs often carry a secret.
+  The demo never calls it.
 
 ## The summary band
 

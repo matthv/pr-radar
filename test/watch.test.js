@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createWatcher, inFlight, toFollow, nextDiscoveryAt, parseResponse, prFromApiUrl, MIN_DISCOVERY_GAP_MS, MAX_FOLLOW_MS } = require('../watch');
+const { createWatcher, watched, inFlight, toFollow, nextDiscoveryAt, parseResponse, prFromApiUrl, MIN_DISCOVERY_GAP_MS, MAX_FOLLOW_MS } = require('../watch');
 
 const scope = { org: 'ForestAdmin', extraRepos: ['matthv/pr-radar'] };
 const pr = (number, extra = {}) => ({ id: `PR_${number}`, repo: 'ForestAdmin/agent-ruby', number, url: `https://github.com/ForestAdmin/agent-ruby/pull/${number}`, ...extra });
@@ -168,4 +168,10 @@ test('an in-flight card is followed for a while, then left to the regular cadenc
   assert.equal(toFollow({ mine: [pr(1, { ciState: 'SUCCESS' })], reviews: [] }, since, MAX_FOLLOW_MS + 1).length, 0);
   assert.equal(since.size, 0, 'a card no longer in flight is forgotten');
   assert.equal(toFollow(running, since, MAX_FOLLOW_MS + 2).length, 1, 'and followed afresh if its CI runs again');
+});
+
+test('the checks stop once no page asked for a lease, unless a webhook is set', () => {
+  assert.equal(watched(1000, 1000 + 600_000, 600_000, false), true);
+  assert.equal(watched(1000, 1001 + 600_000, 600_000, false), false);
+  assert.equal(watched(1000, 1000 + 24 * 3600_000, 600_000, true), true);
 });
