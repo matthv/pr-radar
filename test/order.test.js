@@ -3,7 +3,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { DEFAULTS, normalize, move, isDefault } = require('../public/order');
+const { DEFAULTS, readMap, normalize, move, isDefault } = require('../public/order');
+
+test('order: a stored map that is not a plain object reads as empty', () => {
+  for (const raw of [null, 'null', '[]', '"x"', '42', '{broken']) assert.deepEqual(readMap(raw), {}, raw);
+  assert.deepEqual(readMap('{"mine":["ready"]}'), { mine: ['ready'] });
+});
 
 test('order: nothing saved gives the default', () => {
   assert.deepEqual(normalize(null, DEFAULTS.mine), DEFAULTS.mine);

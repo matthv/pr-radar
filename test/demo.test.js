@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const demo = require('../demo');
 const { changesSince } = require('../public/since');
+const { DEFAULTS } = require('../public/order');
 
 const kinds = prs => new Set(prs.flatMap(pr => pr.reasons.map(reason => reason.kind)));
 const buckets = prs => new Set(prs.map(pr => pr.bucket));
@@ -27,6 +28,12 @@ test('demo: the review side shows every group and every reason to act', () => {
   const { reviews } = demo.payload(false);
   assert.deepEqual([...buckets(reviews)].sort(), ['action', 'idle', 'merged', 'waiting']);
   for (const kind of ['to-review', 'answers', 'recheck']) assert.ok(kinds(reviews).has(kind), kind);
+});
+
+test('demo: every bucket on the board has a place in the section order', () => {
+  const { mine, reviews } = demo.payload(false);
+  assert.deepEqual([...buckets(mine)].sort(), [...DEFAULTS.mine].sort());
+  assert.deepEqual([...buckets(reviews)].sort(), [...DEFAULTS.reviews].sort());
 });
 
 test('demo: a manual refresh brings a new review in, the next one takes it back', () => {

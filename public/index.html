@@ -1206,7 +1206,7 @@ const repoColors = {
     try {
       localStorage.setItem('pr-radar:repoColors', JSON.stringify(map));
     } catch {
-      /* storage refused: the colour lasts until the page reloads */
+      /* storage refused: the colour is lost, the next read gives the previous one */
     }
   },
   get(repo) {
@@ -2331,15 +2331,10 @@ const FOCUS = {
   reviewWaiting: { column: 'reviews', bucket: 'waiting' },
 };
 
-// Ordered by what each state asks of you: your move, then waiting on someone, then a
-// merge to glance at, then nothing. A merge sat second before, which ranked a published
-// release above a PR actually blocked on a reviewer.
-// "Ready to merge" sits right under "to act": it is a move of mine too, and below the
-// merged group it read as already done.
 const groupOrder = {
   read() {
     try {
-      return JSON.parse(localStorage.getItem('pr-radar:groupOrder') ?? '{}');
+      return PRRadarOrder.readMap(localStorage.getItem('pr-radar:groupOrder'));
     } catch {
       return {};
     }
@@ -2354,7 +2349,7 @@ const groupOrder = {
     try {
       localStorage.setItem('pr-radar:groupOrder', JSON.stringify(map));
     } catch {
-      /* storage refused: the order lasts until the page reloads */
+      /* storage refused: the order is lost, the next read gives the previous one */
     }
   },
 };
@@ -2496,13 +2491,14 @@ function orderColumnHtml(column) {
     + `<ol class="order-list" data-order-column="${column}">${items}</ol></div>`;
 }
 
-function applyGroupOrder(column, order, focusBucket, focusStep) {
+function applyGroupOrder(column, order, focus) {
   groupOrder.set(column, order);
   render();
   renderSettings();
-  if (!focusBucket) return;
-  const item = document.querySelector(`.order-list[data-order-column="${column}"] [data-order-bucket="${focusBucket}"]`);
-  const button = item?.querySelector(`[data-order-step="${focusStep}"]:not(:disabled)`) ?? item?.querySelector('.order-step:not(:disabled)');
+  if (!focus) return;
+  const list = document.querySelector(`.order-list[data-order-column="${column}"]`);
+  const item = focus.bucket ? list.querySelector(`[data-order-bucket="${focus.bucket}"]`) : list.firstElementChild;
+  const button = item.querySelector(`[data-order-step="${focus.step}"]:not(:disabled)`) ?? item.querySelector('.order-step:not(:disabled)');
   button?.focus();
 }
 
@@ -2520,10 +2516,11 @@ el('settingsPanel').addEventListener('dragstart', event => {
 el('settingsPanel').addEventListener('dragover', event => {
   if (!draggedOrderItem) return;
   const list = draggedOrderItem.parentElement;
-  const over = event.target.closest('.order-item');
-  if (!over || over.parentElement !== list) return;
+  if (event.target.closest('.order-list') !== list) return;
   event.preventDefault();
-  if (over === draggedOrderItem) return;
+  event.dataTransfer.dropEffect = 'move';
+  const over = event.target.closest('.order-item');
+  if (!over || over === draggedOrderItem) return;
   const box = over.getBoundingClientRect();
   const after = event.clientY > box.top + box.height / 2;
   list.insertBefore(draggedOrderItem, after ? over.nextSibling : over);
@@ -2533,10 +2530,14 @@ el('settingsPanel').addEventListener('drop', event => {
   if (draggedOrderItem) event.preventDefault();
 });
 
-el('settingsPanel').addEventListener('dragend', () => {
+el('settingsPanel').addEventListener('dragend', event => {
   if (!draggedOrderItem) return;
   const list = draggedOrderItem.parentElement;
   draggedOrderItem = null;
+  if (event.dataTransfer.dropEffect === 'none') {
+    renderSettings();
+    return;
+  }
   const order = [...list.children].map(item => item.dataset.orderBucket);
   applyGroupOrder(list.dataset.orderColumn, order);
 });
@@ -2970,13 +2971,13 @@ document.addEventListener('click', event => {
     const order = groupOrder.get(column);
     const direction = Number(step.dataset.orderStep);
     const neighbour = order[order.indexOf(bucket) + direction];
-    if (neighbour) applyGroupOrder(column, PRRadarOrder.move(order, bucket, neighbour, direction > 0), bucket, step.dataset.orderStep);
+    if (neighbour) applyGroupOrder(column, PRRadarOrder.move(order, bucket, neighbour, direction > 0), { bucket, step: step.dataset.orderStep });
     return;
   }
   const orderReset = event.target.closest('[data-order-reset]');
   if (orderReset) {
     const column = orderReset.dataset.orderReset;
-    applyGroupOrder(column, PRRadarOrder.DEFAULTS[column]);
+    applyGroupOrder(column, PRRadarOrder.DEFAULTS[column], { step: '1' });
     return;
   }
   const reset = event.target.closest('[data-color-reset]');

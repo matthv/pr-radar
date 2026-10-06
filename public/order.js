@@ -3,10 +3,24 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.PRRadarOrder = api;
 })(this, () => {
+  // Ordered by what each state asks of you: your move, then waiting on someone, then a
+  // merge to glance at, then nothing. A merge sat second before, which ranked a published
+  // release above a PR actually blocked on a reviewer.
+  // "Ready to merge" sits right under "to act": it is a move of mine too, and below the
+  // merged group it read as already done.
   const DEFAULTS = {
     mine: ['action', 'ready', 'waiting', 'merged', 'idle'],
     reviews: ['action', 'waiting', 'merged', 'idle'],
   };
+
+  function readMap(raw) {
+    try {
+      const map = JSON.parse(raw ?? '{}');
+      return map && typeof map === 'object' && !Array.isArray(map) ? map : {};
+    } catch {
+      return {};
+    }
+  }
 
   function normalize(saved, defaults) {
     const kept = Array.isArray(saved) ? [...new Set(saved.filter(bucket => defaults.includes(bucket)))] : [];
@@ -32,5 +46,5 @@
     return order.length === defaults.length && order.every((bucket, index) => bucket === defaults[index]);
   }
 
-  return { DEFAULTS, normalize, move, isDefault };
+  return { DEFAULTS, readMap, normalize, move, isDefault };
 });

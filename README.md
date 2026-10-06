@@ -311,6 +311,8 @@ that module exports and none of its network calls:
 - `test/colors.test.js` — a picked colour turned into a repo's tint: sRGB to OKLCH, the hue
   kept and the intensity capped, no ready-made hue reading as a state, the warning for one
   that does;
+- `test/order.test.js` — the section order: a saved one read back safely from storage, unknown,
+  duplicate and new buckets, and moves before or after;
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
@@ -486,7 +488,7 @@ so the store cannot drift out of sync with the board.
 ## Settings
 
 The ⚙ button in the header opens a panel of personal settings. They are kept in this browser
-only, like the notes. Its first section is **repo colours**.
+only, like the notes. It has two sections: **repo colours** and **section order**.
 
 - **Each repo can take its own colour** on its chip: the cards, the orbit view's peek, the
   project picker and the standup notes all follow. The panel lists the repos on the board
@@ -503,6 +505,12 @@ only, like the notes. Its first section is **repo colours**.
   red already say "your move", "waiting", "done" and "failing", so a red repo beside a
   failing CI would blur the reading. The ready-made hues all stay clear of them, and a test
   holds them to it.
+- **Each column orders its sections its own way.** Under **section order**, drag a section,
+  or move it with ▲/▼ from the keyboard. **My PRs** and **PRs I review** each have their own
+  order. **default** shows once a column differs from the default and puts it back. The order
+  is kept in `pr-radar:groupOrder`, only for a column that differs from the default. A saved
+  order drops buckets that no longer exist, and a new bucket takes its default place
+  (`public/order.js`, `normalize`).
 
 ## Since you looked
 
