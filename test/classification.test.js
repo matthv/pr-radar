@@ -522,7 +522,7 @@ test('my PR: approved with nothing left open is ready to merge, not an action to
   assert.equal(mineWith({ head: headCi('PENDING') }).bucket, 'ready', 'a CI still running says so in its own pill');
 });
 
-test('my PR: approved but blocked is an action or a wait, never ready', () => {
+test('my PR: approved but blocked is an action, never ready', () => {
   const failing = mineWith({ head: headCi('FAILURE') });
   assert.equal(failing.bucket, 'action');
   assert.deepEqual(failing.reasons.map(r => r.kind), ['ci']);
@@ -531,9 +531,21 @@ test('my PR: approved but blocked is an action or a wait, never ready', () => {
 
   const toFix = mineWith({ reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(1)]] })] } });
   assert.equal(toFix.bucket, 'action');
+});
 
-  const waiting = mineWith({ reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(2)], [ME, ago(1)]] })] } });
-  assert.equal(waiting.bucket, 'waiting', 'a reply of mine awaits the reviewer');
+// Observed on forestadmin-server#8565: approved, CI green, held in "waiting" by a reply of
+// mine the reviewer had no reason to answer. The approval is the answer.
+test('my PR: approved, a reply of mine still open does not hold it back from ready', () => {
+  const inline = mineWith({ reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(2)], [ME, ago(1)]] })] } });
+  assert.equal(inline.bucket, 'ready');
+
+  const approval = { author: user('hercemer42'), state: 'APPROVED', submittedAt: ago(0.5), url: 'u', body: '' };
+  const conversation = mineWith({
+    comments: { nodes: [issueComment([ME, ago(3)]), issueComment(['hercemer42', ago(2)]), issueComment([ME, ago(1)])] },
+    reviews: { nodes: [approval] },
+  });
+  assert.equal(conversation.waitingOnThem.length, 0, 'the exchange the approval closed is gone');
+  assert.equal(conversation.bucket, 'ready');
 });
 
 test('my PR: a repo with no review policy still counts as awaiting review', () => {

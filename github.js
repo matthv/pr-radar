@@ -476,7 +476,7 @@ function approvedSince(pr, login, at) {
 }
 
 function discussionThread(pr, me) {
-  const messages = [
+  const posted = [
     ...pr.reviews.nodes
       .filter(
         review =>
@@ -505,11 +505,15 @@ function discussionThread(pr, me) {
         at: comment.createdAt,
         url: comment.url,
       })),
-  ]
+  ];
+  const messages = posted
     .filter(message => !(message.login !== me && approvedSince(pr, message.login, message.at)))
     .sort((a, b) => new Date(a.at) - new Date(b.at));
 
-  if (!messages.length) return null;
+  // Once an approval has settled the reviewer's side, my replies to them are not a question
+  // still waiting on anyone. Observed on forestadmin-server#8565.
+  const settled = messages.length < posted.length;
+  if (!messages.length || (settled && messages.every(message => message.login === me))) return null;
 
   const first = messages[0];
   const last = messages[messages.length - 1];
@@ -750,10 +754,10 @@ function decorateMine(pr) {
     ? 'action'
     : pr.merged
       ? 'merged'
-      : waitingOnThem.length || awaitingReview
-        ? 'waiting'
-        : readyToMerge
-          ? 'ready'
+      : readyToMerge
+        ? 'ready'
+        : waitingOnThem.length || awaitingReview
+          ? 'waiting'
           : 'idle';
 
   return {
