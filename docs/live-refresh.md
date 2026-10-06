@@ -102,21 +102,24 @@ was: a lost batch is not a closed PR, and the next full search settles it.
 
 ## What it costs
 
-Per hour, with a tab open. A full search costs about 22 to 24 calls on a board of a dozen PRs.
+Measured behind a `gh` that logs every call, on a real board, a tab open. The counted calls are
+the ones that spend the API quota; a `304` does not.
 
-| Setup | Calls counted per hour | Time to see a change on a card |
-| --- | --- | --- |
-| Before: everything every 5 min | ~280 | up to 5 min |
-| Live refresh, full search every 5 min | ~280 + targeted reloads | ~1 min |
-| Live refresh, full search every 15 min | ~95 + targeted reloads | ~1 min |
+| Setup | Counted per hour | of which searches | Free `304` per hour | Time to see a change |
+| --- | --- | --- | --- | --- |
+| Before: everything every 5 min (Oct 5, 11h–12h) | ~290 | ~80 | ~10 | up to 5 min |
+| Live refresh, without the savings below (Oct 5, 15h–17h) | ~400 | ~80 | ~190 | ~1 min |
+| Live refresh, as it stands (Oct 6, 9h–12h) | ~295 | ~85 | ~230 | ~1 min |
 
-- **The free checks are not in this table**: about 7 per minute on a 6-PR board, all `304`
-  on a quiet hour.
-- **Targeted reloads grow with activity**, but one PR at a time. A quiet hour has almost none.
-- **The full search stays the main cost.** With the checks in place it no longer needs to run
-  often: spacing it from 5 to 15 minutes divides the cost by three. PRs already on the board
-  stay just as fresh. Only discovering a brand-new PR waits longer, except for a review
-  request, which the notifications report.
+A full search costs about 12 calls, against about 24 before PRs were reused (measured
+overnight, with nothing else running).
+
+- **The searches are now the main cost**: about 12 full searches an hour, of 7 search calls
+  each, the same in every setup. Spacing them from 5 to 10 minutes would save about 40 calls
+  an hour. PRs already on the board stay just as fresh; only a brand-new one waits longer. A
+  review request I add myself sends me no notification, so it waits for the next full search.
+- **Targeted reloads grow with activity**, one PR at a time, and a CI in flight is read every
+  30 s. The Oct 6 morning included a release run re-run after a flaky test.
 
 ## Guards
 
