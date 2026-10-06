@@ -453,6 +453,16 @@ function answeredInline(review, pr, me) {
   });
 }
 
+// A remark in the conversation cannot be resolved, so a reviewer who closes the exchange
+// there and then approves left it "to fix" for ever. Observed on forestadmin#10019. Their
+// approval, posted after it, is their answer to their own remark.
+function approvedSince(pr, login, at) {
+  return pr.reviews.nodes.some(
+    review => review?.author?.login === login && review.state === 'APPROVED'
+      && new Date(review.submittedAt) >= new Date(at),
+  );
+}
+
 function discussionThread(pr, me) {
   const messages = [
     ...pr.reviews.nodes
@@ -483,7 +493,9 @@ function discussionThread(pr, me) {
         at: comment.createdAt,
         url: comment.url,
       })),
-  ].sort((a, b) => new Date(a.at) - new Date(b.at));
+  ]
+    .filter(message => !(message.login !== me && approvedSince(pr, message.login, message.at)))
+    .sort((a, b) => new Date(a.at) - new Date(b.at));
 
   if (!messages.length) return null;
 

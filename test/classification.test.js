@@ -986,3 +986,22 @@ test('baseShape: the ticket comes from the title, then the branch, else none', (
   );
   assert.equal(baseShape(node(), ME).ticket, null);
 });
+
+// Observed on forestadmin#10019: the reviewer closed the exchange with a PR comment, then
+// approved two minutes later. A PR comment cannot be resolved, so the card stayed "to fix".
+test('my PR: a reviewer approving after their own PR comment settles it', () => {
+  const approval = { author: user('hercemer42'), state: 'APPROVED', submittedAt: ago(1), url: 'u', body: '' };
+  const settled = mineWith({
+    head: headCi('SUCCESS'),
+    comments: { nodes: [issueComment(['hercemer42', ago(1.01)])] },
+    reviews: { nodes: [approval] },
+  });
+  assert.equal(settled.toFix.length, 0);
+  assert.equal(settled.bucket, 'ready');
+
+  const after = mineWith({ comments: { nodes: [issueComment(['hercemer42', ago(0.5)])] }, reviews: { nodes: [approval] } });
+  assert.equal(after.toFix.length, 1, 'a remark posted after the approval still asks something');
+
+  const someoneElse = mineWith({ comments: { nodes: [issueComment(['Scra3', ago(1.01)])] }, reviews: { nodes: [approval] } });
+  assert.equal(someoneElse.toFix.length, 1, 'only the approver’s own remarks are answered by it');
+});
