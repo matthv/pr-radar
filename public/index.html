@@ -303,6 +303,24 @@
   }
   .color-reset:hover { color: var(--text); }
   .color-warn { font-size: 11.5px; color: var(--amber); }
+  .settings-panel h2.next { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .order-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+  .order-column h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); }
+  .order-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .order-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 8px; font-size: 12.5px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: grab; user-select: none;
+  }
+  .order-item.dragging { opacity: .45; }
+  .order-item .grip { color: var(--text-faint); letter-spacing: -2px; }
+  .order-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .order-step {
+    width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: none;
+    color: var(--text-faint); cursor: pointer; font-size: 11px;
+  }
+  .order-step:hover:not(:disabled) { color: var(--text); background: var(--hairline); }
+  .order-step:disabled { visibility: hidden; }
+  .order-step:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
   /* The mirror of PR Radar's own button on gitdeck: each tool points at the other with a
      soft-tinted pill in the host's accent, so the pair reads as one family. */
   a.link-out {
@@ -1059,6 +1077,7 @@
 </main>
 
 <script src="/colors.js"></script>
+<script src="/order.js"></script>
 <script src="/since.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
@@ -1321,6 +1340,11 @@ const I18N = {
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
     settingsNoRepo: 'Aucun repo sur le tableau pour l\u2019instant.',
+    settingsOrder: 'Ordre des sections',
+    settingsOrderHint: 'Glisse une section pour la déplacer ; chaque colonne a son propre ordre.',
+    orderUp: 'monter',
+    orderDown: 'descendre',
+    orderDefault: 'par défaut',
     colorOther: 'autre…',
     colorDefault: 'par défaut',
     colorNearState: 'proche de la couleur « {state} » : on pourrait la confondre avec un état',
@@ -1484,6 +1508,11 @@ const I18N = {
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
     settingsNoRepo: 'No repo on the board yet.',
+    settingsOrder: 'Section order',
+    settingsOrderHint: 'Drag a section to move it; each column keeps its own order.',
+    orderUp: 'move up',
+    orderDown: 'move down',
+    orderDefault: 'default',
     colorOther: 'other…',
     colorDefault: 'default',
     colorNearState: 'close to the “{state}” colour: it could pass for a state',
@@ -2307,15 +2336,55 @@ const FOCUS = {
 // release above a PR actually blocked on a reviewer.
 // "Ready to merge" sits right under "to act": it is a move of mine too, and below the
 // merged group it read as already done.
-const BUCKET_ORDER = ['action', 'ready', 'waiting', 'merged', 'idle'];
+const groupOrder = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem('pr-radar:groupOrder') ?? '{}');
+    } catch {
+      return {};
+    }
+  },
+  get(column) {
+    return PRRadarOrder.normalize(groupOrder.read()[column], PRRadarOrder.DEFAULTS[column]);
+  },
+  set(column, order) {
+    const map = groupOrder.read();
+    if (PRRadarOrder.isDefault(order, PRRadarOrder.DEFAULTS[column])) delete map[column];
+    else map[column] = order;
+    try {
+      localStorage.setItem('pr-radar:groupOrder', JSON.stringify(map));
+    } catch {
+      /* storage refused: the order lasts until the page reloads */
+    }
+  },
+};
 
-function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket) {
+function groupLabels(column) {
+  return column === 'mine'
+    ? {
+        action: t('groupMineAction'),
+        ready: t('groupMineReady'),
+        merged: t('groupMineMerged'),
+        waiting: t('groupMineWaiting'),
+        // On my side "idle" can only be a draft now: approved ones are ready to merge.
+        idle: t('groupMineDrafts'),
+      }
+    : {
+        action: t('groupReviewAction'),
+        merged: t('groupMineMerged'),
+        waiting: t('groupReviewWaiting'),
+        idle: t('groupIdle'),
+      };
+}
+
+function renderColumn(target, list, cardFn, emptyLabel, onlyBucket) {
   const filtered = filterList(list).filter(pr => !onlyBucket || pr.bucket === onlyBucket);
   if (!filtered.length) {
     target.innerHTML = `<div class="empty">${emptyLabel}</div>`;
     return [];
   }
-  const groups = BUCKET_ORDER
+  const labels = groupLabels(target.id);
+  const groups = groupOrder.get(target.id)
     .map(bucket => [bucket, filtered.filter(pr => pr.bucket === bucket)])
     .filter(([, group]) => group.length);
 
@@ -2330,7 +2399,7 @@ function renderColumn(target, list, cardFn, groupLabels, emptyLabel, onlyBucket)
       const collapsed = collapsedGroups.has(key);
       return `<button type="button" class="group-label ${bucket}${settled ? ' settled' : ''}`
         + `${collapsed ? ' collapsed' : ''}" data-group="${key}" aria-expanded="${!collapsed}">`
-        + `<span class="gdot"></span>${groupLabels[bucket]}`
+        + `<span class="gdot"></span>${labels[bucket]}`
         + `<span class="gcount">${group.length}</span><span class="gchev"></span></button>`
         + `<div class="group-cards">${group.map(cardFn).join('')}</div>`;
     })
@@ -2407,8 +2476,70 @@ function renderSettings() {
   const repos = settingsRepos();
   el('settingsPanel').innerHTML = `<h2 id="settingsHead">${escapeHtml(t('settingsRepoColors'))}</h2>`
     + `<p class="hint">${escapeHtml(t('settingsRepoColorsHint'))}</p>`
-    + (repos.length ? `<div class="color-list">${repos.map(colorRowHtml).join('')}</div>` : `<p class="hint">${escapeHtml(t('settingsNoRepo'))}</p>`);
+    + (repos.length ? `<div class="color-list">${repos.map(colorRowHtml).join('')}</div>` : `<p class="hint">${escapeHtml(t('settingsNoRepo'))}</p>`)
+    + `<h2 class="next">${escapeHtml(t('settingsOrder'))}</h2>`
+    + `<p class="hint">${escapeHtml(t('settingsOrderHint'))}</p>`
+    + `<div class="order-columns">${['mine', 'reviews'].map(orderColumnHtml).join('')}</div>`;
 }
+
+function orderColumnHtml(column) {
+  const order = groupOrder.get(column);
+  const labels = groupLabels(column);
+  const custom = !PRRadarOrder.isDefault(order, PRRadarOrder.DEFAULTS[column]);
+  const items = order.map((bucket, index) => `<li class="order-item" draggable="true" data-order-bucket="${bucket}">`
+    + `<span class="grip" aria-hidden="true">⋮⋮</span><span class="name">${escapeHtml(labels[bucket])}</span>`
+    + `<button type="button" class="order-step" data-order-step="-1" title="${escapeHtml(t('orderUp'))}" aria-label="${escapeHtml(`${t('orderUp')} ${labels[bucket]}`)}"${index === 0 ? ' disabled' : ''}>▲</button>`
+    + `<button type="button" class="order-step" data-order-step="1" title="${escapeHtml(t('orderDown'))}" aria-label="${escapeHtml(`${t('orderDown')} ${labels[bucket]}`)}"${index === order.length - 1 ? ' disabled' : ''}>▼</button>`
+    + `</li>`).join('');
+  return `<div class="order-column"><h3>${escapeHtml(t(column === 'mine' ? 'titleMine' : 'titleReviews'))}`
+    + `${custom ? `<button type="button" class="color-reset" data-order-reset="${column}">${escapeHtml(t('orderDefault'))}</button>` : ''}</h3>`
+    + `<ol class="order-list" data-order-column="${column}">${items}</ol></div>`;
+}
+
+function applyGroupOrder(column, order, focusBucket, focusStep) {
+  groupOrder.set(column, order);
+  render();
+  renderSettings();
+  if (!focusBucket) return;
+  const item = document.querySelector(`.order-list[data-order-column="${column}"] [data-order-bucket="${focusBucket}"]`);
+  const button = item?.querySelector(`[data-order-step="${focusStep}"]:not(:disabled)`) ?? item?.querySelector('.order-step:not(:disabled)');
+  button?.focus();
+}
+
+let draggedOrderItem = null;
+
+el('settingsPanel').addEventListener('dragstart', event => {
+  const item = event.target.closest('.order-item');
+  if (!item) return;
+  draggedOrderItem = item;
+  item.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', item.dataset.orderBucket);
+});
+
+el('settingsPanel').addEventListener('dragover', event => {
+  if (!draggedOrderItem) return;
+  const list = draggedOrderItem.parentElement;
+  const over = event.target.closest('.order-item');
+  if (!over || over.parentElement !== list) return;
+  event.preventDefault();
+  if (over === draggedOrderItem) return;
+  const box = over.getBoundingClientRect();
+  const after = event.clientY > box.top + box.height / 2;
+  list.insertBefore(draggedOrderItem, after ? over.nextSibling : over);
+});
+
+el('settingsPanel').addEventListener('drop', event => {
+  if (draggedOrderItem) event.preventDefault();
+});
+
+el('settingsPanel').addEventListener('dragend', () => {
+  if (!draggedOrderItem) return;
+  const list = draggedOrderItem.parentElement;
+  draggedOrderItem = null;
+  const order = [...list.children].map(item => item.dataset.orderBucket);
+  applyGroupOrder(list.dataset.orderColumn, order);
+});
 
 function openSettings(open) {
   state.settingsOpen = open;
@@ -2564,26 +2695,14 @@ function render() {
   const focus = FOCUS[state.focus];
   document.querySelector('main').dataset.focus = focus ? focus.column : '';
 
-  const shownMine = renderColumn(el('mine'), mine, mineCard, {
-    action: t('groupMineAction'),
-    ready: t('groupMineReady'),
-    merged: t('groupMineMerged'),
-    waiting: t('groupMineWaiting'),
-    // On my side "idle" can only be a draft now: approved ones are ready to merge.
-    idle: t('groupMineDrafts'),
-  }, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
+  const shownMine = renderColumn(el('mine'), mine, mineCard, t('emptyMine'), focus?.column === 'mine' ? focus.bucket : null);
 
   // The notes summarise what is on screen, so the project picker and the filters double
   // as their scope.
   state.visibleMine = shownMine.map(pr => pr.id);
   el('notes').hidden = !data.digestAvailable;
 
-  const shownReviews = renderColumn(el('reviews'), reviews, reviewCard, {
-    action: t('groupReviewAction'),
-    merged: t('groupMineMerged'),
-    waiting: t('groupReviewWaiting'),
-    idle: t('groupIdle'),
-  }, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
+  const shownReviews = renderColumn(el('reviews'), reviews, reviewCard, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
   renderOrbits([...shownMine, ...shownReviews]);
@@ -2842,6 +2961,22 @@ document.addEventListener('click', event => {
   if (preset) {
     const chosen = PRRadarColors.PRESETS.find(entry => entry.id === preset.dataset.colorPreset);
     applyRepoColor(preset.dataset.colorRepo, { h: chosen.h, c: chosen.c, preset: chosen.id });
+    return;
+  }
+  const step = event.target.closest('[data-order-step]');
+  if (step) {
+    const { orderColumn: column } = step.closest('.order-list').dataset;
+    const { orderBucket: bucket } = step.closest('.order-item').dataset;
+    const order = groupOrder.get(column);
+    const direction = Number(step.dataset.orderStep);
+    const neighbour = order[order.indexOf(bucket) + direction];
+    if (neighbour) applyGroupOrder(column, PRRadarOrder.move(order, bucket, neighbour, direction > 0), bucket, step.dataset.orderStep);
+    return;
+  }
+  const orderReset = event.target.closest('[data-order-reset]');
+  if (orderReset) {
+    const column = orderReset.dataset.orderReset;
+    applyGroupOrder(column, PRRadarOrder.DEFAULTS[column]);
     return;
   }
   const reset = event.target.closest('[data-color-reset]');
