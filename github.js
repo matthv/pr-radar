@@ -8,6 +8,7 @@ const { promisify } = require('node:util');
 const execFile = promisify(require('node:child_process').execFile);
 
 const { ticketKey } = require('./ticket');
+const { conditionalGet, runGh } = require('./watch');
 
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
 const PR_BATCH_SIZE = 6;
@@ -190,10 +191,18 @@ const SAFE_REPO = /^[A-Za-z0-9._-]+$/;
 // GitHub's search index misses PRs: a three-day-old comment can stay invisible to both
 // `commenter:` and `involves:`. The account's event feed does not go through that index
 // and plugs those holes — at the cost of a short window (300 events, 90 days max).
-async function recentlyTouchedPullRequests(org, me) {
-  const pages = await sequentially(
-    [1, 2, 3].map(page => () => gh(['api', `/users/${me}/events?per_page=100&page=${page}`])),
+// The feed's first page is asked with the ETag of the last answer: a 304 costs nothing on the
+// quota and, the feed being newest first, means the older pages have not changed either.
+let eventsCache = null;
+
+async function recentlyTouchedPullRequests(org, me, exec = runGh) {
+  const first = await conditionalGet(`users/${me}/events?per_page=100&page=1`, { etag: eventsCache?.etag }, exec);
+  if (first.status === 304 && eventsCache) return eventsCache.refs;
+
+  const rest = await sequentially(
+    [2, 3].map(page => () => exec(['api', `users/${me}/events?per_page=100&page=${page}`])),
   );
+  const pages = [{ status: 'fulfilled', value: first.body }, ...rest];
 
   const refs = new Map();
 
@@ -215,7 +224,9 @@ async function recentlyTouchedPullRequests(org, me) {
     }
   }
 
-  return [...refs.values()];
+  const found = [...refs.values()];
+  eventsCache = first.headers.etag ? { etag: first.headers.etag, refs: found } : null;
+  return found;
 }
 
 async function resolvePullRequestIds(refs) {
@@ -1136,11 +1147,54 @@ function shapeBoard(nodes, context, detailWarnings = []) {
   };
 }
 
-async function fetchBoard(options) {
+// A PR the caller already holds, and vouches is current, is not loaded again: between two
+// searches the change checks keep those up to date, so a search only needs the new ones.
+async function fetchBoard(options, reusable = new Map()) {
   const context = await discover(options);
   const detailWarnings = [];
-  const nodes = await loadNodes(context.ids, detailWarnings);
-  return { context, nodes, board: shapeBoard(nodes, context, detailWarnings) };
+  const loaded = await loadNodes(context.ids.filter(id => !reusable.has(id)), detailWarnings);
+  const nodes = assembleNodes(context.ids, reusable, loaded);
+  return { context, nodes, loaded: [...loaded.keys()], board: shapeBoard(nodes, context, detailWarnings) };
+}
+
+function assembleNodes(ids, reusable, loaded) {
+  const nodes = new Map();
+  for (const id of ids) {
+    const node = loaded.get(id) ?? reusable.get(id);
+    if (node) nodes.set(id, node);
+  }
+  return nodes;
+}
+
+// A running CI or release only needs its status read, not the whole PR: threads, reviews and
+// commits are what make PR_QUERY heavy. The PR is reloaded in full only once this moves.
+const STATUS_QUERY = `
+query($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      id
+      merged
+      mergeCommit {
+        statusCheckRollup { state }
+        checkSuites(first: 20) { nodes { status conclusion } }
+      }
+      head: commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+    }
+  }
+}`;
+
+function statusFingerprint(node) {
+  return JSON.stringify([
+    Boolean(node?.merged),
+    node?.mergeCommit?.statusCheckRollup?.state ?? null,
+    (node?.mergeCommit?.checkSuites?.nodes ?? []).map(suite => [suite?.status ?? null, suite?.conclusion ?? null]),
+    node?.head?.nodes?.[0]?.commit?.statusCheckRollup?.state ?? null,
+  ]);
+}
+
+async function fetchStatusFingerprints(ids) {
+  const data = await graphql(STATUS_QUERY, { ids });
+  return new Map((data.nodes ?? []).filter(Boolean).map(node => [node.id, statusFingerprint(node)]));
 }
 
 async function fetchDashboard(options) {
@@ -1151,6 +1205,10 @@ async function fetchDashboard(options) {
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  assembleNodes,
+  statusFingerprint,
+  fetchStatusFingerprints,
+  recentlyTouchedPullRequests,
   fetchBoard,
   loadNodes,
   shapeBoard,
