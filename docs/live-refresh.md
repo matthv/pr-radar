@@ -1,7 +1,7 @@
 # Live refresh
 
 How PR Radar shows a change within about a minute instead of five, without asking GitHub
-for more. The settings and the guards are summed up in the README,
+for more, and how a card then says what changed since you last looked at it. The settings and the guards are summed up in the README,
 [How fresh the board is](../README.md#how-fresh-the-board-is); this page explains the
 mechanism.
 
@@ -134,6 +134,86 @@ overnight, with nothing else running).
 | `gh` exits 1 on a `304` | Read as an answer, not an error (`watch.js`, `parseResponse`) |
 | A check genuinely fails | Logged on the server; the full search stays the safety net |
 
+## Since you looked
+
+Live refresh makes a card change within a minute, but the card itself only shows its new
+state. It doesn't say what moved. Coming back from a meeting, you would have to open each PR
+to find out. So a card that moved since you last looked at it says so, in one line:
+
+`◦ since you looked: Scra3 commented · CI turned red · ▸ 1 more`
+
+### How it knows what you saw
+
+```mermaid
+sequenceDiagram
+  participant B as Board data
+  participant P as Page
+  participant L as localStorage (pr-radar:seen)
+  Note over P,L: first sight of a card
+  P->>L: photo of the card, no line
+  Note over B: later: a comment, a push, the CI…
+  B->>P: the card's new state (live refresh)
+  P->>L: read the photo
+  Note over P: line = difference between the photo and now
+  Note over P: you open the PR, or "mark all as seen"
+  P->>L: new photo, the line goes
+```
+
+- **A photo per card.** The page keeps, in the browser only, the few fields that tell what
+  moved: each thread's last date and count, the reviews, the last commit, the CI, the
+  mergeability, the merge, the release.
+- **The line is the difference** between that photo and the card now. It runs entirely in
+  the page, on data the board already loaded: no GitHub call of its own, and the server
+  doesn't know about it.
+- **A card met for the first time is a baseline, not news.** Its photo is taken silently. A
+  new PR already gets the chime and the glowing rail when it asks for something.
+
+### What it reports
+
+| Change | Reported when |
+| --- | --- |
+| A comment | a thread is new or grew, and its last word is someone else's, not a bot's |
+| A review | someone else approved or requested changes. A commented review counts as a comment. |
+| Commits | the head commit moved and was not pushed by you |
+| The CI | it reached an outcome, green or red. Starting again comes with a push, already said. |
+| A conflict | the PR became unmergeable |
+| The merge, the release | the PR merged, a release was published, or the release failed |
+
+Your own moves and bots are left out: they are not news to you, and bots have their own pill.
+
+### What shows, and when it goes
+
+- **Two changes on the line**, the most pressing first: a red CI, a conflict, a change request.
+  With more, **▸ N more** opens the full list under the line, latest first, each with when.
+  Without more, the times are in the line's tooltip. A CI or a conflict has no moment of its
+  own in the data, so it is listed without one.
+- **One block with the reasons.** What moved is the last entry of the card's reasons block,
+  in its colour and with its bar, not a second line beside it.
+  - **When a reason already says it word for word** (a change request, a re-check), the
+    reason gets a **new** badge instead of being said twice.
+  - **A pill only gives the state.** So a red CI, a conflict or a failed release is still
+    said on the line, and its pill gets a dot in its own colour to point at it.
+
+  Once you have seen it, the mark goes and the reason or the pill stays: it is why the card
+  is here.
+- **The line goes** when you open the PR from the card (a middle click included), or with
+  **mark all as seen** in the band, which also says how many cards moved.
+- **Hovering does nothing**: moving the mouse across the board would wipe what the line is
+  there to keep.
+
+### Where it lives
+
+- **`public/since.js`** is pure: `snapshotOf(pr)` takes the photo, and
+  `changesSince(photo, pr, me)` lists the changes with their kind, who and when. It is loaded
+  by the page as a global and by `test/since.test.js` as a module.
+- **`public/index.html`** holds the rest:
+  - the `seen` store (`sync`, `mark`, `seed`);
+  - the line and its list, in `sinceHtml`;
+  - the clearing on opening a PR, and the band's button.
+- **The demo** starts a few cards with older photos. They are written again whenever the demo
+  server restarts: its dates start from the restart, so older photos would all read as
+  changed.
+
 ## Settings
 
 | Variable | Default | |
@@ -157,5 +237,6 @@ overnight, with nothing else running).
   - `liveStep` and `liveTick` run the loop;
   - the `/api/prs` route renews the page lease.
 - **`claude-sessions.js`**: `scan()` returns the PR links new since the last scan (`touched`).
+- **`public/since.js`**, **`public/index.html`**: since you looked (see above).
 - **Tests**: `test/watch.test.js`, `test/fetch.test.js` (reuse, status fingerprint, event
-  feed), and the reshaping cases in `test/classification.test.js`.
+  feed), `test/since.test.js`, and the reshaping cases in `test/classification.test.js`.

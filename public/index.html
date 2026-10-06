@@ -590,7 +590,6 @@
   .card.pipeline-none::before { background: linear-gradient(180deg, var(--emerald), var(--emerald-2)); }
   .card.pipeline-failed { background: linear-gradient(100deg, var(--rose-soft) -10%, var(--surface) 45%); }
   .card.pipeline-failed::before { background: linear-gradient(180deg, var(--rose), var(--rose-2)); }
-  .card.pipeline-failed .reason { color: var(--rose); }
 
   /* A gradient's stops cannot be animated, so the breathing lives on an overlay whose
      opacity can. Content is lifted above it. */
@@ -711,11 +710,51 @@
   }
   @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 
-  .reasons { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
-  .reason { font-size: 12.5px; font-weight: 500; color: var(--text-soft); display: flex; gap: 8px; }
-  .reason::before { content: ""; flex: none; width: 3px; border-radius: 2px; background: currentColor; opacity: .4; }
-  .card.action .reason { color: var(--indigo); }
-  .card.waiting .reason, .card.merged .reason { color: var(--amber); }
+  /* One bar for the whole block, however many lines it holds: a bar per line broke at each gap. */
+  .reasons {
+    margin-top: 10px; display: flex; flex-direction: column; gap: 5px;
+    position: relative; padding-left: 11px; color: var(--text-soft);
+  }
+  .reasons::before {
+    content: ""; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px;
+    border-radius: 2px; background: currentColor; opacity: .4;
+  }
+  /* What moved since you looked, as the reasons' last entry: same bar and colour, a lighter
+     weight, so the reason above still reads first. */
+  .reason.since { font-weight: 450; }
+  .since-lead { opacity: .7; }
+  .since-toggle {
+    font: inherit; font-size: 12px; font-weight: 600; color: inherit; opacity: .75;
+    background: none; border: 0; padding: 0 0 0 4px; cursor: pointer;
+  }
+  .since-toggle:hover { opacity: 1; }
+  .since-toggle:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 3px; }
+  /* A flex child of the reason row: without align-self it stretches to the row's height,
+     its text stuck to the top. */
+  .fresh-badge {
+    align-self: center; display: inline-flex; align-items: center; height: 16px; padding: 0 5px;
+    border-radius: 4px; font-size: 10px; line-height: 1; font-weight: 650; letter-spacing: .04em;
+    text-transform: uppercase; background: var(--indigo-soft); color: var(--indigo);
+  }
+  /* A pill newly true since you looked, in its own colour: the line below says what it is. */
+  .pill.fresh { position: relative; }
+  .pill.fresh::before {
+    content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px;
+    border-radius: 50%; background: currentColor; box-shadow: 0 0 0 2px var(--surface);
+  }
+  .since-list {
+    list-style: none; margin: 0; padding: 7px 10px; display: grid; gap: 4px;
+    background: var(--sunken); border-radius: 8px; font-size: 12px; color: var(--text-soft);
+  }
+  .since-list li { display: flex; gap: 12px; justify-content: space-between; }
+  .since-at { color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .reason { font-size: 12.5px; font-weight: 500; display: flex; gap: 8px; }
+  .card.action .reasons { color: var(--indigo); }
+  .card.waiting .reasons, .card.merged .reasons { color: var(--amber); }
+  /* A merged card takes the colour of its release, as its rail does: amber only while it runs.
+     Declared after the line above, which would otherwise win at equal specificity. */
+  .card.pipeline-done .reasons, .card.pipeline-none .reasons { color: var(--emerald); }
+  .card.pipeline-failed .reasons { color: var(--rose); }
 
   .expander {
     font: inherit; font-size: 12px; font-weight: 520; color: var(--text-faint);
@@ -994,6 +1033,7 @@
     </div>
   </div>
   <span class="snoozed-note" id="snoozedNote"></span>
+  <span class="snoozed-note" id="seenNote"></span>
   <div class="counters" id="counters"></div>
   <span class="stale" id="stale"></span>
 </div>
@@ -1019,6 +1059,7 @@
 </main>
 
 <script src="/colors.js"></script>
+<script src="/since.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
@@ -1026,6 +1067,7 @@ let bootVersion = null;
 
 const state = {
   settingsOpen: false,
+  sinceOpen: new Set(),
   data: null,
   lastActionCount: null,
   lastActionIds: null,
@@ -1197,6 +1239,60 @@ const cardNotes = {
   },
 };
 
+// What each card looked like when you last looked at it, in this browser only, so a card
+// can say what moved since. A card met for the first time is a baseline, not news: it
+// already gets the chime and the glowing rail when it asks for something.
+const seen = {
+  read() {
+    try {
+      return JSON.parse(localStorage.getItem('pr-radar:seen') ?? '{}');
+    } catch {
+      return {};
+    }
+  },
+  write(map) {
+    try {
+      localStorage.setItem('pr-radar:seen', JSON.stringify(map));
+    } catch {
+      /* private window, storage refused: the line simply never shows */
+    }
+  },
+  // The demo's photos, written again whenever the demo server restarts: its dates start
+  // from the restart, so older photos would all read as changed.
+  seed(map, startedAt) {
+    if (!map) return;
+    try {
+      if (localStorage.getItem('pr-radar:seen-demo') === String(startedAt)) return;
+      seen.write(map);
+      localStorage.setItem('pr-radar:seen-demo', String(startedAt));
+    } catch {
+      /* storage refused: no line, as on the real board */
+    }
+  },
+  mark(prs) {
+    const map = seen.read();
+    for (const pr of prs) map[pr.id] = PRRadarSince.snapshotOf(pr);
+    seen.write(map);
+  },
+  sync(all) {
+    const map = seen.read();
+    const live = new Set(all.map(pr => pr.id));
+    let dirty = false;
+    for (const pr of all) {
+      if (map[pr.id]) continue;
+      map[pr.id] = PRRadarSince.snapshotOf(pr);
+      dirty = true;
+    }
+    for (const id of Object.keys(map)) {
+      if (live.has(id)) continue;
+      delete map[id];
+      dirty = true;
+    }
+    if (dirty) seen.write(map);
+    return map;
+  },
+};
+
 const I18N = {
   fr: {
     agoUnits: ['s', 'min', 'h', 'j', 'sem'],
@@ -1238,6 +1334,24 @@ const I18N = {
     snoozedShow: 'afficher',
     snoozedHide: 'masquer',
     snoozedWake: 'réveiller tout',
+    sinceLead: 'depuis ta visite :',
+    sinceCommented_one: '{who} a commenté',
+    sinceCommented_many: '{who} ont commenté',
+    sinceApproved: 'approuvée par {who}',
+    sinceChangesRequested: 'changements demandés par {who}',
+    sincePushed: 'nouveaux commits de {who}',
+    sinceCiFailed: 'CI passée au rouge',
+    sinceCiPassed: 'CI passée au vert',
+    sinceConflict: 'un conflit est apparu',
+    sinceMerged: 'fusionnée',
+    sinceReleased: 'publiée en {tag}',
+    sinceReleaseFailed: 'release en échec',
+    sinceMore: '{n} de plus',
+    sinceAgo: 'il y a {v}',
+    sinceFresh: 'nouveau',
+    sinceFreshTitle: 'nouveau depuis ta visite',
+    seenAll_one: '{n} carte a bougé · tout marquer comme vu',
+    seenAll_many: '{n} cartes ont bougé · tout marquer comme vu',
     snoozedBadge: 'en veille',
     noteTitleAdd: 'ajouter une note (visible ici seulement)',
     noteTitleEdit: 'modifier la note (visible ici seulement)',
@@ -1339,7 +1453,7 @@ const I18N = {
     me: 'moi',
     threads_one: '{n} thread ouvert',
     threads_many: '{n} threads ouverts',
-    reasonChangesRequested: 'changes requested par {authors}',
+    reasonChangesRequested: 'changements demandés par {authors}',
     reasonRecheck: 'nouveaux commits depuis mes retours, à re-vérifier',
     error: 'Erreur : {message}',
   },
@@ -1383,6 +1497,24 @@ const I18N = {
     snoozedShow: 'show',
     snoozedHide: 'hide',
     snoozedWake: 'wake all',
+    sinceLead: 'since you looked:',
+    sinceCommented_one: '{who} commented',
+    sinceCommented_many: '{who} commented',
+    sinceApproved: 'approved by {who}',
+    sinceChangesRequested: 'changes requested by {who}',
+    sincePushed: 'new commits from {who}',
+    sinceCiFailed: 'CI turned red',
+    sinceCiPassed: 'CI turned green',
+    sinceConflict: 'a conflict appeared',
+    sinceMerged: 'merged',
+    sinceReleased: 'released as {tag}',
+    sinceReleaseFailed: 'release failed',
+    sinceMore: '{n} more',
+    sinceAgo: '{v} ago',
+    sinceFresh: 'new',
+    sinceFreshTitle: 'new since you looked',
+    seenAll_one: '{n} card moved · mark all as seen',
+    seenAll_many: '{n} cards moved · mark all as seen',
     snoozedBadge: 'snoozed',
     noteTitleAdd: 'add a note (visible here only)',
     noteTitleEdit: 'edit the note (visible here only)',
@@ -1759,7 +1891,8 @@ function ciPill(pr) {
     EXPECTED: ['', 'ciRunning'],
   };
   const entry = map[pr.ciState];
-  return entry ? pill(entry[0], t(entry[1])) : '';
+  if (!entry) return '';
+  return freshOn(pr, 'ciFailed') ? pill(`${entry[0]} fresh`, t(entry[1]), t('sinceFreshTitle')) : pill(entry[0], t(entry[1]));
 }
 
 function threadHtml(thread) {
@@ -1889,6 +2022,73 @@ const repoChip = pr => {
   return `<span class="repo${tint.cls}"${tint.style}>${escapeHtml(repoName(pr.repo))} #${pr.number}</span>`;
 };
 
+const changesOf = pr => PRRadarSince.changesSince(state.seen?.[pr.id], pr, state.data.me);
+
+// A change a reason already says word for word: marked new on the reason instead of said
+// twice. The reason stays once seen — it is why the card is here — and only its mark goes.
+const SAID_BY_REASON = {
+  changesRequested: pr => pr.side === 'mine' && pr.reasons.some(r => r.kind === 'changes-requested'),
+  pushed: pr => pr.side === 'review' && pr.reasons.some(r => r.kind === 'recheck'),
+};
+// A pill only gives the state; that it is news is still said on the line, and the pill gets
+// a dot in its own colour to point at it.
+const SHOWN_BY_PILL = {
+  ciFailed: pr => !pr.merged && (pr.ciState === 'FAILURE' || pr.ciState === 'ERROR'),
+  conflict: pr => pr.side === 'mine' && pr.mergeable === 'CONFLICTING',
+  releaseFailed: pr => pr.merged && pr.pipelineOutcome === 'failed',
+};
+const freshOn = (pr, kind) =>
+  Boolean((SAID_BY_REASON[kind] ?? SHOWN_BY_PILL[kind])?.(pr)) && changesOf(pr).some(change => change.kind === kind);
+const freshBadge = () => `<span class="fresh-badge">${escapeHtml(t('sinceFresh'))}</span>`;
+
+function sincePhrase(change) {
+  const who = (change.who ?? []).join(', ');
+  switch (change.kind) {
+    case 'commented': return tn('sinceCommented', change.who.length, { who });
+    case 'approved': return t('sinceApproved', { who });
+    case 'changesRequested': return t('sinceChangesRequested', { who });
+    case 'pushed': return t('sincePushed', { who });
+    case 'ciFailed': return t('sinceCiFailed');
+    case 'ciPassed': return t('sinceCiPassed');
+    case 'conflict': return t('sinceConflict');
+    case 'merged': return t('sinceMerged');
+    case 'released': return t('sinceReleased', { tag: change.tag });
+    case 'releaseFailed': return t('sinceReleaseFailed');
+    default: return change.kind;
+  }
+}
+
+const SINCE_SHOWN = 2;
+
+// One block for why the card is here and what moved on it: the reasons first, then what is
+// new since you looked as its last entry. What asks for something leads that entry; the
+// list under it says everything, latest first, with when. A CI or a conflict has no moment
+// of its own in the data: it heads the list as is.
+function reasonsHtml(pr) {
+  const fresh = freshOn(pr, 'changesRequested') || freshOn(pr, 'pushed');
+  const rows = pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}${fresh ? freshBadge() : ''}</div>`);
+
+  const changes = changesOf(pr).filter(change => !SAID_BY_REASON[change.kind]?.(pr));
+  if (changes.length) {
+    const hidden = changes.length - SINCE_SHOWN;
+    const open = hidden > 0 && state.sinceOpen.has(pr.id);
+    const when = change => (change.at ? `${sincePhrase(change)} — ${t('sinceAgo', { v: ago(change.at) })}` : sincePhrase(change));
+    const toggle = hidden > 0
+      ? ` <button type="button" class="since-toggle" data-since="${escapeHtml(pr.id)}" aria-expanded="${open}">`
+        + `${open ? '▾' : '▸'} ${escapeHtml(t('sinceMore', { n: hidden }))}</button>`
+      : '';
+    rows.push(`<div class="reason since" title="${escapeHtml(changes.map(when).join('\n'))}"><span>`
+      + `<span class="since-lead">${escapeHtml(t('sinceLead'))}</span> `
+      + `${changes.slice(0, SINCE_SHOWN).map(change => escapeHtml(sincePhrase(change))).join(' · ')}${toggle}</span></div>`);
+    if (open) {
+      const byTime = [...changes].sort((a, b) => (b.at ?? '\uffff').localeCompare(a.at ?? '\uffff'));
+      rows.push(`<ul class="since-list">${byTime.map(change => `<li><span>${escapeHtml(sincePhrase(change))}</span>`
+        + `<span class="since-at">${change.at ? escapeHtml(t('sinceAgo', { v: ago(change.at) })) : ''}</span></li>`).join('')}</ul>`);
+    }
+  }
+  return rows.length ? `<div class="reasons">${rows.join('')}</div>` : '';
+}
+
 function linearLink(pr) {
   const base = state.data?.linearUrl;
   if (!pr.ticket || !base) return '';
@@ -1915,14 +2115,14 @@ function cardHtml(pr, threadsToShow, extraPills) {
         ${pr.isDraft ? pill('draft', t('pillDraft')) : ''}
         ${extraPills.join('')}
         ${ciPill(pr)}
-        ${pr.side === 'mine' && pr.mergeable === 'CONFLICTING' ? pill('alert', t('pillConflicts')) : ''}
+        ${pr.side === 'mine' && pr.mergeable === 'CONFLICTING'
+          ? (freshOn(pr, 'conflict') ? pill('alert fresh', t('pillConflicts'), t('sinceFreshTitle')) : pill('alert', t('pillConflicts')))
+          : ''}
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
         <span class="sep" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
       </div>
-      ${pr.displayReasons.length
-        ? `<div class="reasons">${pr.displayReasons.map(r => `<div class="reason">${escapeHtml(r)}</div>`).join('')}</div>`
-        : ''}
+      ${reasonsHtml(pr)}
       <div class="card-foot">
         ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : '<span></span>'}
         <div class="card-actions">
@@ -2025,9 +2225,9 @@ function mergeOutcomePills(pr) {
     const failure = pr.pipelineFailure;
     const label = failure?.workflow ? t('pipelineFailedNamed', { workflow: failure.workflow }) : t('pipelineFailed');
     pills.push(failure?.url
-      ? `<a class="pill alert" href="${escapeHtml(failure.url)}" target="_blank" rel="noopener"`
+      ? `<a class="pill alert${freshOn(pr, 'releaseFailed') ? ' fresh' : ''}" href="${escapeHtml(failure.url)}" target="_blank" rel="noopener"`
         + ` title="${escapeHtml(t('pipelineFailedTitle'))}">${escapeHtml(label)}</a>`
-      : pill('alert', escapeHtml(label)));
+      : pill(freshOn(pr, 'releaseFailed') ? 'alert fresh' : 'alert', escapeHtml(label)));
   } else if (pr.pipelineOutcome === 'done' && !pr.mergeTarget) {
     pills.push(
       pr.release
@@ -2281,6 +2481,7 @@ function render() {
   // action" means — the raw payload's needsAction ignores the "hide bots" filter.
   state.snoozed = snoozes.applicable([...mine, ...reviews]);
   cardNotes.prune([...mine, ...reviews]);
+  state.seen = seen.sync([...mine, ...reviews]);
 
   const mineAction = filterList(mine).filter(pr => pr.needsAction).length;
   const reviewAction = filterList(reviews).filter(pr => pr.needsAction).length;
@@ -2334,6 +2535,11 @@ function render() {
       + (state.revealSnoozed
         ? `<button type="button" class="wake" data-wake>${t('snoozedWake')}</button>`
         : '')
+    : '';
+
+  const moved = [...mine, ...reviews].filter(pr => changesOf(pr).length).length;
+  el('seenNote').innerHTML = moved
+    ? `<button type="button" class="wake" data-seen-all>${escapeHtml(tn('seenAll', moved))}</button>`
     : '';
 
   const hidden = data.counts.hiddenStale;
@@ -2461,6 +2667,7 @@ async function load(force, { check = false } = {}) {
     }
     cardNotes.seed(payload.demoNotes);
     repoColors.seed(payload.demoRepoColors);
+    seen.seed(payload.demoSeen, payload.demoStartedAt);
     renderUpdate(payload.update);
     el('summary').hidden = false;
     render();
@@ -2503,6 +2710,21 @@ async function resumeClaudeSession(button) {
     document.querySelector(`.claude-link[data-claude="${id}"]`)?.classList.remove('busy');
   }
 }
+
+const prById = id => [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].find(pr => pr.id === id);
+
+// Opening a PR from the board, left or middle click, is having seen what moved on it. The
+// link still opens; only the photo is retaken.
+function seenByOpening(event) {
+  const link = event.target.closest('.card a.title, a.sat[data-peek]');
+  if (!link || (event.type === 'auxclick' && event.button !== 1)) return;
+  const pr = prById(link.dataset.peek ?? link.closest('.card')?.dataset.id);
+  if (!pr || !changesOf(pr).length) return;
+  seen.mark([pr]);
+  setTimeout(render, 0);
+}
+document.addEventListener('click', seenByOpening, true);
+document.addEventListener('auxclick', seenByOpening, true);
 
 // Seen it: a hover or a click on a glowing card puts its rail back to normal.
 document.addEventListener('mouseover', event => stopGlow(event.target.closest('.card.glow')));
@@ -2576,6 +2798,20 @@ document.addEventListener('click', event => {
 
   if (event.target.closest('[data-reveal]')) {
     state.revealSnoozed = !state.revealSnoozed;
+    render();
+    return;
+  }
+
+  const sinceToggle = event.target.closest('[data-since]');
+  if (sinceToggle) {
+    const { since } = sinceToggle.dataset;
+    if (state.sinceOpen.has(since)) state.sinceOpen.delete(since);
+    else state.sinceOpen.add(since);
+    render();
+    return;
+  }
+  if (event.target.closest('[data-seen-all]')) {
+    seen.mark([...state.data.mine, ...state.data.reviews]);
     render();
     return;
   }
