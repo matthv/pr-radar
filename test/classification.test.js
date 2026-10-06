@@ -1054,3 +1054,23 @@ test('board: a PR I reviewed that merges between two searches stays on the board
   const notMine = node({ id, state: 'MERGED', merged: true, mergedAt: ago(0.01) });
   assert.equal(shapeBoard(new Map([[id, notMine]]), context).reviews.length, 0, 'a merge I never reviewed is not my news');
 });
+
+// /verify-fixes posts a body finding's "Closed" verdict as a PR comment after my answer, and
+// the card stayed "to fix" on a remark that asked nothing.
+test('my PR: a /verify-fixes comment settles the conversation only when every verdict in it does', () => {
+  const marker = verdict => `<!-- claudine:v1 {"kind":"verification","run":"r","verdict":"${verdict}","method":"read"} -->`;
+  const verdicts = (...each) => ({
+    ...issueComment(['Scra3', ago(0.5)]),
+    body: each.map(verdict => `**${verdict}**: the README now lists it.\n${marker(verdict)}`).join('\n\n'),
+  });
+  const myAnswer = issueComment([ME, ago(1)]);
+
+  const closed = mineWith({ comments: { nodes: [myAnswer, verdicts('closed', 'accepted')] } });
+  assert.equal(closed.toFix.length, 0);
+
+  const reopened = mineWith({ comments: { nodes: [myAnswer, verdicts('closed', 'reopened')] } });
+  assert.equal(reopened.toFix.length, 1, 'one reopened finding hands the turn back');
+
+  const prose = mineWith({ comments: { nodes: [myAnswer, issueComment(['Scra3', ago(0.5)])] } });
+  assert.equal(prose.toFix.length, 1, 'a comment with no marker is a remark, as before');
+});
