@@ -264,17 +264,27 @@
 
   .settings-panel {
     position: absolute; top: calc(100% - 4px); right: 28px; z-index: 30;
-    width: min(460px, calc(100vw - 32px)); max-height: min(70vh, 620px); overflow: auto;
+    width: max-content; min-width: min(460px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: min(70vh, 620px); overflow: auto;
     padding: 14px 16px 16px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: var(--shadow-md);
   }
   .settings-panel h2 { margin: 0 0 2px; font-size: 13.5px; font-weight: 650; }
-  .settings-panel .hint { margin: 0 0 12px; font-size: 12px; color: var(--text-faint); }
-  .color-row { display: grid; gap: 6px; padding: 9px 0; border-top: 1px solid var(--hairline); }
-  .color-row:first-of-type { border-top: 0; }
-  .color-row .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .color-row .repo { margin-right: auto; }
-  .swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  /* The hint wraps to the rows' width instead of widening the panel. */
+  .settings-panel .hint { margin: 0 0 12px; font-size: 12px; color: var(--text-faint); contain: inline-size; }
+  /* One grid shared by all rows (subgrid): the name column is as wide as the longest name, so
+     the swatches line up and a "default" appearing moves nothing. A name only gets an
+     ellipsis when the screen is too narrow for it. */
+  .color-list { display: grid; grid-template-columns: minmax(0, max-content) auto auto; column-gap: 12px; }
+  .color-row {
+    grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 6px;
+    padding: 9px 0; border-top: 1px solid var(--hairline);
+  }
+  .color-row:first-child { border-top: 0; }
+  .color-row .top { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+  .color-row .repo { min-width: 0; max-width: max-content; overflow: hidden; text-overflow: ellipsis; }
+  .color-warn { grid-column: 1 / -1; }
+  .color-row .color-reset { justify-self: start; }
+  .swatches { display: flex; align-items: center; gap: 6px; }
   .swatch {
     width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer;
     border: 2px solid transparent; background: oklch(var(--swatch-l) var(--repo-c) var(--repo-h));
@@ -2178,12 +2188,13 @@ function colorRowHtml(repo) {
     + ` title="${escapeHtml(t(`color_${preset.id}`))}" aria-label="${escapeHtml(t(`color_${preset.id}`))}"></button>`).join('');
   const near = tint && PRRadarColors.nearState(tint);
   return `<div class="color-row" data-row-repo="${escapeHtml(repo)}"><div class="top">`
-    + `<span class="repo${chip.cls}"${chip.style}>${escapeHtml(repoName(repo))}</span>`
+    + `<span class="repo${chip.cls}"${chip.style} title="${escapeHtml(repo)}">${escapeHtml(repoName(repo))}</span>`
     + `<span class="swatches">${swatches}`
     + `<label class="swatch-other" title="${escapeHtml(t('colorOther'))}"><input type="color" value="${escapeHtml(tint?.hex ?? '#0d7490')}"`
     + ` data-color-pick="${escapeHtml(repo)}" aria-label="${escapeHtml(t('colorOther'))}">${escapeHtml(t('colorOther'))}</label>`
-    + `${tint ? `<button type="button" class="color-reset" data-color-reset="${escapeHtml(repo)}">${escapeHtml(t('colorDefault'))}</button>` : ''}`
-    + `</span></div>`
+    + `</span>`
+    + `${tint ? `<button type="button" class="color-reset" data-color-reset="${escapeHtml(repo)}">${escapeHtml(t('colorDefault'))}</button>` : '<span></span>'}`
+    + `</div>`
     + `${near ? `<div class="color-warn">${escapeHtml(t('colorNearState', { state: t(`state_${near}`) }))}</div>` : ''}</div>`;
 }
 
@@ -2191,7 +2202,7 @@ function renderSettings() {
   const repos = settingsRepos();
   el('settingsPanel').innerHTML = `<h2 id="settingsHead">${escapeHtml(t('settingsRepoColors'))}</h2>`
     + `<p class="hint">${escapeHtml(t('settingsRepoColorsHint'))}</p>`
-    + (repos.length ? repos.map(colorRowHtml).join('') : `<p class="hint">${escapeHtml(t('settingsNoRepo'))}</p>`);
+    + (repos.length ? `<div class="color-list">${repos.map(colorRowHtml).join('')}</div>` : `<p class="hint">${escapeHtml(t('settingsNoRepo'))}</p>`);
 }
 
 function openSettings(open) {
