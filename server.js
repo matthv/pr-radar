@@ -13,7 +13,8 @@ try {
   /* no .env: fall back to the defaults */
 }
 
-const { fetchDashboard, ownerScope, parseExtraRepos } = require('./github');
+const { fetchBoard, loadNodes, shapeBoard, ownerScope, parseExtraRepos } = require('./github');
+const watch = require('./watch');
 const digest = require('./digest');
 const slack = require('./slack');
 const update = require('./update');
@@ -29,6 +30,15 @@ const ORG = DEMO ? demo.ORG : process.env.PR_RADAR_ORG;
 const EXTRA_REPOS = DEMO ? [] : parseExtraRepos(process.env.PR_RADAR_EXTRA_REPOS);
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
 const REFRESH_SECONDS = Number(process.env.PR_RADAR_REFRESH_SECONDS || 300);
+// Between two full searches, the board is kept fresh by conditional requests, free when
+// nothing changed; 0 goes back to a full refresh every REFRESH_SECONDS and nothing else.
+const CHECK_SECONDS = DEMO ? 0 : Number(process.env.PR_RADAR_CHECK_SECONDS ?? 60);
+const LIVE = CHECK_SECONDS > 0;
+const IN_FLIGHT_MS = 30_000;
+const HIDDEN_CHECK_MS = 300_000;
+// Past this long with no page asking, nobody is looking: the checks stop.
+const LEASE_MS = 600_000;
+const PAGE_REFRESH_SECONDS = 20;
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
@@ -77,6 +87,14 @@ const MIME = {
 
 let cache = { at: 0, payload: null };
 let inFlight = null;
+// What the last full search found, so a few reloaded PRs can be reshaped into the board.
+let store = null;
+let lock = Promise.resolve();
+const exclusive = task => {
+  const run = lock.then(task, task);
+  lock = run.catch(() => {});
+  return run;
+};
 let digestAvailable = false;
 let slackMode = 'off';
 let slackWarning = null;
@@ -96,11 +114,13 @@ function withClaudeSessions(payload) {
 
 function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
-    ({ unreadable }) => {
+    ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
+      return touched;
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
+      return [];
     },
   );
 }
@@ -140,6 +160,25 @@ function readSlackInBackground(prs) {
     });
 }
 
+// What every board served carries besides the GitHub data, whether it comes from a full
+// search or from a few reloaded PRs.
+async function layered(board, discoveredAt) {
+  const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
+  const payload = slackMode === 'off' ? withSessions : await withSlackLinks(withSessions);
+  return {
+    ...payload,
+    warnings: slackWarning ? [...payload.warnings, slackWarning] : payload.warnings,
+    discoveredAt,
+    refreshSeconds: REFRESH_SECONDS,
+    pageRefreshSeconds: LIVE ? PAGE_REFRESH_SECONDS : REFRESH_SECONDS,
+    gitdeckUrl: GITDECK_URL,
+    linearUrl: LINEAR_URL,
+    hideDrafts: HIDE_DRAFTS,
+    customSound: Boolean(SOUND_FILE),
+    digestAvailable,
+  };
+}
+
 async function dashboard(force) {
   if (DEMO) {
     return {
@@ -152,7 +191,7 @@ async function dashboard(force) {
       digestAvailable: true,
     };
   }
-  if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) return cache.payload;
+  if (!force && cache.payload && (LIVE || Date.now() - cache.at < CACHE_TTL_MS)) return cache.payload;
   if (inFlight) return inFlight;
 
   const scanned = CLAUDE_SESSIONS ? scanClaudeSessions() : null;
@@ -160,30 +199,17 @@ async function dashboard(force) {
   scanned?.then(() => {
     scanDone = true;
   });
-  inFlight = Promise.all([
-    fetchDashboard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }),
+  inFlight = exclusive(() => Promise.all([
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
-  ])
-    .then(async ([fetchedBoard]) => {
-      const fetched = CLAUDE_SESSIONS ? withClaudeSessions(fetchedBoard) : fetchedBoard;
-      const prs = [...fetched.mine, ...fetched.reviews];
+  ]))
+    .then(async ([fetched]) => {
+      store = { context: fetched.context, nodes: fetched.nodes, detailWarnings: fetched.board.warnings.slice(fetched.context.warnings.length) };
+      const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
       if (slackMode === 'claude') readSlackInBackground(prs);
-      const payload = slackMode === 'off' ? fetched : await withSlackLinks(fetched);
-
-      cache = {
-        at: Date.now(),
-        payload: {
-          ...payload,
-          warnings: slackWarning ? [...payload.warnings, slackWarning] : payload.warnings,
-          refreshSeconds: REFRESH_SECONDS,
-          gitdeckUrl: GITDECK_URL,
-          linearUrl: LINEAR_URL,
-          hideDrafts: HIDE_DRAFTS,
-          customSound: Boolean(SOUND_FILE),
-          digestAvailable,
-        },
-      };
+      const at = Date.now();
+      cache = { at, payload: await layered(fetched.board, new Date(at).toISOString()) };
       if (!scanDone) {
         scanned.then(() => {
           if (cache.payload) cache.payload = withClaudeSessions(cache.payload);
@@ -196,6 +222,89 @@ async function dashboard(force) {
     });
 
   return inFlight;
+}
+
+// A few PRs reloaded and reshaped with the rest, instead of searching again: the searches
+// are the scarce quota, a PR's details are not. A PR the reload does not return is kept as
+// it was — a lost batch is not a closed PR; the next full search settles it.
+function patchPrs(ids) {
+  return exclusive(async () => {
+    if (!store || !cache.payload) return;
+    const detailWarnings = [];
+    const reloaded = await loadNodes([...ids], detailWarnings);
+    for (const [id, node] of reloaded) store.nodes.set(id, node);
+    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
+    cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
+  });
+}
+
+const scope = { org: ORG, extraRepos: EXTRA_REPOS };
+const watcher = watch.createWatcher({ scope });
+const live = { pageAt: 0, hidden: false, checkNow: false, checkedAt: 0, inFlightAt: 0, earlyDiscovery: false, flyingSince: new Map(), working: null };
+
+const onBoard = url => [...cache.payload.mine, ...cache.payload.reviews].find(pr => pr.url === url);
+const inScopeUrl = url => {
+  const repo = String(url).match(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/\d+/)?.[1];
+  if (!repo) return false;
+  return repo.toLowerCase().startsWith(`${ORG.toLowerCase()}/`) || EXTRA_REPOS.some(extra => extra.toLowerCase() === repo.toLowerCase());
+};
+
+async function liveStep() {
+  const now = Date.now();
+  if (now >= watch.nextDiscoveryAt(cache.at, live.earlyDiscovery, REFRESH_SECONDS * 1000)) {
+    live.earlyDiscovery = false;
+    await dashboard(true);
+    return;
+  }
+
+  const interval = live.hidden ? HIDDEN_CHECK_MS : Math.max(CHECK_SECONDS, watcher.pollSeconds) * 1000;
+  if (live.checkNow || now - live.checkedAt >= interval) {
+    live.checkNow = false;
+    live.checkedAt = now;
+    const ids = new Set();
+    // My own move — a PR made or opened in a Claude session — is shown at once.
+    for (const url of CLAUDE_SESSIONS ? await scanClaudeSessions() : []) {
+      const pr = onBoard(url);
+      if (pr) ids.add(pr.id);
+      else if (inScopeUrl(url)) live.earlyDiscovery = true;
+    }
+    const { changed, unknownTouched, failures } = await watcher.check(cache.payload, now);
+    if (failures.length) console.error(`[${new Date().toISOString()}] change check: ${failures.length} failed, first: ${failures[0]}`);
+    if (unknownTouched) live.earlyDiscovery = true;
+    for (const id of changed) ids.add(id);
+    if (ids.size) {
+      await patchOrForget(ids);
+      console.log(`[${new Date().toISOString()}] live: ${ids.size} PR(s) reloaded`);
+    }
+    else cache = { ...cache, payload: { ...cache.payload, fetchedAt: new Date(now).toISOString() } };
+    return;
+  }
+
+  const flying = watch.toFollow(cache.payload, live.flyingSince, now);
+  if (flying.length && now - live.inFlightAt >= IN_FLIGHT_MS) {
+    live.inFlightAt = now;
+    await patchOrForget(new Set(flying.map(pr => pr.id)));
+  }
+}
+
+// A reload that failed must not swallow the change it was for: the cards read as changed
+// again next round.
+async function patchOrForget(ids) {
+  try {
+    await patchPrs(ids);
+  } catch (error) {
+    watcher.forget([...cache.payload.mine, ...cache.payload.reviews].filter(pr => ids.has(pr.id)));
+    throw error;
+  }
+}
+
+function liveTick() {
+  if (live.working || !cache.payload || Date.now() - live.pageAt > LEASE_MS) return;
+  live.working = liveStep()
+    .catch(error => console.error(`[${new Date().toISOString()}] live refresh: ${error.message}`))
+    .finally(() => {
+      live.working = null;
+    });
 }
 
 function json(res, status, body, version) {
@@ -274,7 +383,16 @@ const server = http.createServer(async (req, res) => {
     try {
       // Added to the response, not the cache: the banner follows the latest check without
       // waiting for a GitHub refresh to rebuild the payload.
-      const payload = await dashboard(url.searchParams.get('force') === '1');
+      const now = Date.now();
+      // Nobody looked for a while: the checks had stopped, so the cache is as old as that.
+      const lapsed = LIVE && now - Math.max(live.pageAt, cache.at) > LEASE_MS;
+      live.pageAt = now;
+      live.hidden = url.searchParams.get('hidden') === '1';
+      if (url.searchParams.get('check') === '1') {
+        live.checkNow = true;
+        liveTick();
+      }
+      const payload = await dashboard(url.searchParams.get('force') === '1' || lapsed);
       json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
@@ -340,7 +458,7 @@ server.listen(PORT, async () => {
   };
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG}${EXTRA_REPOS.length ? ` + ${EXTRA_REPOS.join(', ')}` : ''} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · refresh ${REFRESH_SECONDS}s\n` +
+      `  org ${ORG}${EXTRA_REPOS.length ? ` + ${EXTRA_REPOS.join(', ')}` : ''} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · ${LIVE ? `full search every ${REFRESH_SECONDS}s, changes checked every ${CHECK_SECONDS}s` : `refresh ${REFRESH_SECONDS}s`}\n` +
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +
@@ -350,5 +468,6 @@ server.listen(PORT, async () => {
       `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
   update.start();
+  if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
 });

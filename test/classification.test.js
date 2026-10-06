@@ -14,6 +14,7 @@ const {
   cleanExcerpt,
   isBot,
   byActionThenFreshness,
+  shapeBoard,
 } = require('../github');
 
 const ME = 'me';
@@ -1004,4 +1005,40 @@ test('my PR: a reviewer approving after their own PR comment settles it', () => 
 
   const someoneElse = mineWith({ comments: { nodes: [issueComment(['Scra3', ago(1.01)])] }, reviews: { nodes: [approval] } });
   assert.equal(someoneElse.toFix.length, 1, 'only the approver’s own remarks are answered by it');
+});
+
+test('board: reshaped from reloaded nodes, a taken-over PR goes back once its author pushes', () => {
+  const id = 'PR_7';
+  const takenOver = node({ id, author: user('alban'), head: { nodes: [{ commit: { committedDate: ago(1), author: { user: user(ME) }, statusCheckRollup: null } }] } });
+  const context = {
+    me: ME, org: 'o', maxAgeDays: 60, warnings: [], cutoff: Date.now() - 60 * DAY, mergedCutoff: Date.now() - DAY,
+    stale: new Set(), mineSet: new Set(), reviewSet: new Set([id]), requestedSet: new Set(), assignedSet: new Set(),
+    mergedReviewedIds: new Set(), extraIds: new Set(),
+  };
+
+  const before = shapeBoard(new Map([[id, takenOver]]), context);
+  assert.deepEqual([before.mine.length, before.reviews.length], [1, 0]);
+
+  const pushedByAuthor = { ...takenOver, head: { nodes: [{ commit: { committedDate: ago(0), author: { user: user('alban') }, statusCheckRollup: null } }] } };
+  const after = shapeBoard(new Map([[id, pushedByAuthor]]), context);
+  assert.deepEqual([after.mine.length, after.reviews.length], [0, 1]);
+  assert.deepEqual([...context.reviewSet], [id], 'the discovery context is left as found');
+});
+
+test('board: a PR I reviewed that merges between two searches stays on the board', () => {
+  const id = 'PR_9';
+  const context = {
+    me: ME, org: 'o', maxAgeDays: 60, warnings: [], cutoff: Date.now() - 60 * DAY, mergedCutoff: Date.now() - DAY,
+    stale: new Set(), mineSet: new Set(), reviewSet: new Set([id]), requestedSet: new Set(), assignedSet: new Set(),
+    // The last search saw it open: it is not among the merged-and-reviewed ones yet.
+    mergedReviewedIds: new Set(), extraIds: new Set(),
+  };
+  const merged = node({
+    id, state: 'MERGED', merged: true, mergedAt: ago(0.01),
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'APPROVED', body: '', submittedAt: ago(0.5), url: 'u' }] },
+  });
+  assert.equal(shapeBoard(new Map([[id, merged]]), context).reviews.length, 1);
+
+  const notMine = node({ id, state: 'MERGED', merged: true, mergedAt: ago(0.01) });
+  assert.equal(shapeBoard(new Map([[id, notMine]]), context).reviews.length, 0, 'a merge I never reviewed is not my news');
 });

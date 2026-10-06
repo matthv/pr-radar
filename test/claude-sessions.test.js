@@ -275,7 +275,7 @@ test('a transcript that cannot be read is counted and skipped, the others still 
   await fs.chmod(locked, 0o000);
   await writeSession(dir, OLDER, start('/Users/me/Projects') + prLink(OLDER, PR));
 
-  assert.deepEqual(await scan({ dir, maxAgeDays: 60 }), { unreadable: 1 });
+  assert.equal((await scan({ dir, maxAgeDays: 60 })).unreadable, 1);
   assert.equal(sessionFor(PR)?.sessionId, OLDER);
   await fs.chmod(locked, 0o600);
 });
@@ -338,4 +338,18 @@ describe('the resume route', () => {
 
 test('an unknown terminal is refused before anything runs', async () => {
   await assert.rejects(openInTerminal({ sessionId: OLDER, cwd: '/tmp' }, 'Hyper'), /unknown/);
+});
+
+test('a PR link new since the last scan is reported, none on the first scan or a re-read', async () => {
+  const dir = await projectsDir();
+  const file = await writeSession(dir, OLDER, start('/Users/me/Projects') + prLink(OLDER, PR));
+  assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, [], 'the first scan is a baseline');
+
+  const NEW_PR = 'https://github.com/ForestAdmin/agent-ruby/pull/411';
+  await fs.appendFile(file, prLink(OLDER, NEW_PR));
+  assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, [NEW_PR]);
+  assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, []);
+
+  await fs.writeFile(file, start('/Users/me/Projects') + prLink(OLDER, NEW_PR));
+  assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, [], 'a transcript read again from its start');
 });

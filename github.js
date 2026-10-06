@@ -318,7 +318,8 @@ query($ids: [ID!]!) {
 }`;
 
 async function settleMergeable(nodes, warnings) {
-  const pending = [...nodes.values()].filter(node => node.mergeable === 'UNKNOWN');
+  // A merged or closed PR always reads UNKNOWN, and nothing reads its mergeability any more.
+  const pending = [...nodes.values()].filter(node => node.mergeable === 'UNKNOWN' && node.state === 'OPEN');
   if (!pending.length) return;
 
   await new Promise(resolve => setTimeout(resolve, MERGEABLE_RETRY_MS));
@@ -899,7 +900,9 @@ function ownerScope(org, extraRepos = []) {
   return owners;
 }
 
-async function fetchDashboard({ org, extraRepos = [], maxAgeDays }) {
+// Everything the searches tell, kept so the board can be reshaped from reloaded PRs alone:
+// who I am, which source each PR came from, and the windows it is judged against.
+async function discover({ org, extraRepos = [], maxAgeDays }) {
   const owners = ownerScope(org, extraRepos);
   const scope = `${owners} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
@@ -1008,8 +1011,41 @@ async function fetchDashboard({ org, extraRepos = [], maxAgeDays }) {
   const known = new Set([...mineSet, ...reviewSet]);
   const extraIds = touchedIds.filter(id => !known.has(id));
 
-  const byId = await fetchPullRequests([...known, ...extraIds], warnings);
+  return {
+    me,
+    org,
+    maxAgeDays,
+    warnings,
+    cutoff,
+    mergedCutoff,
+    stale,
+    mineSet,
+    reviewSet,
+    requestedSet,
+    assignedSet,
+    mergedReviewedIds,
+    extraIds: new Set(extraIds),
+    ids: [...known, ...extraIds],
+  };
+}
+
+async function loadNodes(ids, warnings) {
+  const byId = await fetchPullRequests(ids, warnings);
   await settleMergeable(byId, warnings);
+  return byId;
+}
+
+// Pure: the board from the raw nodes and the discovery context. The context's sets are
+// copied: a reshape after reloading a few PRs starts again from what the searches found,
+// or a PR moved by the taken-over rule would stay on my side after its author pushed.
+function shapeBoard(nodes, context, detailWarnings = []) {
+  const { me, org, maxAgeDays, cutoff, mergedCutoff, requestedSet, assignedSet, mergedReviewedIds } = context;
+  const stale = new Set(context.stale);
+  const mineSet = new Set(context.mineSet);
+  const reviewSet = new Set(context.reviewSet);
+  const warnings = [...context.warnings, ...detailWarnings];
+  const extraIds = [...context.extraIds];
+  const byId = nodes;
 
   const shapes = new Map();
   for (const [id, node] of byId) {
@@ -1025,9 +1061,13 @@ async function fetchDashboard({ org, extraRepos = [], maxAgeDays }) {
       // and colour it another.
       const mine = shaped.author === me || shaped.headCommitAuthor === me;
       const fresh = new Date(shaped.mergedAt).getTime() >= mergedCutoff;
+      // Read on the PR itself, not only from the last search: a PR I reviewed that merges
+      // between two searches is reloaded on its own, and the search that would have listed
+      // it as merged-and-reviewed has not run yet — the card vanished until it did.
+      const reviewedByMe = shaped.reviews.some(review => review.author === me);
       // Kept whatever the outcome: dropping it on success would make "it passed"
       // indistinguishable from "I never saw it".
-      if (fresh && (mine || mergedReviewedIds.has(id))) shapes.set(id, shaped);
+      if (fresh && (mine || mergedReviewedIds.has(id) || reviewedByMe)) shapes.set(id, shaped);
       continue;
     }
 
@@ -1096,10 +1136,24 @@ async function fetchDashboard({ org, extraRepos = [], maxAgeDays }) {
   };
 }
 
+async function fetchBoard(options) {
+  const context = await discover(options);
+  const detailWarnings = [];
+  const nodes = await loadNodes(context.ids, detailWarnings);
+  return { context, nodes, board: shapeBoard(nodes, context, detailWarnings) };
+}
+
+async function fetchDashboard(options) {
+  return (await fetchBoard(options)).board;
+}
+
 // The pure functions are exported for the tests: every classification bug hit so far
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  fetchBoard,
+  loadNodes,
+  shapeBoard,
   ownerScope,
   parseExtraRepos,
   SEARCH_LIMIT,
