@@ -34,6 +34,9 @@
     const seenReviews = new Set(photo.reviews);
     const reviewers = { APPROVED: new Set(), CHANGES_REQUESTED: new Set() };
     const commenters = new Set();
+    // Asked again: they have the PR back, so their changes-requested no longer asks anything of me.
+    const askedAgain = new Set(pr.requestedReviewers ?? []);
+    const handedBack = new Set();
     // The latest moment of each kind, so the list can say when; a CI or a conflict carries none.
     const latest = {};
     const at = (kind, when) => {
@@ -43,6 +46,10 @@
     for (const review of pr.reviews) {
       if (review.author === me || isBotLogin(review.author)) continue;
       if (seenReviews.has(`${review.author}|${review.state}|${review.submittedAt}`)) continue;
+      if (review.state === 'CHANGES_REQUESTED' && askedAgain.has(review.author)) {
+        handedBack.add(review.author);
+        continue;
+      }
       if (reviewers[review.state]) {
         reviewers[review.state].add(review.author);
         at(review.state, review.submittedAt);
@@ -61,7 +68,7 @@
       at('commented', thread.lastAt);
     }
     // A review's body also feeds the conversation thread: one move, said once.
-    for (const set of Object.values(reviewers)) for (const who of set) commenters.delete(who);
+    for (const set of [...Object.values(reviewers), handedBack]) for (const who of set) commenters.delete(who);
 
     if (commenters.size) changes.push({ kind: 'commented', who: [...commenters], at: latest.commented ?? null });
     if (reviewers.APPROVED.size) changes.push({ kind: 'approved', who: [...reviewers.APPROVED], at: latest.APPROVED });
