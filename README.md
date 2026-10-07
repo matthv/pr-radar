@@ -622,6 +622,14 @@ Unlike a snooze, ordinary activity on the PR does not clear it — that is not w
 is for. It goes only when the PR itself leaves the board (merged and aged out, closed),
 pruned on the same render pass as a stale snooze.
 
+## Copying a card's link
+
+The copy button, between the note and snooze ones, puts the PR on the clipboard as a
+Markdown link, `[PR title](PR url)`, ready to paste into a PR description, a Linear
+ticket or a doc. Brackets and backslashes in the title are escaped so they cannot close
+the link early. Like the note button it shows on hover, and turns into a check for a
+moment once the copy lands.
+
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of

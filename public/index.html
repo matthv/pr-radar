@@ -805,18 +805,19 @@
   .card-actions { display: flex; align-items: center; gap: 4px; flex: none; }
   /* Neutral, deliberately: this is an annotation, not a state — none of the five hues
      (indigo/amber/emerald/rose/cyan) mean "you wrote something here". */
-  .note-btn {
+  .note-btn, .copy-btn {
     display: flex; align-items: center; justify-content: center;
     flex: none; width: 26px; height: 26px; margin-top: 11px; padding: 0;
     font: inherit; color: var(--text-faint);
     background: none; border: 0; border-radius: 7px;
     cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
   }
-  .note-btn svg { width: 13px; height: 13px; display: block; }
+  .note-btn svg, .copy-btn svg { width: 13px; height: 13px; display: block; }
   .card:hover .note-btn, .note-btn:focus-visible, .note-btn.has-note,
-  .card.editing-note .note-btn { opacity: 1; }
-  .note-btn:hover { background: var(--hairline); color: var(--text-soft); }
-  .note-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .card.editing-note .note-btn, .card:hover .copy-btn, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; }
+  .note-btn:hover, .copy-btn:hover { background: var(--hairline); color: var(--text-soft); }
+  .note-btn:focus-visible, .copy-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .copy-btn.done { color: var(--emerald); }
   .note-btn.has-note { color: var(--text-soft); }
 
   .note-editor { margin-top: 9px; }
@@ -1409,6 +1410,7 @@ const I18N = {
     seenAll_one: '{n} carte a bougé · tout marquer comme vu',
     seenAll_many: '{n} cartes ont bougé · tout marquer comme vu',
     snoozedBadge: 'en veille',
+    copyLinkTitle: 'copier le lien markdown [titre](url)',
     noteTitleAdd: 'ajouter une note (visible ici seulement)',
     noteTitleEdit: 'modifier la note (visible ici seulement)',
     notePlaceholder: 'Un lien Slack, un rappel pour plus tard…',
@@ -1593,6 +1595,7 @@ const I18N = {
     seenAll_one: '{n} card moved · mark all as seen',
     seenAll_many: '{n} cards moved · mark all as seen',
     snoozedBadge: 'snoozed',
+    copyLinkTitle: 'copy the markdown link [title](url)',
     noteTitleAdd: 'add a note (visible here only)',
     noteTitleEdit: 'edit the note (visible here only)',
     notePlaceholder: 'A Slack link, a reminder for later…',
@@ -2205,6 +2208,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
         <div class="card-actions">
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
+          <button type="button" class="copy-btn" title="${escapeHtml(t('copyLinkTitle'))}" data-copy-link="${pr.id}">${COPY_ICON}</button>
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
           ${linearLink(pr)}
           ${pr.claudeSession
@@ -3052,6 +3056,22 @@ document.addEventListener('click', event => {
   const groupLabel = event.target.closest('.group-label[data-group]');
   if (groupLabel) {
     toggleGroup(groupLabel);
+    return;
+  }
+
+  const copyButton = event.target.closest('.copy-btn');
+  if (copyButton) {
+    const pr = prById(copyButton.dataset.copyLink);
+    if (!pr) return;
+    const title = pr.title.replace(/[\\[\]]/g, '\\$&');
+    navigator.clipboard.writeText(`[${title}](${pr.url})`).then(() => {
+      copyButton.innerHTML = CHECK_ICON;
+      copyButton.classList.add('done');
+      setTimeout(() => {
+        copyButton.innerHTML = COPY_ICON;
+        copyButton.classList.remove('done');
+      }, 1500);
+    });
     return;
   }
 
