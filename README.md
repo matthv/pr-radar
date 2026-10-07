@@ -626,9 +626,9 @@ pruned on the same render pass as a stale snooze.
 
 The copy button, between the note and snooze ones, puts the PR on the clipboard as a
 Markdown link, `[PR title](PR url)`, ready to paste into a PR description, a Linear
-ticket or a doc. Brackets in the title are escaped so they cannot close the link early.
-Like the note button it shows on hover, and turns into a check for a moment once the
-copy lands.
+ticket or a doc. Brackets and backslashes in the title are escaped so they cannot close
+the link early. Like the note button it shows on hover, and turns into a check for a
+moment once the copy lands.
 
 ## The Slack announcement link
 

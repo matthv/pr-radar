@@ -3061,9 +3061,9 @@ document.addEventListener('click', event => {
 
   const copyButton = event.target.closest('.copy-btn');
   if (copyButton) {
-    const pr = [...state.data.mine, ...state.data.reviews].find(entry => entry.id === copyButton.dataset.copyLink);
+    const pr = prById(copyButton.dataset.copyLink);
     if (!pr) return;
-    const title = pr.title.replace(/[[\]]/g, '\\$&');
+    const title = pr.title.replace(/[\\[\]]/g, '\\$&');
     navigator.clipboard.writeText(`[${title}](${pr.url})`).then(() => {
       copyButton.innerHTML = CHECK_ICON;
       copyButton.classList.add('done');
