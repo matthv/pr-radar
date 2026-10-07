@@ -406,6 +406,34 @@ test('my PR: changes requested carries who asked', () => {
   assert.deepEqual(reason.authors, ['reviewer']);
 });
 
+test('my PR: asking the reviewer again hands their changes-requested back to them', () => {
+  const pr = node({
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviews: { nodes: [{ author: user('reviewer'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' }] },
+    reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'User', login: 'reviewer' } }] },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.reasons.some(r => r.kind === 'changes-requested'), false);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('my PR: asking someone else again leaves a changes-requested on my plate', () => {
+  const pr = node({
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviews: {
+      nodes: [
+        { author: user('reviewer'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' },
+        { author: user('other'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' },
+      ],
+    },
+    reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'User', login: 'other' } }] },
+  });
+  const reason = decorateMine(baseShape(pr, ME)).reasons.find(r => r.kind === 'changes-requested');
+
+  assert.deepEqual(reason.authors, ['reviewer']);
+});
+
 test('a dismissed or superseded review does not count as the latest verdict', () => {
   const pr = node({
     reviews: {

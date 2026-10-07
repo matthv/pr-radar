@@ -748,7 +748,10 @@ function decorateMine(pr) {
   const unresolved = pr.threads.filter(t => !t.isResolved);
   const toFix = unresolved.filter(t => !t.lastByMe);
   const waitingOnThem = unresolved.filter(t => t.lastByMe);
-  const changesRequested = latestReviewPerAuthor(pr.reviews).filter(r => r.state === 'CHANGES_REQUESTED');
+  // Asking the reviewer again hands them the PR back. GitHub drops a request once its
+  // reviewer submits a review, so one still pending is newer than their changes-requested.
+  const changesRequested = latestReviewPerAuthor(pr.reviews)
+    .filter(r => r.state === 'CHANGES_REQUESTED' && !pr.requestedReviewers.includes(r.author));
 
   // Reasons carry only a `kind`: the sentence is rendered client-side, the only place
   // that knows the chosen language.
