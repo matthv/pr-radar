@@ -475,6 +475,18 @@ function approvedSince(pr, login, at) {
   );
 }
 
+// /verify-fixes posts its verdict on a review-body finding as a PR comment, since a body has
+// no thread, and that verdict is the last word once the fix holds: a "Closed" verdict kept the
+// card "to fix". Read from its markers only, one per finding: the comment settles nothing
+// unless every verdict in it does — a `reopened` hands the turn back.
+const VERIFICATION_MARKER_RE = /<!-- claudine:v1 \{"kind":"verification".*?"verdict":"(\w+)"/g;
+const SETTLED_VERDICTS = new Set(['closed', 'accepted', 'declined']);
+
+function settledVerdict(body) {
+  const verdicts = [...String(body ?? '').matchAll(VERIFICATION_MARKER_RE)].map(match => match[1]);
+  return verdicts.length > 0 && verdicts.every(verdict => SETTLED_VERDICTS.has(verdict));
+}
+
 function discussionThread(pr, me) {
   const posted = [
     ...pr.reviews.nodes
@@ -507,11 +519,14 @@ function discussionThread(pr, me) {
       })),
   ];
   const messages = posted
-    .filter(message => !(message.login !== me && approvedSince(pr, message.login, message.at)))
+    .filter(
+      message => !(message.login !== me
+        && (approvedSince(pr, message.login, message.at) || settledVerdict(message.body))),
+    )
     .sort((a, b) => new Date(a.at) - new Date(b.at));
 
-  // Once an approval has settled the reviewer's side, my replies to them are not a question
-  // still waiting on anyone. Observed on forestadmin-server#8565.
+  // Once an approval or a closing verdict has settled the reviewer's side, my replies to them
+  // are not a question still waiting on anyone. Observed on forestadmin-server#8565.
   const settled = messages.length < posted.length;
   if (!messages.length || (settled && messages.every(message => message.login === me))) return null;
 
