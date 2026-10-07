@@ -880,8 +880,16 @@ workflow, an n8n flow or anything else that takes JSON:
   checks never stop, so calls go out with no tab open; they cost little when nothing
   moved, but a full search still runs every `PR_RADAR_REFRESH_SECONDS`. With
   `PR_RADAR_CHECK_SECONDS=0`, the server runs that full search on its own instead.
-- A board missing some of its GitHub sources keeps the last known status of the PRs it
-  lost: they would otherwise come back as new on the next full refresh.
+- **A board missing PRs is not trusted.** That is a failed search, a failed batch of
+  details or a failed event-feed lookup; a truncated thread list or an unknown
+  mergeability leaves every PR on the board and does not count.
+  - Only a complete board becomes the first picture, or the PRs it missed would go out as
+    new on the next one.
+  - An incomplete board sends the PRs new to it only. The PRs it lost keep their last
+    status, and a status change waits for the next complete board.
+- **A PR of mine whose mergeability GitHub has not computed** — or failed to give — keeps
+  its last status: its bucket cannot show a conflict yet, and it would go out as ready,
+  then as action. It is sent once GitHub knows.
 - A failed call (timeout at 5 s, non-2xx) is logged, never retried, and never touches the
   board. The startup line only shows the URL's host, since hook URLs often carry a secret.
   The demo never calls it.

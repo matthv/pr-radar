@@ -932,6 +932,19 @@ function ownerScope(org, extraRepos = []) {
 
 // Everything the searches tell, kept so the board can be reshaped from reloaded PRs alone:
 // who I am, which source each PR came from, and the windows it is judged against.
+const SOURCES = [
+  'author',
+  'reviewed-by',
+  'review-requested',
+  'assigned',
+  'commenter',
+  'merged',
+  'merged-reviewed',
+  'events',
+];
+// The warnings whose failure leaves PRs off the board, as opposed to a field left unknown.
+const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve'];
+
 async function discover({ org, extraRepos = [], maxAgeDays }) {
   const owners = ownerScope(org, extraRepos);
   const scope = `${owners} is:pr is:open`;
@@ -960,16 +973,6 @@ async function discover({ org, extraRepos = [], maxAgeDays }) {
     () => recentlyTouchedPullRequests(org, me),
   ]);
 
-  const SOURCES = [
-    'author',
-    'reviewed-by',
-    'review-requested',
-    'assigned',
-    'commenter',
-    'merged',
-    'merged-reviewed',
-    'events',
-  ];
   const sourceOf = (index, fallback) => {
     const result = settled[index];
     if (result.status === 'fulfilled') return result.value;
@@ -1234,6 +1237,7 @@ module.exports = {
   ownerScope,
   parseExtraRepos,
   SEARCH_LIMIT,
+  LOSING_SOURCES,
   byActionThenFreshness,
   baseShape,
   decorateMine,

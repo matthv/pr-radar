@@ -3,12 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseStatuses, snapshot, nextSnapshot, eventsBetween, send, createNotifier } = require('../webhook');
+const { parseStatuses, snapshot, step, send, createNotifier } = require('../webhook');
 
 const pr = (id, side, bucket, extra = {}) => ({ id, side, bucket, url: `https://github.com/o/r/pull/${id}`, repo: 'o/r', number: id, ...extra });
 const ref = number => ({ url: `https://github.com/o/r/pull/${number}`, project: 'o/r', pr_number: number });
 const event = (status, ...numbers) => ({ status, ...ref(numbers[0]), prs: numbers.map(ref) });
 const board = (mine, reviews = [], warnings = []) => ({ mine, reviews, warnings });
+const eventsBetween = (previous, current, statuses) => step(previous, current, { statuses }).events;
 
 test('statuses: a comma list, blanks ignored, empty means every status', () => {
   assert.deepEqual(parseStatuses(' mine.action, ,reviews.action '), ['mine.action', 'reviews.action']);
@@ -71,9 +72,58 @@ test('drafts are left out when the board hides them', () => {
 test('an incomplete board keeps the PRs it lost, so they do not come back as new', () => {
   const full = snapshot(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'waiting')]));
   const partial = snapshot(board([pr(1, 'mine', 'action')]));
-  const kept = nextSnapshot(full, partial, true);
-  assert.deepEqual(eventsBetween(kept, full), []);
-  assert.equal(nextSnapshot(full, partial, false), partial);
+  const { next } = step(full, partial, { incomplete: true });
+  assert.deepEqual(eventsBetween(next, full), []);
+  assert.equal(step(full, partial).next.has(2), false, 'a complete board drops the PRs that left');
+});
+
+test('an incomplete board sends new PRs, and holds status changes until a complete one', () => {
+  const before = snapshot(board([pr(1, 'mine', 'waiting')]));
+  const partial = snapshot(board([pr(1, 'mine', 'action'), pr(2, 'reviews', 'action')]));
+  const held = step(before, partial, { incomplete: true });
+  assert.deepEqual(held.events, [event('reviews.action', 2)]);
+  assert.deepEqual(eventsBetween(held.next, partial), [event('mine.action', 1)]);
+});
+
+const notifierOn = posted => createNotifier({ url: 'u', post: (_, events) => posted.push(...events) });
+const searchFailed = { source: 'review-requested', message: 'boom' };
+
+test('only a complete board becomes the first picture', () => {
+  const posted = [];
+  const notifier = notifierOn(posted);
+  notifier.notify(board([pr(1, 'mine', 'action')], [], [searchFailed]));
+  notifier.notify(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'action')]));
+  notifier.notify(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'action'), pr(3, 'mine', 'action')]));
+  assert.deepEqual(posted, [event('mine.action', 3)]);
+});
+
+test('only the sources that lose PRs make a board incomplete', () => {
+  const posted = [];
+  const notifier = notifierOn(posted);
+  notifier.notify(board([pr(1, 'mine', 'waiting'), pr(2, 'mine', 'waiting')]));
+  const truncated = { source: 'o/r#1', message: 'page GraphQL pleine' };
+  notifier.notify(board([pr(1, 'mine', 'action')], [], [truncated]));
+  notifier.notify(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'waiting')], [], [truncated]));
+  assert.deepEqual(posted, [event('mine.action', 1), event('mine.waiting', 2)], 'PR 2 left, then came back as new');
+});
+
+test('a PR with an unknown mergeability keeps its last status until GitHub knows', () => {
+  const posted = [];
+  const notifier = notifierOn(posted);
+  notifier.notify(board([pr(1, 'mine', 'waiting')]));
+  notifier.notify(board([pr(1, 'mine', 'ready', { mergeable: 'UNKNOWN' }), pr(2, 'mine', 'ready', { mergeable: 'UNKNOWN' })]));
+  assert.deepEqual(posted, []);
+  notifier.notify(board([pr(1, 'mine', 'action', { mergeable: 'CONFLICTING' }), pr(2, 'mine', 'ready', { mergeable: 'MERGEABLE' })]));
+  assert.deepEqual(posted, [event('mine.action', 1), event('mine.ready', 2)]);
+});
+
+test('an unknown mergeability in the first picture is corrected without a call', () => {
+  const posted = [];
+  const notifier = notifierOn(posted);
+  notifier.notify(board([pr(1, 'mine', 'ready', { mergeable: 'UNKNOWN' })]));
+  notifier.notify(board([pr(1, 'mine', 'action', { mergeable: 'CONFLICTING' })]));
+  notifier.notify(board([pr(1, 'mine', 'action', { mergeable: 'CONFLICTING' })]));
+  assert.deepEqual(posted, []);
 });
 
 test('send posts one JSON body per event', async () => {
