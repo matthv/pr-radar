@@ -15,6 +15,7 @@ const {
   isBot,
   byActionThenFreshness,
   shapeBoard,
+  resolveClaimed,
 } = require('../github');
 
 const ME = 'me';
@@ -1169,4 +1170,32 @@ test('board: a PR no longer claimed and found by no search leaves the board', ()
   const id = 'PR_C';
   const board = shapeBoard(new Map([[id, node({ id, author: user('nbouliol') })]]), claimContext(id, { extraIds: new Set(), claimedSet: new Set() }));
   assert.deepEqual([board.mine.length, board.reviews.length], [0, 0]);
+});
+
+test('board: a review card nobody claimed carries no claimed pill', () => {
+  const id = 'PR_N';
+  const context = claimContext(id, { extraIds: new Set(), claimedSet: new Set(), reviewSet: new Set([id]) });
+  const [card] = shapeBoard(new Map([[id, node({ id, author: user('nbouliol') })]]), context).reviews;
+  assert.equal(card.claimed, false);
+});
+
+test('claims: links outside the org are left out, and one unknown PR does not take the others with it', async () => {
+  const known = { 'ForestAdmin/agent-ruby#409': 'ID_409', 'matthv/pr-radar#15': 'ID_15' };
+  const asked = [];
+  const resolve = async refs => {
+    asked.push(refs.length);
+    const keys = refs.map(ref => `${ref.owner}/${ref.name}#${ref.number}`);
+    if (keys.some(key => !known[key])) throw new Error('Could not resolve to a PullRequest');
+    return keys.map(key => known[key]);
+  };
+  const warnings = [];
+  const ids = await resolveClaimed([
+    { repo: 'ForestAdmin/agent-ruby', number: 409 },
+    { repo: 'ForestAdmin/agent-ruby', number: 99999 },
+    { repo: 'someorg/private', number: 12 },
+    { repo: 'matthv/pr-radar', number: 15 },
+  ], { org: 'ForestAdmin', extraRepos: ['matthv/pr-radar'] }, warnings, resolve);
+  assert.deepEqual(ids, ['ID_409', 'ID_15']);
+  assert.deepEqual(warnings.map(w => w.source), ['claimed ForestAdmin/agent-ruby#99999']);
+  assert.equal(asked[0], 3, 'someorg is never asked about');
 });

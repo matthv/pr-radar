@@ -1476,6 +1476,7 @@ const I18N = {
     pillClaimed: 'prise sur Slack',
     pillClaimedTitle: 'Tu as mis ta réaction sur son annonce : retire-la pour la rendre.',
     claimsFailed: 'PRs prises sur Slack indisponibles ({message}) : les dernières connues restent affichées.',
+    claimsTruncated: 'Plus de 60 annonces avec ta réaction : les plus anciennes ne sont pas lues. Retire la réaction des PRs déjà traitées.',
     pillToReview: 'à reviewer',
     pillAnswers_one: '{n} réponse pour moi',
     pillAnswers_many: '{n} réponses pour moi',
@@ -1664,6 +1665,7 @@ const I18N = {
     pillClaimed: 'claimed on Slack',
     pillClaimedTitle: 'Your reaction is on its announcement: remove it to hand the PR back.',
     claimsFailed: 'PRs claimed on Slack unavailable ({message}): the last known ones stay on the board.',
+    claimsTruncated: 'Over 60 announcements carry your reaction: the oldest are not read. Remove it from the PRs already dealt with.',
     pillToReview: 'to review',
     pillAnswers_one: '{n} reply for me',
     pillAnswers_many: '{n} replies for me',
@@ -2715,7 +2717,11 @@ function render() {
       : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
   if (claudeWarning) lines.push(t('claudeScanFailed', { message: claudeWarning.message }));
-  if (claimWarning) lines.push(t('claimsFailed', { message: claimWarning.message.replace(/^slack:\s*/, '') }));
+  if (claimWarning) {
+    lines.push(claimWarning.kind === 'truncated'
+      ? t('claimsTruncated')
+      : t('claimsFailed', { message: claimWarning.message.replace(/^slack:\s*/, '') }));
+  }
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
 

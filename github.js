@@ -960,7 +960,41 @@ const SOURCES = [
   'events',
 ];
 // The warnings whose failure leaves PRs off the board, as opposed to a field left unknown.
-const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve'];
+const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve'];
+
+// An announcement links whatever its author pasted: another org's PR, a private repo, a typo.
+// Those are left out first; one that still does not resolve must not take the others with
+// it, since GitHub fails a whole batch on a single unknown PR. Not a lost source either: the
+// board stays whole, only that claim is missing, and the warning names it.
+function claimInScope({ repo }, org, extraRepos) {
+  const lower = repo.toLowerCase();
+  return lower.startsWith(`${org.toLowerCase()}/`) || extraRepos.some(extra => extra.toLowerCase() === lower);
+}
+
+async function resolveClaimed(claimedRefs, { org, extraRepos }, warnings, resolve = resolvePullRequestIds) {
+  const refs = claimedRefs
+    .filter(ref => claimInScope(ref, org, extraRepos))
+    .map(({ repo, number }) => {
+      const [owner, name] = repo.split('/');
+      return { owner, name, number };
+    });
+  if (!refs.length) return [];
+  try {
+    return await resolve(refs);
+  } catch {
+    const ids = [];
+    const missing = [];
+    for (const ref of refs) {
+      try {
+        ids.push(...(await resolve([ref])));
+      } catch {
+        missing.push(`${ref.owner}/${ref.name}#${ref.number}`);
+      }
+    }
+    if (missing.length) warnings.push({ source: `claimed ${missing.join(', ')}`, message: 'not found' });
+    return ids;
+  }
+}
 
 async function discover({ org, extraRepos = [], maxAgeDays, claimedRefs = [] }) {
   const owners = ownerScope(org, extraRepos);
@@ -1060,17 +1094,7 @@ async function discover({ org, extraRepos = [], maxAgeDays, claimedRefs = [] }) 
   }
   // PRs claimed with a Slack reaction: on the review side as a review I owe. Loaded like the
   // event feed's, since no search found them; one of mine still goes to my side.
-  let claimedIds = [];
-  try {
-    claimedIds = claimedRefs.length
-      ? await resolvePullRequestIds(claimedRefs.map(({ repo, number }) => {
-        const [owner, name] = repo.split('/');
-        return { owner, name, number };
-      }))
-      : [];
-  } catch (error) {
-    warnings.push({ source: 'claims-resolve', message: error.message });
-  }
+  const claimedIds = await resolveClaimed(claimedRefs, { org, extraRepos }, warnings);
   const known = new Set([...mineSet, ...reviewSet]);
   const extraIds = [...new Set([...touchedIds, ...claimedIds])].filter(id => !known.has(id));
 
@@ -1266,6 +1290,8 @@ module.exports = {
   statusFingerprint,
   fetchStatusFingerprints,
   recentlyTouchedPullRequests,
+  resolveClaimed,
+  claimInScope,
   fetchBoard,
   loadNodes,
   shapeBoard,

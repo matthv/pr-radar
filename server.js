@@ -185,26 +185,33 @@ function readSlackInBackground(prs) {
 // The reactions are read behind the board, like the Claude channel read: a search through
 // Claude takes seconds. The full search uses the last list known, and a list that changed
 // runs another one at once, so a card claimed or let go shows within the read's own delay.
-// A refresh asked by hand reads again, but never twice within ten seconds.
+// Only while a page holds the lease: a webhook keeps searching with no page, and each of
+// those searches would otherwise cost a model call. `asked` is the Refresh button only — the
+// live loop and the webhook pass `force` to skip the cache, which must not skip the cadence —
+// and even then never twice within ten seconds of the last read's end.
 const CLAIM_FORCE_GAP_MS = 10_000;
-function readClaimsInBackground(force) {
+function readClaimsInBackground(asked) {
   if (claimMode !== 'on' || claimReading) return;
   const now = Date.now();
+  if (now - live.pageAt > LEASE_MS) return;
   claimReading = slack
-    .readClaims({ maxAgeDays: MAX_AGE_DAYS, now, force: force && now - claimReadAt > CLAIM_FORCE_GAP_MS })
-    .then(({ changed }) => {
-      claimReadAt = now;
-      claimWarning = null;
+    .readClaims({ maxAgeDays: MAX_AGE_DAYS, now, force: asked && now - claimReadAt > CLAIM_FORCE_GAP_MS })
+    .then(({ changed, truncated }) => {
+      claimReadAt = Date.now();
+      claimWarning = truncated ? { source: 'slack-claims', kind: 'truncated', message: '' } : null;
       if (changed) {
         console.log(`[${new Date().toISOString()}] slack: claimed PRs changed, searching again`);
         // A search already running was started with the previous list: joining it would show
         // that one again, so the new search waits for it to end.
         const again = () => dashboard(true).catch(error => console.error('Claimed PRs refresh failed:', error.message));
-        if (inFlight) inFlight.finally(again);
+        // Its own failure is reported by whoever awaited it; left unhandled here it would
+        // end the process (Node 22).
+        if (inFlight) inFlight.catch(() => {}).then(again);
         else setImmediate(again);
       }
     })
     .catch(error => {
+      claimReadAt = Date.now();
       claimWarning = { source: 'slack-claims', kind: error.code ?? 'failed', message: error.message };
     })
     .finally(() => {
@@ -239,7 +246,7 @@ function reusableNodes() {
 
 // `reuse`: the live loop's own searches only. The Refresh button, a lapsed lease and the first
 // search reload everything.
-async function dashboard(force, { reuse = false } = {}) {
+async function dashboard(force, { reuse = false, asked = false } = {}) {
   if (DEMO) {
     return {
       ...demo.payload(force),
@@ -273,7 +280,7 @@ async function dashboard(force, { reuse = false } = {}) {
       const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
       if (slackMode === 'claude') readSlackInBackground(prs);
-      readClaimsInBackground(force);
+      readClaimsInBackground(asked);
       const at = Date.now();
       cache = { at, payload: await layered(fetched.board, new Date(at).toISOString()) };
       if (!scanDone) {
@@ -488,7 +495,8 @@ const server = http.createServer(async (req, res) => {
         live.checkNow = true;
         liveTick();
       }
-      const payload = await dashboard(url.searchParams.get('force') === '1' || lapsed);
+      const asked = url.searchParams.get('force') === '1';
+      const payload = await dashboard(asked || lapsed, { asked });
       json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
