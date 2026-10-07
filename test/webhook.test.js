@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { STATUSES, parseStatuses, statusOf, snapshot, step, send, createNotifier } = require('../webhook');
+const { STATUSES, parseUrl, parseStatuses, statusOf, snapshot, step, send, createNotifier } = require('../webhook');
 const demo = require('../demo');
 
 const pr = (id, side, bucket, extra = {}) => ({ id, side: side === 'reviews' ? 'review' : side, bucket, url: `https://github.com/o/r/pull/${id}`, repo: 'o/r', number: id, ...extra });
@@ -198,4 +198,35 @@ test('send logs each call that went through', async () => {
   const infos = [];
   await send('https://hook.test/x', [event('mine.action', 1, 2)], { fetchImpl: async () => ({ ok: true, status: 200 }), info: line => infos.push(line) });
   assert.match(infos[0], /webhook mine\.action https:\/\/github\.com\/o\/r\/pull\/1 \(\+1 PR\): HTTP 200/);
+});
+
+test('url: empty means off, an http(s) URL is kept as given', () => {
+  assert.equal(parseUrl(undefined), '');
+  assert.equal(parseUrl('  '), '');
+  assert.equal(parseUrl(' http://hass.home:1880/hook?token=abc '), 'http://hass.home:1880/hook?token=abc');
+});
+
+test('url: credentials are refused up front, the error naming the host only', () => {
+  assert.throws(() => parseUrl('https://user:s3cret@example.invalid/hook?token=abc'), error => {
+    assert.match(error.message, /credentials in the URL are not supported \(example\.invalid\)/);
+    assert.doesNotMatch(error.message, /s3cret|token=abc|user/);
+    return true;
+  });
+  assert.throws(() => parseUrl('https://user@example.invalid/hook'), /credentials/);
+});
+
+test('url: not a URL, or not http(s), is refused without echoing it', () => {
+  assert.throws(() => parseUrl('not a url token=abc'), error => !/token=abc/.test(error.message));
+  assert.throws(() => parseUrl('ftp://example.invalid/token=abc'), error => /not http\(s\) \(example\.invalid\)/.test(error.message) && !/token=abc/.test(error.message));
+});
+
+test('send never logs the hook URL, even when an error carries it', async () => {
+  const logs = [];
+  const url = 'https://Example.invalid/hook?token=abc';
+  const fetchImpl = async () => {
+    throw new TypeError(`fetch failed for ${url}`, { cause: new Error(`refused: ${new URL(url).href}`) });
+  };
+  await send(url, [event('mine.action', 1)], { fetchImpl, log: line => logs.push(line) });
+  assert.doesNotMatch(logs[0], /token=abc/);
+  assert.match(logs[0], /fetch failed for <webhook> \(refused: <webhook>\)/);
 });

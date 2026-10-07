@@ -62,7 +62,7 @@ const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
 // The board waits this long for the transcripts on a refresh; a longer scan, the first one
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
-const WEBHOOK_URL = DEMO ? '' : (process.env.PR_RADAR_WEBHOOK_URL ?? '').trim();
+let WEBHOOK_URL = '';
 // Your own notification sound, a local file. Only this one path is ever served, at a fixed
 // route: the page cannot ask for any other file through it.
 const SOUND_FILE = (process.env.PR_RADAR_SOUND ?? '').trim().replace(/^~(?=\/|$)/, os.homedir());
@@ -405,14 +405,9 @@ if (!ORG) {
   process.exit(1);
 }
 
-try {
-  if (WEBHOOK_URL && !/^https?:$/.test(new URL(WEBHOOK_URL).protocol)) throw new Error('not http(s)');
-} catch (error) {
-  console.error(`PR_RADAR_WEBHOOK_URL: not a valid URL (${error.message})`);
-  process.exit(1);
-}
 let webhookStatuses;
 try {
+  WEBHOOK_URL = DEMO ? '' : webhook.parseUrl(process.env.PR_RADAR_WEBHOOK_URL);
   webhookStatuses = webhook.parseStatuses(process.env.PR_RADAR_WEBHOOK_STATUSES);
   if (WEBHOOK_URL) webhookNotifier = webhook.createNotifier({ url: WEBHOOK_URL, statuses: webhookStatuses, hideDrafts: HIDE_DRAFTS });
 } catch (error) {

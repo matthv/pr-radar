@@ -906,7 +906,10 @@ workflow, an n8n flow or anything else that takes JSON:
 - Every call is logged in the server's terminal: `webhook mine.action <url> (+1 PR): HTTP 200`.
   A failed one (timeout at 5 s, non-2xx) is logged with its network cause, never retried,
   and never touches the board. A first search failing at startup is retried every
-  minute: no page may come to do it, and the webhook would never start. The startup line only shows the URL's host, since hook URLs often carry a secret.
+  minute: no page may come to do it, and the webhook would never start. The URL never shows in full, since hook URLs often carry a secret: the startup
+  line gives its host, and a logged error has it replaced by `<webhook>`. A URL with
+  credentials (`https://user:pass@host/…`) stops the server at startup — `fetch` refuses
+  them, and its error would print them — so the secret goes in the path or the query.
   The demo never calls it.
 
 ## The summary band

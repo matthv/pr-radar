@@ -21,6 +21,24 @@ function parseStatuses(value) {
 }
 
 // The board calls the review side `review`; the statuses name the column, `reviews`.
+// The errors name the host only: a hook URL often carries its secret in the path or query.
+function parseUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('PR_RADAR_WEBHOOK_URL: not a valid URL');
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new Error(`PR_RADAR_WEBHOOK_URL: not http(s) (${url.host})`);
+  // fetch refuses them, and its error would print the whole URL.
+  if (url.username || url.password) {
+    throw new Error(`PR_RADAR_WEBHOOK_URL: credentials in the URL are not supported (${url.host}); put the secret in the path or a query parameter`);
+  }
+  return raw;
+}
+
 const statusOf = pr => `${pr.side === 'mine' ? 'mine' : 'reviews'}.${pr.bucket}`;
 
 // A PR of mine whose mergeability GitHub has not computed, or failed to give, may carry a
@@ -67,6 +85,8 @@ function step(previous, current, { incomplete: partial = false, statuses = [] } 
 }
 
 async function send(url, events, { fetchImpl = fetch, log = console.error, info = console.log } = {}) {
+  const forms = [...new Set([url, URL.canParse(url) ? new URL(url).href : url])];
+  const scrub = text => forms.reduce((line, form) => line.split(form).join('<webhook>'), text);
   await Promise.all(
     events.map(async event => {
       const more = event.prs?.length > 1 ? ` (+${event.prs.length - 1} PR)` : '';
@@ -83,7 +103,7 @@ async function send(url, events, { fetchImpl = fetch, log = console.error, info 
         info(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: HTTP ${res.status}`);
       } catch (error) {
         const cause = error.cause?.message ? ` (${error.cause.message})` : '';
-        log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: ${error.message}${cause}`);
+        log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: ${scrub(`${error.message}${cause}`)}`);
       }
     }),
   );
@@ -101,4 +121,4 @@ function createNotifier({ url, statuses = [], hideDrafts = false, post = send })
   };
 }
 
-module.exports = { STATUSES, parseStatuses, statusOf, snapshot, incomplete, step, send, createNotifier };
+module.exports = { STATUSES, parseUrl, parseStatuses, statusOf, snapshot, incomplete, step, send, createNotifier };
