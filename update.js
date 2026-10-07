@@ -196,10 +196,10 @@ async function apply(exec = git, { pulled = settle } = {}) {
   ])];
   return {
     ok: true,
-    from: from.slice(0, 7),
+    from: pending?.from ?? from.slice(0, 7),
     to: to.slice(0, 7),
     blockers: blocked,
-    newEnvVars: newEnvVars(oldExample, newExample),
+    newEnvVars: [...new Set([...(pending?.newEnvVars ?? []), ...newEnvVars(oldExample, newExample)])],
     restart: blocked.length === 0,
   };
 }

@@ -109,7 +109,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
-| `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
+| `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update & restart** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
@@ -289,14 +289,15 @@ The tool has no version number; the commit is the version. Every
 `git fetch` and counts the commits between its own `HEAD` and `origin/main`. When it is
 behind, the page shows an indigo banner — not amber, since nothing is wrong with the
 data — with the count, the titles of the commits missed (the first eight, then "and N
-more"), and `git pull` to copy. A `×` hides it for that exact remote commit; the next
-push brings it back.
+more"), **Update & restart** at the top right, and the manual way in small print below
+the list: `git pull` to copy, then a restart. A `×` hides it for that exact remote
+commit; the next push brings it back.
 
 Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
 state while working, and a banner there would be noise. Nothing pulls on its own: a
 colleague's clone may carry local changes.
 
-**Update** pulls and restarts from the page: the server fast-forwards to `origin/main`,
+**Update & restart** pulls and restarts from the page: the server fast-forwards to `origin/main`,
 starts a new process on the new code, and the page reloads itself once that one answers,
 saying which commits it went from and to. It only does so when it is safe, and otherwise
 says why and leaves the command to you:
@@ -349,9 +350,13 @@ that module exports and none of its network calls:
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
   incrementally, a running copy and the terminal it runs in, and the route with its guards;
-- `test/update.test.js` — reading `git` output into "behind by N", and **Update**: what
-  refuses to pull, what pulls without restarting (dependencies, Node version), the
-  variables new to `.env.example`, nothing merged once refused or when the fetch fails;
+- `test/update.test.js` — reading `git` output into "behind by N", and **Update &
+  restart**: what refuses to pull (another branch, local changes, a history of its own, a
+  clone already current, a git error rather than a divergence), what pulls without
+  restarting (dependencies, a lockfile, the Node version, an unreadable `package.json`),
+  the variables new to `.env.example`, nothing merged once refused or when a read or the
+  merge fails, what git said rather than its command line, a git stopped by the ceiling,
+  and two pulls without a restart adding up;
 - `test/colors.test.js` — a picked colour turned into a repo's tint: sRGB to OKLCH, the hue
   kept and the intensity capped, no ready-made hue reading as a state, the warning for one
   that does;
