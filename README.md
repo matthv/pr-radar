@@ -137,7 +137,8 @@ keeps the board fresh with requests GitHub answers for free when nothing changed
   - With no page, the server calls GitHub not at all; the next page to open runs a full
     search.
   - A [webhook](#the-webhook) is the exception: while `PR_RADAR_WEBHOOK_URL` is set the
-    checks never stop, and keep their regular pace even behind a hidden tab.
+    checks never stop, and keep their regular pace even behind a hidden tab. With no page,
+    the full search spaces out to every 15 minutes.
 - **The page asks the server every 20 s.** It is answered from the cache, without a GitHub
   call, and redraws only when the board actually changed: an unchanged board would close a
   note being edited.
@@ -876,10 +877,14 @@ workflow, an n8n flow or anything else that takes JSON:
 - It is the server's view: `PR_RADAR_HIDE_DRAFTS` applies, but snoozes, "hide bots"
   and the search filter live in the browser and do not.
 - **It follows the live refresh.** A change found by the checks is sent within
-  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search. While the URL is set the
-  checks never stop, so calls go out with no tab open; they cost little when nothing
-  moved, but a full search still runs every `PR_RADAR_REFRESH_SECONDS`. With
+  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search. With
   `PR_RADAR_CHECK_SECONDS=0`, the server runs that full search on its own instead.
+- **It runs around the clock, and that has a cost.** While the URL is set the checks never
+  stop, so calls go out with no tab open. They are free when nothing moved, but with no
+  page the full search still runs every 15 minutes: roughly 50 counted GitHub calls an
+  hour at a quiet time, about 1,200 a day, where a closed tab used to cost none. A new PR
+  then waits up to 15 minutes; the cards already on the board stay as fresh. See
+  [What it costs](docs/live-refresh.md#what-it-costs).
 - **A board missing PRs is not trusted.** That is a failed search, a failed batch of
   details or a failed event-feed lookup; a truncated thread list or an unknown
   mergeability leaves every PR on the board and does not count.

@@ -118,6 +118,11 @@ overnight, with nothing else running).
   each, the same in every setup. Spacing them from 5 to 10 minutes would save about 40 calls
   an hour. PRs already on the board stay just as fresh; only a brand-new one waits longer. A
   review request I add myself sends me no notification, so it waits for the next full search.
+- **A webhook keeps it running around the clock.** With no page, the full search spaces out
+  to every 15 minutes: about 4 an hour of about 12 calls, so roughly **50 counted calls an
+  hour** at a quiet time, plus the reloads of whatever moves — around 1,200 a day overnight
+  and on weekends, instead of none. That is an estimate from the figures above, not a
+  measurement. With a page open, the cost is the table's.
 - **Targeted reloads grow with activity**, one PR at a time, and a CI in flight is read every
   30 s. The Oct 6 morning included a release run re-run after a flaky test.
 
@@ -129,8 +134,8 @@ overnight, with nothing else running).
 | A CI stuck in a queue | Followed for 30 minutes, then left to the regular cadence |
 | A reload fails | The card reads as changed on the next round, so the change is not lost |
 | The tab is hidden | Checks every 5 minutes |
-| No page for 10 minutes | No GitHub call at all; the next page opened runs a full search |
-| `PR_RADAR_WEBHOOK_URL` set | The checks never stop, at their regular pace even behind a hidden tab: the webhook is always looking |
+| No page for 10 minutes | No GitHub call at all; the next page opened runs a full search. Not with a webhook set, see the next line |
+| `PR_RADAR_WEBHOOK_URL` set | The checks never stop, at their regular pace even behind a hidden tab: the webhook is always looking. With no page for 10 minutes, the full search spaces out to every 15 minutes (`searchEveryMs`); a page coming back runs the overdue one at once |
 | A note being edited | The page redraws only when the board changed, so the editor stays open |
 | `gh` exits 1 on a `304` | Read as an answer, not an error (`watch.js`, `parseResponse`) |
 | A check genuinely fails | Logged on the server; the full search stays the safety net |
@@ -228,7 +233,8 @@ Your own moves and bots are left out: they are not news to you, and bots have th
   - `createWatcher` holds the `ETag`s and the notifications' `Last-Modified`;
   - `inFlight` and `toFollow` pick the cards to follow;
   - `nextDiscoveryAt` enforces the gap between full searches;
-  - `watched` says whether the checks still run: a page lease, or a webhook.
+  - `watched` says whether the checks still run: a page lease, or a webhook;
+  - `searchEveryMs` spaces the full searches when only a webhook is looking.
 - **`github.js`**:
   - `discover`, `loadNodes`, `shapeBoard`, `fetchBoard` (with the PRs it may reuse);
   - `STATUS_QUERY`, `statusFingerprint`, `fetchStatusFingerprints` for the cards in flight;

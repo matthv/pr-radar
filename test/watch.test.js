@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createWatcher, watched, inFlight, toFollow, nextDiscoveryAt, parseResponse, prFromApiUrl, MIN_DISCOVERY_GAP_MS, MAX_FOLLOW_MS } = require('../watch');
+const { createWatcher, watched, searchEveryMs, UNWATCHED_SEARCH_MS, inFlight, toFollow, nextDiscoveryAt, parseResponse, prFromApiUrl, MIN_DISCOVERY_GAP_MS, MAX_FOLLOW_MS } = require('../watch');
 
 const scope = { org: 'ForestAdmin', extraRepos: ['matthv/pr-radar'] };
 const pr = (number, extra = {}) => ({ id: `PR_${number}`, repo: 'ForestAdmin/agent-ruby', number, url: `https://github.com/ForestAdmin/agent-ruby/pull/${number}`, ...extra });
@@ -174,4 +174,10 @@ test('the checks stop once no page asked for a lease, unless a webhook is set', 
   assert.equal(watched(1000, 1000 + 600_000, 600_000, false), true);
   assert.equal(watched(1000, 1001 + 600_000, 600_000, false), false);
   assert.equal(watched(1000, 1000 + 24 * 3600_000, 600_000, true), true);
+});
+
+test('with no page looking, the full searches are spaced out, never brought closer', () => {
+  assert.equal(searchEveryMs(300_000, true), 300_000);
+  assert.equal(searchEveryMs(300_000, false), UNWATCHED_SEARCH_MS);
+  assert.equal(searchEveryMs(3600_000, false), 3600_000);
 });

@@ -274,7 +274,8 @@ const inScopeUrl = url => {
 
 async function liveStep() {
   const now = Date.now();
-  if (now >= watch.nextDiscoveryAt(cache.at, live.earlyDiscovery, REFRESH_SECONDS * 1000)) {
+  const searchMs = watch.searchEveryMs(REFRESH_SECONDS * 1000, now - live.pageAt <= LEASE_MS);
+  if (now >= watch.nextDiscoveryAt(cache.at, live.earlyDiscovery, searchMs)) {
     live.earlyDiscovery = false;
     await dashboard(true, { reuse: true });
     return;
