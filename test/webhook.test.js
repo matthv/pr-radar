@@ -3,9 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseStatuses, snapshot, step, send, createNotifier } = require('../webhook');
+const { STATUSES, parseStatuses, statusOf, snapshot, step, send, createNotifier } = require('../webhook');
+const demo = require('../demo');
 
-const pr = (id, side, bucket, extra = {}) => ({ id, side, bucket, url: `https://github.com/o/r/pull/${id}`, repo: 'o/r', number: id, ...extra });
+const pr = (id, side, bucket, extra = {}) => ({ id, side: side === 'reviews' ? 'review' : side, bucket, url: `https://github.com/o/r/pull/${id}`, repo: 'o/r', number: id, ...extra });
 const ref = number => ({ url: `https://github.com/o/r/pull/${number}`, project: 'o/r', pr_number: number });
 const event = (status, ...numbers) => ({ status, ...ref(numbers[0]), prs: numbers.map(ref) });
 const board = (mine, reviews = [], warnings = []) => ({ mine, reviews, warnings });
@@ -184,4 +185,17 @@ test('send releases the response body', async () => {
   const body = { cancel: async () => { cancelled = true; } };
   await send('https://hook.test/x', [event('mine.action', 1)], { fetchImpl: async () => ({ ok: true, body }) });
   assert.equal(cancelled, true);
+});
+
+test('the statuses of a board shaped by the real classification are the documented ones', () => {
+  const board = demo.payload(false);
+  const seen = new Set([...board.mine, ...board.reviews].map(statusOf));
+  assert.deepEqual([...seen].filter(status => !STATUSES.includes(status)), []);
+  assert.ok(seen.has('reviews.action'), 'the review side is named after its column');
+});
+
+test('send logs each call that went through', async () => {
+  const infos = [];
+  await send('https://hook.test/x', [event('mine.action', 1, 2)], { fetchImpl: async () => ({ ok: true, status: 200 }), info: line => infos.push(line) });
+  assert.match(infos[0], /webhook mine\.action https:\/\/github\.com\/o\/r\/pull\/1 \(\+1 PR\): HTTP 200/);
 });

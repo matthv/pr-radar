@@ -20,7 +20,8 @@ function parseStatuses(value) {
   return statuses;
 }
 
-const statusOf = pr => `${pr.side}.${pr.bucket}`;
+// The board calls the review side `review`; the statuses name the column, `reviews`.
+const statusOf = pr => `${pr.side === 'mine' ? 'mine' : 'reviews'}.${pr.bucket}`;
 
 // A PR of mine whose mergeability GitHub has not computed, or failed to give, may carry a
 // conflict its bucket does not show yet: it would go out as ready, then as action.
@@ -65,9 +66,10 @@ function step(previous, current, { incomplete: partial = false, statuses = [] } 
   return { events: [...byStatus.values()], next };
 }
 
-async function send(url, events, { fetchImpl = fetch, log = console.error } = {}) {
+async function send(url, events, { fetchImpl = fetch, log = console.error, info = console.log } = {}) {
   await Promise.all(
     events.map(async event => {
+      const more = event.prs?.length > 1 ? ` (+${event.prs.length - 1} PR)` : '';
       try {
         const res = await fetchImpl(url, {
           method: 'POST',
@@ -78,8 +80,8 @@ async function send(url, events, { fetchImpl = fetch, log = console.error } = {}
         // Left unread, the body would hold the socket open.
         res.body?.cancel().catch(() => {});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        info(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: HTTP ${res.status}`);
       } catch (error) {
-        const more = event.prs?.length > 1 ? ` (+${event.prs.length - 1} PR)` : '';
         const cause = error.cause?.message ? ` (${error.cause.message})` : '';
         log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: ${error.message}${cause}`);
       }

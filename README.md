@@ -895,8 +895,9 @@ workflow, an n8n flow or anything else that takes JSON:
 - **A PR of mine whose mergeability GitHub has not computed** — or failed to give — keeps
   its last status: its bucket cannot show a conflict yet, and it would go out as ready,
   then as action. It is sent once GitHub knows.
-- A failed call (timeout at 5 s, non-2xx) is logged with its network cause, never
-  retried, and never touches the board. A first search failing at startup is retried every
+- Every call is logged in the server's terminal: `webhook mine.action <url> (+1 PR): HTTP 200`.
+  A failed one (timeout at 5 s, non-2xx) is logged with its network cause, never retried,
+  and never touches the board. A first search failing at startup is retried every
   minute: no page may come to do it, and the webhook would never start. The startup line only shows the URL's host, since hook URLs often carry a secret.
   The demo never calls it.
 
