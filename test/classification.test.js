@@ -1180,7 +1180,7 @@ test('board: a review card nobody claimed carries no claimed pill', () => {
 });
 
 test('claims: links outside the org are left out, and one unknown PR does not take the others with it', async () => {
-  const known = { 'ForestAdmin/agent-ruby#409': 'ID_409', 'matthv/pr-radar#15': 'ID_15' };
+  const known = { 'forestadmin/agent-ruby#409': 'ID_409', 'matthv/pr-radar#15': 'ID_15' };
   const asked = [];
   const resolve = async refs => {
     asked.push(refs.length);
@@ -1190,12 +1190,26 @@ test('claims: links outside the org are left out, and one unknown PR does not ta
   };
   const warnings = [];
   const ids = await resolveClaimed([
-    { repo: 'ForestAdmin/agent-ruby', number: 409 },
+    { repo: 'forestadmin/agent-ruby', number: 409 },
     { repo: 'ForestAdmin/agent-ruby', number: 99999 },
     { repo: 'someorg/private', number: 12 },
     { repo: 'matthv/pr-radar', number: 15 },
   ], { org: 'ForestAdmin', extraRepos: ['matthv/pr-radar'] }, warnings, resolve);
   assert.deepEqual(ids, ['ID_409', 'ID_15']);
-  assert.deepEqual(warnings.map(w => w.source), ['claimed ForestAdmin/agent-ruby#99999']);
+  assert.deepEqual(warnings.map(w => [w.source, w.refs]), [['claims-missing', ['ForestAdmin/agent-ruby#99999']]]);
   assert.equal(asked[0], 3, 'someorg is never asked about');
+});
+
+test('claims: GitHub failing is a lost source, not a list of unknown PRs', async () => {
+  const warnings = [];
+  const ids = await resolveClaimed(
+    [{ repo: 'ForestAdmin/agent-ruby', number: 409 }, { repo: 'ForestAdmin/agent-ruby', number: 410 }],
+    { org: 'ForestAdmin', extraRepos: [] },
+    warnings,
+    async () => { throw new Error('read ECONNRESET'); },
+  );
+  assert.deepEqual(ids, []);
+  assert.deepEqual(warnings.map(w => w.source), ['claims-resolve']);
+  const { LOSING_SOURCES } = require('../github');
+  assert.ok(LOSING_SOURCES.includes('claims-resolve'), 'the webhook keeps the last statuses meanwhile');
 });

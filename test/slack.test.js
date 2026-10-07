@@ -202,6 +202,9 @@ test('claims: the PR links of the messages I reacted to, once each', () => {
   ]);
   assert.deepEqual(parseClaims('{"messages": [], "more": false}'), []);
   assert.throws(() => parseClaims('I could not search'), /unreadable/);
+  assert.throws(() => parseClaims('{oops}'), /unreadable/);
+  const twice = { messages: [{ ts: '1791371567.461059', text: 'https://github.com/o/r/pull/5' }, { ts: '1791371568.461059', text: 'again https://github.com/o/r/pull/5' }], more: false };
+  assert.deepEqual(parseClaims(JSON.stringify(twice)), [{ repo: 'o/r', number: 5 }], 'an announcement and its repost, one claim');
 });
 
 test('claims: the search asks for my own reactions only, and treats messages as data', () => {
@@ -242,6 +245,8 @@ test('claims: only announcements posted since the feature was turned on', () => 
 test('claims: messages returned but none readable is an error, not "no reaction"', () => {
   assert.throws(() => parseClaimAnswer('{"messages": [{"ts": "yesterday", "text": "x"}], "more": false}'), /unreadable messages/);
   assert.equal(parseClaimAnswer('{"messages": [], "more": true}').more, true, 'more pages than were read');
+  const full = { messages: Array.from({ length: 20 }, (_, i) => ({ ts: `17913715${String(i).padStart(2, '0')}.000001`, text: 'x' })) };
+  assert.equal(parseClaimAnswer(JSON.stringify(full)).more, true, 'a full page and no word on more: assume there is');
 });
 
 test('claims: the model is allowed the search that sees private channels', () => {

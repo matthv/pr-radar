@@ -351,7 +351,8 @@ that module exports and none of its network calls:
   claimed PRs (the links of my reactions, read every five minutes or on Refresh, a new search
   only when the set moved, an empty answer confirmed before it empties the list, a failure
   waiting its back-off), with `test/slack-claims.test.js` reading them end to end against a
-  stubbed model and a temporary state file,
+  stubbed model and a temporary state file, and `test/slack-state.test.js` setting a corrupt
+  state file aside,
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
   incrementally, a running copy and the terminal it runs in, and the route with its guards;
@@ -739,20 +740,24 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
   sees nothing in it. It only ever sees channels you are in. `hasmy:` is your reactions, so no
   Slack user id is needed. Reading the channel would not do: it only ever looks at new
   messages, and a reaction lands on an announcement long after it was posted.
-- **What it costs**: one Haiku call every five minutes at most, only while a page holds
-  the lease (a webhook's searches with no page do not read), and one at once on
-  **Refresh**, never twice within ten seconds. A list that changed runs a full search
-  straight away, after one already running, so a reaction shows within the read's own
-  delay. The last answer is kept in `.slack-links.json`, so a restart shows the claimed PRs
-  at once.
-- **An answer that would empty the list is asked twice**: a wrong empty answer from the
-  model would look exactly like every reaction removed. Messages returned but none readable
-  is an error, and the last list stays.
-- **Up to 60 announcements** (three pages of the search); past that, the banner says the
-  oldest are not read, and removing the reaction from PRs already dealt with makes room.
+- **What it costs**: one Haiku call every five minutes at most, on its own clock (checked
+  every minute), only while a page holds the lease, and one at once on **Refresh**, never
+  twice within ten seconds. A reaction added or removed shows within five minutes and the
+  read's own delay, at once with **Refresh**. A list that changed runs a full search
+  straight away, after one already running. The last answer is kept in
+  `.slack-links.json`, so a restart shows the claimed PRs at once.
+- **A claim that would go is asked twice**: a message the model left out, or copied without
+  its links, looks exactly like a reaction removed. Messages returned but none readable is
+  an error, and the last list stays.
+- **Up to 60 announcements** (three pages of the search); when more are left, or the model
+  did not say and returned a full page, the banner says the oldest may be missing.
 - **Only PRs of the org** (and `PR_RADAR_EXTRA_REPOS`) are claimed, whatever else an
-  announcement links to. One that cannot be found is named in the banner and does not hide
-  the others.
+  announcement links to. One that cannot be found on GitHub is named in the banner and does
+  not hide the others; GitHub failing is a lost source, so the webhook keeps the last
+  statuses meanwhile.
+- **The state file is kept whole**: written to a temp file then renamed, one write at a
+  time. One that cannot be parsed is set aside (`.slack-links.json.corrupt-<time>`) rather
+  than written over, since it holds the day claims were turned on.
 - **The API path cannot do it**: `search.messages` wants a user token, not a bot's. With
   `PR_RADAR_SLACK_TOKEN` set, the startup line says it is off.
 - A failed read keeps the last claimed PRs on the board, says so in the warning banner, and

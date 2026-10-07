@@ -214,10 +214,23 @@ let lastFailure = null;
 // Persisted, or every server restart would cost a model call over the whole age window.
 let state = null;
 
+const emptyState = () => ({ latestTs: null, byPr: new Map(), attempts: {}, claimed: null, claimSince: null });
+
+// Only a missing file starts afresh. A file that cannot be read or parsed is set aside and
+// said, rather than written over at the next save: it holds the day claims were turned on,
+// and losing it would silently drop every claim on an older announcement.
 async function loadState() {
   if (state) return state;
+  let text;
   try {
-    const raw = JSON.parse(await fs.readFile(STATE_FILE, 'utf8'));
+    text = await fs.readFile(STATE_FILE, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error(`slack: cannot read ${STATE_FILE} (${error.message}), starting afresh`);
+    state = emptyState();
+    return state;
+  }
+  try {
+    const raw = JSON.parse(text);
     state = {
       latestTs: raw.latestTs ?? null,
       byPr: new Map(Object.entries(raw.byPr ?? {})),
@@ -225,15 +238,28 @@ async function loadState() {
       claimed: raw.claimed ?? null,
       claimSince: raw.claimSince ?? null,
     };
-  } catch {
-    state = { latestTs: null, byPr: new Map(), attempts: {}, claimed: null, claimSince: null };
+  } catch (error) {
+    const aside = `${STATE_FILE}.corrupt-${Date.now()}`;
+    await fs.rename(STATE_FILE, aside).catch(() => {});
+    console.error(`slack: ${STATE_FILE} is unreadable (${error.message}), set aside as ${aside}`);
+    state = emptyState();
   }
   return state;
 }
 
-async function saveState() {
+// The channel read and the claims read both save: one write at a time, each whole (a temp
+// file renamed over the old one), so a crash or an overlap never leaves half a file.
+let saving = Promise.resolve();
+function saveState() {
+  const write = () => writeState();
+  saving = saving.then(write, write);
+  return saving;
+}
+
+async function writeState() {
+  const temp = `${STATE_FILE}.tmp`;
   await fs.writeFile(
-    STATE_FILE,
+    temp,
     JSON.stringify({
       latestTs: state.latestTs,
       byPr: Object.fromEntries(state.byPr),
@@ -242,6 +268,7 @@ async function saveState() {
       claimSince: state.claimSince,
     }, null, 2),
   );
+  await fs.rename(temp, STATE_FILE);
 }
 
 async function linksFor(prs) {
@@ -332,7 +359,9 @@ function parseClaimAnswer(output) {
     .filter(m => m && typeof m.ts === 'string' && TS_RE.test(m.ts) && typeof m.text === 'string')
     .map(m => ({ ts: m.ts, text: m.text }));
   if (parsed.messages.length && !messages.length) throw new Error('slack: unreadable messages from claude');
-  return { messages, more: parsed.more === true };
+  // A model that did not page, or did not say, still cannot hide a full first page.
+  const more = parsed.more === true || (typeof parsed.more !== 'boolean' && messages.length >= 20);
+  return { messages, more };
 }
 
 // The messages found are announcements: their PRs are claimed, and their links recorded
@@ -360,6 +389,11 @@ function claimsDue(claimed, failure, now, force) {
   return !claimed || now - claimed.at >= CLAIM_EVERY_MS;
 }
 
+function losesClaims(previous, refs) {
+  const now = new Set(refs.map(ref => keyOf(ref.repo, ref.number)));
+  return (previous?.refs ?? []).some(ref => !now.has(keyOf(ref.repo, ref.number)));
+}
+
 // "Changed" drives a new full search, so the order Slack answers in does not count.
 function claimsChanged(previous, refs) {
   const key = list => list.map(ref => keyOf(ref.repo, ref.number)).sort().join(' ');
@@ -378,9 +412,9 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
   try {
     const after = claimsAfter(now - maxAgeDays * DAY_MS, state.claimSince);
     let answer = await readClaimsViaClaude(after);
-    // Emptying a list that was not empty is asked twice: a wrong [] from the model would
-    // look exactly like every reaction removed. Only that transition pays a second call.
-    if (!answer.messages.length && state.claimed?.refs.length) answer = await readClaimsViaClaude(after);
+    // A claim that would go is asked twice: a message the model left out, or copied without
+    // its links, looks exactly like a reaction removed. Only a removal pays a second call.
+    if (losesClaims(state.claimed, pullRequestLinks(answer.messages))) answer = await readClaimsViaClaude(after);
     const { messages } = answer;
     truncated = answer.more;
     refs = pullRequestLinks(messages);
@@ -427,6 +461,7 @@ module.exports = {
   claimsDue,
   claimsChanged,
   claimsAfter,
+  losesClaims,
   linksFor,
   lookup,
   pullRequestLinks,

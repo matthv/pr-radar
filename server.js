@@ -496,6 +496,8 @@ const server = http.createServer(async (req, res) => {
         liveTick();
       }
       const asked = url.searchParams.get('force') === '1';
+      // Read now, not only after the search: a search already running would otherwise swallow it.
+      if (asked) readClaimsInBackground(true);
       const payload = await dashboard(asked || lapsed, { asked });
       json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
@@ -613,7 +615,12 @@ server.listen(PORT, async () => {
   digestAvailable = await digest.available();
   slackMode = slack.mode(digestAvailable);
   claimMode = slack.claimMode(slackMode);
-  if (claimMode === 'on') await slack.loadClaims();
+  if (claimMode === 'on') {
+    await slack.loadClaims();
+    // Its own clock: waiting for a full search to end as well put up to ten minutes between a
+    // reaction removed and the card leaving. Checked every minute, read when due.
+    setInterval(() => readClaimsInBackground(false), 60_000).unref();
+  }
   const CLAIM_MODES = {
     on: `via :${slack.CLAIM_EMOJI}: on #${process.env.PR_RADAR_SLACK_CHANNEL}, read every 5 min through Claude`,
     'needs-claude': 'off (needs the Slack link through Claude: the API path cannot search your reactions)',

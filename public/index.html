@@ -1476,7 +1476,8 @@ const I18N = {
     pillClaimed: 'prise sur Slack',
     pillClaimedTitle: 'Tu as mis ta réaction sur son annonce : retire-la pour la rendre.',
     claimsFailed: 'PRs prises sur Slack indisponibles ({message}) : les dernières connues restent affichées.',
-    claimsTruncated: 'Plus de 60 annonces avec ta réaction : les plus anciennes ne sont pas lues. Retire la réaction des PRs déjà traitées.',
+    claimsMissing: 'Prises sur Slack mais introuvables sur GitHub : {refs} (supprimée, privée ou numéro faux).',
+    claimsTruncated: 'Plus d’annonces avec ta réaction que n’en a lu la recherche : les plus anciennes peuvent manquer. Retire la réaction des PRs déjà traitées.',
     pillToReview: 'à reviewer',
     pillAnswers_one: '{n} réponse pour moi',
     pillAnswers_many: '{n} réponses pour moi',
@@ -1665,7 +1666,8 @@ const I18N = {
     pillClaimed: 'claimed on Slack',
     pillClaimedTitle: 'Your reaction is on its announcement: remove it to hand the PR back.',
     claimsFailed: 'PRs claimed on Slack unavailable ({message}): the last known ones stay on the board.',
-    claimsTruncated: 'Over 60 announcements carry your reaction: the oldest are not read. Remove it from the PRs already dealt with.',
+    claimsMissing: 'Claimed on Slack but not found on GitHub: {refs} (deleted, private or a wrong number).',
+    claimsTruncated: 'More announcements carry your reaction than the search read: the oldest may be missing. Remove it from the PRs already dealt with.',
     pillToReview: 'to review',
     pillAnswers_one: '{n} reply for me',
     pillAnswers_many: '{n} replies for me',
@@ -2708,7 +2710,8 @@ function render() {
   const slackWarning = warnings.find(w => w.source === 'slack');
   const claudeWarning = warnings.find(w => w.source === 'claude');
   const claimWarning = warnings.find(w => w.source === 'slack-claims');
-  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims'].includes(w.source)).map(w => w.source))];
+  const claimsMissing = warnings.find(w => w.source === 'claims-missing');
+  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims', 'claims-missing'].includes(w.source)).map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -2717,6 +2720,7 @@ function render() {
       : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
   if (claudeWarning) lines.push(t('claudeScanFailed', { message: claudeWarning.message }));
+  if (claimsMissing) lines.push(t('claimsMissing', { refs: claimsMissing.refs.join(', ') }));
   if (claimWarning) {
     lines.push(claimWarning.kind === 'truncated'
       ? t('claimsTruncated')

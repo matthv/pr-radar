@@ -1,7 +1,8 @@
 'use strict';
 
 // readClaims end to end: the model stubbed, the state in a temp file. Its own file, since the
-// state path and the emoji are read when slack.js loads.
+// state path and the emoji are read when slack.js loads, and the state is kept in memory:
+// the tests run in order on one state.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -15,16 +16,21 @@ process.env.PR_RADAR_SLACK_CLAIM_EMOJI = ':pr-radar:';
 
 const digest = require('../digest');
 const answers = [];
-digest.claude = async () => {
+const prompts = [];
+digest.claude = async prompt => {
+  prompts.push(prompt);
   const next = answers.shift();
   if (next instanceof Error) throw next;
-  return JSON.stringify(next);
+  return typeof next === 'string' ? next : JSON.stringify(next);
 };
 const slack = require('../slack');
 
 const announce = (ts, ...prs) => ({ ts, text: prs.map(n => `<https://github.com/o/r/pull/${n}|pr>`).join(' ') });
 const DAY = 86400_000;
+const MIN = 60_000;
 const now = Date.parse('2026-10-07T12:00:00Z');
+const saved = () => JSON.parse(fs.readFileSync(STATE, 'utf8'));
+const read = (at, force = true) => slack.readClaims({ maxAgeDays: 60, now: at, force });
 
 test('claims: on, with the colons stripped, only through Claude', () => {
   assert.equal(slack.CLAIM_EMOJI, 'pr-radar');
@@ -32,42 +38,61 @@ test('claims: on, with the colons stripped, only through Claude', () => {
   assert.equal(slack.claimMode('api'), 'needs-claude');
 });
 
-test('claims: a read records the claimed PRs and their links, not the channel read\'s cursor', async () => {
-  fs.writeFileSync(STATE, JSON.stringify({ latestTs: '1791000000.000001', byPr: {}, attempts: {} }));
-  answers.push({ messages: [announce('1791371567.461059', 7)], more: false });
-  const first = await slack.readClaims({ maxAgeDays: 60, now, force: true });
-  assert.deepEqual([first.refs, first.changed], [[{ repo: 'o/r', number: 7 }], true]);
+test('claims: a restart keeps the day they were turned on, and the claimed list', async () => {
+  fs.writeFileSync(STATE, JSON.stringify({
+    latestTs: '1791000000.000001', byPr: {}, attempts: {}, claimSince: '2026-09-01',
+    claimed: { at: now - 2 * MIN, refs: [{ repo: 'o/r', number: 3 }] },
+  }));
+  await slack.loadClaims();
+  assert.deepEqual(slack.claimedRefs(), [{ repo: 'o/r', number: 3 }], 'shown at once after a restart');
 
-  const saved = JSON.parse(fs.readFileSync(STATE, 'utf8'));
-  assert.equal(saved.latestTs, '1791000000.000001', 'the channel read still sees what came after its cursor');
-  assert.equal(saved.byPr['o/r#7'], '1791371567.461059', 'the Slack button shows without a channel read');
-  assert.equal(saved.claimSince, '2026-10-07');
-  assert.deepEqual(slack.claimedRefs(), [{ repo: 'o/r', number: 7 }]);
-
-  answers.push({ messages: [announce('1791371567.461059', 7)], more: false });
-  const next = await slack.readClaims({ maxAgeDays: 60, now: now + DAY, force: true });
-  assert.equal(next.changed, false);
-  assert.equal(JSON.parse(fs.readFileSync(STATE, 'utf8')).claimSince, '2026-10-07', 'the start day does not move');
+  const cached = await read(now, false);
+  assert.deepEqual([cached.refs, cached.changed, prompts.length], [[{ repo: 'o/r', number: 3 }], false, 0], 'not due: no model call');
 });
 
-test('claims: a single empty answer does not wipe the list, a second one does', async () => {
-  answers.push({ messages: [], more: false }, { messages: [announce('1791371567.461059', 7)], more: false });
-  const flaky = await slack.readClaims({ maxAgeDays: 60, now: now + 2 * DAY, force: true });
-  assert.deepEqual([flaky.refs.length, flaky.changed], [1, false], 'the second read did not confirm it');
+test('claims: a read searches my reactions in the channel since the start day', async () => {
+  answers.push({ messages: [announce('1791371567.461059', 3, 7)], more: false });
+  const first = await read(now);
+  assert.match(prompts.at(-1), /in:<#C123> hasmy::pr-radar: after:2026-08-31/);
+  assert.deepEqual([first.refs.map(r => r.number), first.changed], [[3, 7], true]);
 
-  answers.push({ messages: [], more: false }, { messages: [], more: false });
-  const removed = await slack.readClaims({ maxAgeDays: 60, now: now + 3 * DAY, force: true });
-  assert.deepEqual([removed.refs, removed.changed], [[], true]);
+  const state = saved();
+  assert.equal(state.latestTs, '1791000000.000001', 'the channel read still sees what came after its cursor');
+  assert.equal(state.byPr['o/r#7'], '1791371567.461059', 'the Slack button shows without a channel read');
+  assert.equal(state.claimSince, '2026-09-01', 'the start day does not move');
+  assert.deepEqual(state.claimed.refs.map(r => r.number), [3, 7]);
 });
 
-test('claims: a failed read keeps the last list and waits its back-off, Refresh included', async () => {
-  answers.push({ messages: [announce('1791371567.461059', 8)], more: true });
-  const truncated = await slack.readClaims({ maxAgeDays: 60, now: now + 4 * DAY, force: true });
-  assert.equal(truncated.truncated, true, 'more announcements than the pages read');
+test('claims: within five minutes a read is not due, and the truncation is kept', async () => {
+  answers.push({ messages: [announce('1791371567.461059', 3, 7)], more: true });
+  assert.equal((await read(now + DAY)).truncated, true);
+  const cached = await read(now + DAY + MIN, false);
+  assert.deepEqual([cached.truncated, answers.length], [true, 0]);
+});
 
+test('claims: a claim that would go is asked twice', async () => {
+  answers.push({ messages: [announce('1791371567.461059', 3)], more: false }, { messages: [announce('1791371567.461059', 3, 7)], more: false });
+  const flaky = await read(now + 2 * DAY);
+  assert.deepEqual([flaky.refs.map(r => r.number), flaky.changed], [[3, 7], false], 'the second read did not confirm it');
+
+  answers.push({ messages: [announce('1791371567.461059', 3)], more: false }, { messages: [announce('1791371567.461059', 3)], more: false });
+  const removed = await read(now + 3 * DAY);
+  assert.deepEqual([removed.refs.map(r => r.number), removed.changed], [[3], true]);
+
+  answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false });
+  await read(now + 4 * DAY);
+  assert.equal(answers.length, 0, 'an addition is not asked twice');
+});
+
+test('claims: a failed read keeps the last list and waits its back-off, then a success clears it', async () => {
   answers.push(new Error('claude exited with 1'));
-  await assert.rejects(slack.readClaims({ maxAgeDays: 60, now: now + 5 * DAY, force: true }), /exited/);
-  assert.deepEqual(slack.claimedRefs(), [{ repo: 'o/r', number: 8 }]);
-  await assert.rejects(slack.readClaims({ maxAgeDays: 60, now: now + 5 * DAY + 60_000, force: true }), /exited/);
-  assert.equal(answers.length, 0, 'no model call during the back-off');
+  await assert.rejects(read(now + 5 * DAY), /exited/);
+  assert.deepEqual(slack.claimedRefs().map(r => r.number), [3, 9]);
+  await assert.rejects(read(now + 5 * DAY + MIN), /exited/, 'Refresh does not retry during the back-off');
+  assert.equal(answers.length, 0);
+
+  answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false });
+  await read(now + 5 * DAY + 31 * MIN);
+  const after = await read(now + 5 * DAY + 32 * MIN, false);
+  assert.deepEqual(after.refs.map(r => r.number), [3, 9], 'the old error is not thrown again');
 });

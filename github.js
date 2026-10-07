@@ -960,12 +960,14 @@ const SOURCES = [
   'events',
 ];
 // The warnings whose failure leaves PRs off the board, as opposed to a field left unknown.
-const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve'];
+const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve'];
 
 // An announcement links whatever its author pasted: another org's PR, a private repo, a typo.
 // Those are left out first; one that still does not resolve must not take the others with
-// it, since GitHub fails a whole batch on a single unknown PR. Not a lost source either: the
-// board stays whole, only that claim is missing, and the warning names it.
+// it, since GitHub fails a whole batch on a single unknown PR. An unknown PR is not a lost
+// source — the board stays whole, the warning names it — but GitHub failing is: the claimed
+// PRs are then missing for a while, and the webhook must not take that as their departure.
+const NOT_FOUND = /Could not resolve to a (PullRequest|Repository)/;
 function claimInScope({ repo }, org, extraRepos) {
   const lower = repo.toLowerCase();
   return lower.startsWith(`${org.toLowerCase()}/`) || extraRepos.some(extra => extra.toLowerCase() === lower);
@@ -981,17 +983,25 @@ async function resolveClaimed(claimedRefs, { org, extraRepos }, warnings, resolv
   if (!refs.length) return [];
   try {
     return await resolve(refs);
-  } catch {
+  } catch (error) {
+    if (!NOT_FOUND.test(error.message)) {
+      warnings.push({ source: 'claims-resolve', message: error.message });
+      return [];
+    }
     const ids = [];
     const missing = [];
     for (const ref of refs) {
       try {
         ids.push(...(await resolve([ref])));
-      } catch {
+      } catch (refError) {
+        if (!NOT_FOUND.test(refError.message)) {
+          warnings.push({ source: 'claims-resolve', message: refError.message });
+          return ids;
+        }
         missing.push(`${ref.owner}/${ref.name}#${ref.number}`);
       }
     }
-    if (missing.length) warnings.push({ source: `claimed ${missing.join(', ')}`, message: 'not found' });
+    if (missing.length) warnings.push({ source: 'claims-missing', refs: missing, message: 'not found' });
     return ids;
   }
 }
