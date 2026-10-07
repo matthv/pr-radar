@@ -52,6 +52,7 @@ query($ids: [ID!]!) {
           nodes {
             status
             conclusion
+            updatedAt
             workflowRun { event url workflow { name } }
             checkRuns(first: 1) { totalCount }
           }
@@ -627,6 +628,7 @@ function pipelineSummary(mergeCommit) {
         outcome: 'failed',
         // Named, so the pill can say which workflow broke rather than "release failed".
         failure: run ? { workflow: run.workflow?.name ?? null, url: run.url ?? null } : null,
+        failedAt: failed.updatedAt ?? null,
       };
     }
     return { outcome: 'done', failure: null };
@@ -653,9 +655,21 @@ function releaseAfterMerge(pr) {
   return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt };
 }
 
+// A failed merge pipeline is not the last word once a release has gone out since: a later
+// run on the default branch carries this merge with it. Observed on forestadmin-server#8565,
+// red a day after 1.1220.2 shipped it. The release has to come after the failure, not just
+// after the merge: one published from a run started before the merge need not contain it.
+function settleByRelease(pipeline, release) {
+  if (pipeline.outcome !== 'failed' || !release || !pipeline.failedAt) return pipeline;
+  if (new Date(release.publishedAt) <= new Date(pipeline.failedAt)) return pipeline;
+  return { outcome: 'done', failure: null };
+}
+
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
   const discussion = discussionThread(pr, me);
+  const release = releaseAfterMerge(pr);
+  const pipeline = settleByRelease(pipelineSummary(pr.mergeCommit), release);
 
   return {
     id: pr.id,
@@ -673,9 +687,9 @@ function baseShape(pr, me) {
     // The raw value kept above for anyone reading it directly; this is what "running" vs
     // "no signal at all" actually means, computed once so the render layer and the sort
     // order cannot drift apart on it.
-    pipelineOutcome: pipelineSummary(pr.mergeCommit).outcome,
-    pipelineFailure: pipelineSummary(pr.mergeCommit).failure,
-    release: releaseAfterMerge(pr),
+    pipelineOutcome: pipeline.outcome,
+    pipelineFailure: pipeline.failure,
+    release,
     // Title, then branch: the board's query leaves the description out for its weight.
     ticket: ticketKey(pr),
     // The branch it landed on, but only once merged, and only when that isn't the
