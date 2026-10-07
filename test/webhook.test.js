@@ -129,13 +129,13 @@ test('an unknown mergeability in the first picture is corrected without a call',
 test('send posts one JSON body per event', async () => {
   const calls = [];
   const fetchImpl = async (url, options) => {
-    calls.push({ url, body: JSON.parse(options.body), method: options.method });
+    calls.push({ url, body: JSON.parse(options.body), method: options.method, type: options.headers['Content-Type'] });
     return { ok: true };
   };
   await send('https://hook.test/x', [{ status: 'mine.action', url: 'u1' }, { status: 'reviews.action', url: 'u2' }], { fetchImpl });
   assert.deepEqual(calls, [
-    { url: 'https://hook.test/x', method: 'POST', body: { status: 'mine.action', url: 'u1' } },
-    { url: 'https://hook.test/x', method: 'POST', body: { status: 'reviews.action', url: 'u2' } },
+    { url: 'https://hook.test/x', method: 'POST', type: 'application/json', body: { status: 'mine.action', url: 'u1' } },
+    { url: 'https://hook.test/x', method: 'POST', type: 'application/json', body: { status: 'reviews.action', url: 'u2' } },
   ]);
 });
 
@@ -168,4 +168,20 @@ test('the notifier applies the status filter and hidden drafts', () => {
   notifier.notify(board([]));
   notifier.notify(board([pr(1, 'mine', 'action', { isDraft: true }), pr(2, 'mine', 'ready'), pr(3, 'mine', 'action')]));
   assert.deepEqual(posted, [event('mine.action', 3)]);
+});
+
+test('send logs the network cause, not only "fetch failed", and how many PRs the call held', async () => {
+  const logs = [];
+  const fetchImpl = async () => {
+    throw new TypeError('fetch failed', { cause: new Error('getaddrinfo ENOTFOUND hook.test') });
+  };
+  await send('https://hook.test/x', [event('mine.action', 1, 2, 3)], { fetchImpl, log: line => logs.push(line) });
+  assert.match(logs[0], /mine\.action https:\/\/github\.com\/o\/r\/pull\/1 \(\+2 PR\): fetch failed \(getaddrinfo ENOTFOUND hook\.test\)/);
+});
+
+test('send releases the response body', async () => {
+  let cancelled = false;
+  const body = { cancel: async () => { cancelled = true; } };
+  await send('https://hook.test/x', [event('mine.action', 1)], { fetchImpl: async () => ({ ok: true, body }) });
+  assert.equal(cancelled, true);
 });

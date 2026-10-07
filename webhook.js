@@ -75,9 +75,13 @@ async function send(url, events, { fetchImpl = fetch, log = console.error } = {}
           body: JSON.stringify(event),
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
+        // Left unread, the body would hold the socket open.
+        res.body?.cancel().catch(() => {});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } catch (error) {
-        log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}: ${error.message}`);
+        const more = event.prs?.length > 1 ? ` (+${event.prs.length - 1} PR)` : '';
+        const cause = error.cause?.message ? ` (${error.cause.message})` : '';
+        log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: ${error.message}${cause}`);
       }
     }),
   );

@@ -44,6 +44,7 @@ const HIDDEN_CHECK_MS = 300_000;
 // Past this long with no page asking, nobody is looking: the checks stop.
 const LEASE_MS = 600_000;
 const PAGE_REFRESH_SECONDS = 20;
+const FIRST_SEARCH_RETRY_MS = 60_000;
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
@@ -263,7 +264,7 @@ function patchPrs(ids) {
 
 const scope = { org: ORG, extraRepos: EXTRA_REPOS };
 const watcher = watch.createWatcher({ scope });
-const live = { pageAt: 0, hidden: false, checkNow: false, checkedAt: 0, inFlightAt: 0, earlyDiscovery: false, flyingSince: new Map(), working: null };
+const live = { firstSearchAt: Date.now(), pageAt: 0, hidden: false, checkNow: false, checkedAt: 0, inFlightAt: 0, earlyDiscovery: false, flyingSince: new Map(), working: null };
 
 const onBoard = url => [...cache.payload.mine, ...cache.payload.reviews].find(pr => pr.url === url);
 const inScopeUrl = url => {
@@ -325,7 +326,19 @@ async function patchOrForget(ids) {
 }
 
 function liveTick() {
-  if (live.working || !cache.payload || !watch.watched(live.pageAt, Date.now(), LEASE_MS, Boolean(WEBHOOK_URL))) return;
+  if (live.working) return;
+  // The first search failed and no page may come to retry it: a webhook would never start.
+  if (!cache.payload) {
+    if (!WEBHOOK_URL || Date.now() - live.firstSearchAt < FIRST_SEARCH_RETRY_MS) return;
+    live.firstSearchAt = Date.now();
+    live.working = dashboard(true)
+      .catch(error => console.error(`[${new Date().toISOString()}] first search, retried: ${error.message}`))
+      .finally(() => {
+        live.working = null;
+      });
+    return;
+  }
+  if (!watch.watched(live.pageAt, Date.now(), LEASE_MS, Boolean(WEBHOOK_URL))) return;
   live.working = liveStep()
     .catch(error => console.error(`[${new Date().toISOString()}] live refresh: ${error.message}`))
     .finally(() => {
