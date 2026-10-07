@@ -174,8 +174,24 @@ function nextDiscoveryAt(lastDiscoveryAt, early, regularMs) {
   return lastDiscoveryAt + (early ? Math.min(MIN_DISCOVERY_GAP_MS, regularMs) : regularMs);
 }
 
+const UNWATCHED_SEARCH_MS = 15 * 60_000;
+
+// With only a webhook looking, the cards on the board stay as fresh through the free checks;
+// a brand-new PR waits longer, and the searches, the scarce quota, are spaced out.
+function searchEveryMs(regularMs, pageLooking) {
+  return pageLooking ? regularMs : Math.max(regularMs, UNWATCHED_SEARCH_MS);
+}
+
+// A webhook is someone always looking: the checks never stop for want of a page.
+function watched(lastSeenAt, now, leaseMs, webhook) {
+  return webhook || now - lastSeenAt <= leaseMs;
+}
+
 module.exports = {
   createWatcher,
+  watched,
+  searchEveryMs,
+  UNWATCHED_SEARCH_MS,
   conditionalGet,
   runGh,
   inFlight,

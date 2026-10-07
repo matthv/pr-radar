@@ -101,6 +101,8 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
+| `PR_RADAR_WEBHOOK_URL` | — | POSTs the status changes to that URL, one call per status with every PR that reached it — see [The webhook](#the-webhook). Empty, no call |
+| `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
@@ -142,6 +144,9 @@ keeps the board fresh with requests GitHub answers for free when nothing changed
     to five minutes.
   - With no page, the server calls GitHub not at all; the next page to open runs a full
     search.
+  - A [webhook](#the-webhook) is the exception: while `PR_RADAR_WEBHOOK_URL` is set the
+    checks never stop, and keep their regular pace even behind a hidden tab. With no page,
+    the full search spaces out to every 15 minutes.
 - **The page asks the server every 20 s.** It is answered from the cache, without a GitHub
   call, and redraws only when the board actually changed: an unchanged board would close a
   note being edited.
@@ -843,6 +848,73 @@ cannot update one caller and quietly leave the other stale.
   restarting at its first frame on each refresh.
 - The time in the header is the last check, free or not; see
   [How fresh the board is](#how-fresh-the-board-is).
+
+### The webhook
+
+`PR_RADAR_WEBHOOK_URL` makes the server POST the status changes to that URL, for a Slack
+workflow, an n8n flow or anything else that takes JSON:
+
+```json
+{
+  "status": "reviews.action",
+  "url": "https://github.com/ForestAdmin/agent-nodejs/pull/1912",
+  "project": "ForestAdmin/agent-nodejs",
+  "pr_number": 1912,
+  "prs": [
+    { "url": "https://github.com/ForestAdmin/agent-nodejs/pull/1912", "project": "ForestAdmin/agent-nodejs", "pr_number": 1912 },
+    { "url": "https://github.com/ForestAdmin/agent-ruby/pull/402", "project": "ForestAdmin/agent-ruby", "pr_number": 402 }
+  ]
+}
+```
+
+- **The status** is the column and the group the card sits in, `side.bucket`:
+  `mine.action`, `mine.ready`, `mine.waiting`, `mine.idle`, `mine.merged`,
+  `reviews.action`, `reviews.waiting`, `reviews.idle`, `reviews.merged`. The side is
+  part of it: a PR to fix and a review to do are not the same news.
+- **`project`** is the repo as `owner/name`, so a repo from `PR_RADAR_EXTRA_REPOS` is
+  told apart from the org's own; **`pr_number`** is the number, as an integer.
+- **An event** is a PR whose status changed since the previous refresh, or that just
+  appeared on the board. The first refresh after startup only takes a picture, the way
+  the first render does not chime.
+- **One call per status.** When several PRs reach the same status in one refresh, they
+  all go in `prs`, in board order, and the first one is also at the top level: a receiver
+  that reads one PR reads that one, and none is lost to one that reads them all. Two
+  review requests in a row, a stack or a Dependabot batch often land in one refresh.
+- **`PR_RADAR_WEBHOOK_STATUSES`** keeps only the listed statuses. An unknown value stops the server at startup rather than
+  silently sending nothing.
+- It is the server's view: `PR_RADAR_HIDE_DRAFTS` applies, but snoozes, "hide bots"
+  and the search filter live in the browser and do not.
+- **It follows the live refresh.** A change found by the checks is sent within
+  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search.
+- **With `PR_RADAR_CHECK_SECONDS=0`** there are no checks: the server runs the full search
+  itself, every `PR_RADAR_REFRESH_SECONDS` while a page is open and every 15 minutes
+  otherwise. Each one reloads every PR, about 24 calls, so roughly **100 counted calls an
+  hour** with no page, about 2,300 a day — twice the live setup, and a change waits up to
+  15 minutes. An estimate, not a measurement.
+- **It runs around the clock, and that has a cost.** While the URL is set the checks never
+  stop, so calls go out with no tab open. They are free when nothing moved, but with no
+  page the full search still runs every 15 minutes: roughly 50 counted GitHub calls an
+  hour at a quiet time, about 1,200 a day, where a closed tab used to cost none. A new PR
+  then waits up to 15 minutes; the cards already on the board stay as fresh. See
+  [What it costs](docs/live-refresh.md#what-it-costs).
+- **A board missing PRs is not trusted.** That is a failed search, a failed batch of
+  details or a failed event-feed lookup; a truncated thread list or an unknown
+  mergeability leaves every PR on the board and does not count.
+  - Only a complete board becomes the first picture, or the PRs it missed would go out as
+    new on the next one.
+  - An incomplete board sends the PRs new to it only. The PRs it lost keep their last
+    status, and a status change waits for the next complete board.
+- **A PR of mine whose mergeability GitHub has not computed** — or failed to give — keeps
+  its last status: its bucket cannot show a conflict yet, and it would go out as ready,
+  then as action. It is sent once GitHub knows.
+- Every call is logged in the server's terminal: `webhook mine.action <url> (+1 PR): HTTP 200`.
+  A failed one (timeout at 5 s, non-2xx) is logged with its network cause, never retried,
+  and never touches the board. A first search failing at startup is retried every
+  minute: no page may come to do it, and the webhook would never start. The URL never shows in full, since hook URLs often carry a secret: the startup
+  line gives its host, and a logged error has it replaced by `<webhook>`. A URL with
+  credentials (`https://user:pass@host/…`) stops the server at startup — `fetch` refuses
+  them, and its error would print them — so the secret goes in the path or the query.
+  The demo never calls it.
 
 ## The summary band
 
