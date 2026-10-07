@@ -67,7 +67,7 @@ test('claims: within five minutes a read is not due, and the truncation is kept'
   answers.push({ messages: [announce('1791371567.461059', 3, 7)], more: true });
   assert.equal((await read(now + DAY)).truncated, true);
   const cached = await read(now + DAY + MIN, false);
-  assert.deepEqual([cached.truncated, answers.length], [true, 0]);
+  assert.deepEqual([cached.truncated, cached.read, answers.length], [true, false, 0], 'nothing asked: not a read');
 });
 
 test('claims: a claim that would go is asked twice', async () => {
@@ -82,6 +82,28 @@ test('claims: a claim that would go is asked twice', async () => {
   answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false });
   await read(now + 4 * DAY);
   assert.equal(answers.length, 0, 'an addition is not asked twice');
+});
+
+test('claims: a claim goes only when both reads miss it, and a failed confirmation keeps it', async () => {
+  answers.push({ messages: [announce('1791371567.461059', 3, 9, 11)], more: false });
+  await read(now + 4 * DAY + 10 * MIN);
+  answers.push({ messages: [announce('1791371567.461059', 3, 11)], more: false }, { messages: [announce('1791371567.461059', 3)], more: false });
+  const both = await read(now + 4 * DAY + 20 * MIN);
+  assert.deepEqual(both.refs.map(r => r.number).sort((a, b) => a - b), [3, 11], '9 missed twice goes, 11 missed once stays');
+
+  const errors = [];
+  const original = console.error;
+  console.error = message => errors.push(message);
+  answers.push({ messages: [announce('1791371567.461059', 3)], more: false }, new Error('claude exited with 1'));
+  const failed = await read(now + 4 * DAY + 30 * MIN);
+  console.error = original;
+  assert.deepEqual(failed.refs.map(r => r.number).sort((a, b) => a - b), [3, 11], 'nothing removed on one answer');
+  assert.equal(failed.read, true);
+  assert.match(errors.join('\n'), /confirming a removed claim failed/);
+
+  answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false }, { messages: [announce('1791371567.461059', 3, 9)], more: false });
+  await read(now + 4 * DAY + 40 * MIN);
+  assert.equal(answers.length, 0);
 });
 
 test('claims: a failed read keeps the last list and waits its back-off, then a success clears it', async () => {

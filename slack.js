@@ -389,6 +389,12 @@ function claimsDue(claimed, failure, now, force) {
   return !claimed || now - claimed.at >= CLAIM_EVERY_MS;
 }
 
+function unionRefs(...lists) {
+  const byKey = new Map();
+  for (const ref of lists.flat()) byKey.set(keyOf(ref.repo, ref.number), ref);
+  return [...byKey.values()];
+}
+
 function losesClaims(previous, refs) {
   const now = new Set(refs.map(ref => keyOf(ref.repo, ref.number)));
   return (previous?.refs ?? []).some(ref => !now.has(keyOf(ref.repo, ref.number)));
@@ -404,20 +410,34 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
   await loadState();
   if (!claimsDue(state.claimed, claimFailure, now, force)) {
     if (claimFailure) throw claimFailure.error;
-    return { refs: state.claimed.refs, changed: false, truncated: Boolean(state.claimed.truncated) };
+    return { refs: state.claimed.refs, changed: false, truncated: Boolean(state.claimed.truncated), read: false };
   }
   state.claimSince ??= isoDay(now);
   let refs;
   let truncated = false;
   try {
     const after = claimsAfter(now - maxAgeDays * DAY_MS, state.claimSince);
-    let answer = await readClaimsViaClaude(after);
-    // A claim that would go is asked twice: a message the model left out, or copied without
-    // its links, looks exactly like a reaction removed. Only a removal pays a second call.
-    if (losesClaims(state.claimed, pullRequestLinks(answer.messages))) answer = await readClaimsViaClaude(after);
-    const { messages } = answer;
-    truncated = answer.more;
+    const first = await readClaimsViaClaude(after);
+    let messages = first.messages;
+    truncated = first.more;
     refs = pullRequestLinks(messages);
+    // A claim that would go is asked twice, and goes only if both answers miss it: a message
+    // the model left out, or copied without its links, looks exactly like a reaction removed.
+    // A second read that fails keeps the claims the first one dropped. Only a removal pays.
+    if (losesClaims(state.claimed, refs)) {
+      let second = null;
+      try {
+        second = await readClaimsViaClaude(after);
+      } catch (error) {
+        console.error(`slack: confirming a removed claim failed (${error.message}), kept for now`);
+      }
+      const kept = second ? pullRequestLinks(second.messages) : state.claimed.refs;
+      refs = unionRefs(refs, kept);
+      if (second) {
+        messages = [...messages, ...second.messages];
+        truncated = truncated || second.more;
+      }
+    }
     // Not the channel read's cursor: these messages can be newer than what it has read.
     state.byPr = mergeLinks({ byPr: state.byPr, latestTs: state.latestTs }, messages).byPr;
   } catch (error) {
@@ -428,7 +448,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
   const changed = claimsChanged(state.claimed, refs);
   state.claimed = { at: now, refs, truncated };
   await saveState();
-  return { refs, changed, truncated };
+  return { refs, changed, truncated, read: true };
 }
 
 async function readClaimsViaClaude(after) {

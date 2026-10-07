@@ -746,9 +746,10 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
   read's own delay, at once with **Refresh**. A list that changed runs a full search
   straight away, after one already running. The last answer is kept in
   `.slack-links.json`, so a restart shows the claimed PRs at once.
-- **A claim that would go is asked twice**: a message the model left out, or copied without
-  its links, looks exactly like a reaction removed. Messages returned but none readable is
-  an error, and the last list stays.
+- **A claim that would go is asked twice**, and goes only if both answers miss it: a
+  message the model left out, or copied without its links, looks exactly like a reaction
+  removed. A confirmation that fails keeps the claim for now. Messages returned but none
+  readable is an error, and the last list stays.
 - **Up to 60 announcements** (three pages of the search); when more are left, or the model
   did not say and returned a full page, the banner says the oldest may be missing.
 - **Only PRs of the org** (and `PR_RADAR_EXTRA_REPOS`) are claimed, whatever else an

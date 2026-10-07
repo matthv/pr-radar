@@ -196,8 +196,10 @@ function readClaimsInBackground(asked) {
   if (now - live.pageAt > LEASE_MS) return;
   claimReading = slack
     .readClaims({ maxAgeDays: MAX_AGE_DAYS, now, force: asked && now - claimReadAt > CLAIM_FORCE_GAP_MS })
-    .then(({ changed, truncated }) => {
-      claimReadAt = Date.now();
+    .then(({ changed, truncated, read }) => {
+      // Only a read that asked the model: the minute's tick finding nothing due must not
+      // push back a Refresh that follows it.
+      if (read) claimReadAt = Date.now();
       claimWarning = truncated ? { source: 'slack-claims', kind: 'truncated', message: '' } : null;
       if (changed) {
         console.log(`[${new Date().toISOString()}] slack: claimed PRs changed, searching again`);
