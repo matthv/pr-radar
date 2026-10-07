@@ -109,6 +109,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
+| `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
@@ -292,10 +293,26 @@ more"), and `git pull` to copy. A `×` hides it for that exact remote commit; th
 push brings it back.
 
 Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
-state while working, and a banner there would be noise. Nothing pulls or reloads on its
-own — a colleague's clone may carry local changes, and a restart is needed anyway — which
-is also why this is a banner and not a modal: the button such a modal would carry could
-not do the update, only send you to a terminal.
+state while working, and a banner there would be noise. Nothing pulls on its own: a
+colleague's clone may carry local changes.
+
+**Update** pulls and restarts from the page: the server fast-forwards to `origin/main`,
+starts a new process on the new code, and the page reloads itself once that one answers,
+saying which commits it went from and to. It only does so when it is safe, and otherwise
+says why and leaves the command to you:
+
+- **Nothing is touched** on another branch than `main`, with local changes to tracked
+  files, with commits `main` does not have, or when `git fetch` fails.
+- **Pulled, not restarted**, when the new code changes `dependencies` in `package.json`, a
+  lockfile, or `engines.node`: run `npm install` (or switch Node), then restart.
+- **A variable new to `.env.example`** is named, since `.env` is only ever edited by hand.
+- **The server not back within 30 s**: the banner gives the command to start it again,
+  and the one to go back to the previous commit.
+- **`PR_RADAR_SELF_RESTART=0`**, for a radar that `launchd` or `pm2` keeps running: it
+  pulls and leaves the restart to them, rather than starting a second server.
+
+Like the Claude session button, the endpoint only answers a JSON request to `localhost`
+from this machine: another site open in the browser cannot set it off.
 
 A failed check (no `git`, a folder downloaded as a zip, no network) is not board data:
 it never reaches the warning banner. The page just says nothing about versions, one line
@@ -320,7 +337,9 @@ that module exports and none of its network calls:
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
   incrementally, a running copy and the terminal it runs in, and the route with its guards;
-- `test/update.test.js` — reading `git` output into "behind by N";
+- `test/update.test.js` — reading `git` output into "behind by N", and **Update**: what
+  refuses to pull, what pulls without restarting (dependencies, Node version), the
+  variables new to `.env.example`, nothing merged once refused or when the fetch fails;
 - `test/colors.test.js` — a picked colour turned into a repo's tint: sRGB to OKLCH, the hue
   kept and the intensity capped, no ready-made hue reading as a state, the warning for one
   that does;

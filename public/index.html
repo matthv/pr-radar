@@ -977,7 +977,21 @@
   }
   .update .notes-act { margin-left: 0; width: auto; padding: 0 9px; font-size: 12px; color: var(--indigo); }
   .update .notes-act.done { color: var(--emerald); }
-  .update .dismiss { margin-left: auto; }
+  .update .dismiss { margin-left: 0; }
+  .update .update-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  /* The one move the banner offers, styled like Refresh; the manual way sits below it. */
+  .update .update-apply {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px;
+    border: 0; border-radius: 8px; font: inherit; font-size: 12.5px; font-weight: 620; color: #fff;
+    background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); cursor: pointer;
+  }
+  .update .update-apply:hover { filter: brightness(1.07); }
+  .update .update-apply:disabled { opacity: .6; cursor: default; filter: none; }
+  .update .update-apply .ic { width: 13px; height: 13px; }
+  .update .update-manual { flex-basis: 100%; display: flex; align-items: center; gap: 8px; color: var(--text-faint); font-size: 12px; }
+  .update .update-state { flex-basis: 100%; color: var(--text); }
+  .update .update-state.bad { color: var(--rose); }
+  .update .update-state.notice { flex: 1; flex-basis: auto; }
   .update-titles {
     flex-basis: 100%; margin: 2px 0 0; padding-left: 18px;
     color: var(--text-soft); font-size: 12.5px; line-height: 1.55;
@@ -1083,8 +1097,10 @@
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
 let bootVersion = null;
+let bootId = null;
 
 const state = {
+  updateStatus: (notice => notice && { kind: 'done', result: notice })(takeUpdateNotice()),
   settingsOpen: false,
   sinceOpen: new Set(),
   data: null,
@@ -1330,11 +1346,24 @@ const I18N = {
     updateTitle: 'Nouvelle version disponible',
     updateBehind_one: '{n} commit en retard.',
     updateBehind_many: '{n} commits en retard.',
-    updateHow: 'Dans un terminal, dans le dossier pr-radar : {command}, puis redémarre le serveur.',
+    updateHow: 'Ou à la main, dans le dossier pr-radar : {command}, puis redémarre le serveur.',
     updateCopy: 'Copier',
     updateCopied: 'Copié',
     updateMore: 'et {n} de plus',
     updateDismiss: 'masquer jusqu’à la prochaine version',
+    updateApply: 'Mettre à jour et redémarrer',
+    updateApplying: 'Mise à jour… le radar redémarre, la page se recharge toute seule.',
+    updateRefused_branch: 'Pas mis à jour : ce dossier est sur la branche {branch}, pas sur main.',
+    updateRefused_dirty: 'Pas mis à jour : des fichiers suivis ont des modifications locales.',
+    updateRefused_diverged: 'Pas mis à jour : ce dossier a des commits que main n’a pas.',
+    updateRefused_git: 'Pas mis à jour : git a échoué ({message}).',
+    updateRefused_demo: 'En démo, rien n’est mis à jour.',
+    updateRefused_other: 'Pas mis à jour : {message}.',
+    updateBlocked: 'Code récupéré ({from} → {to}), mais les dépendances ou la version de Node ont changé : lance {command}, puis redémarre le serveur.',
+    updateNoRestart: 'Code récupéré ({from} → {to}). Redémarre le serveur pour l’appliquer.',
+    updateTimeout: 'Le serveur n’est pas revenu. Relance-le avec {start}, ou reviens à la version d’avant avec {back}.',
+    updateDone: 'Mis à jour ({from} → {to}).',
+    updateEnvVars: 'Nouveau dans .env.example : {names}.',
     themeTitle: 'Thème clair / sombre',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
@@ -1498,11 +1527,24 @@ const I18N = {
     updateTitle: 'New version available',
     updateBehind_one: '{n} commit behind.',
     updateBehind_many: '{n} commits behind.',
-    updateHow: 'In a terminal, in the pr-radar folder: {command}, then restart the server.',
+    updateHow: 'Or by hand, in the pr-radar folder: {command}, then restart the server.',
     updateCopy: 'Copy',
     updateCopied: 'Copied',
     updateMore: 'and {n} more',
     updateDismiss: 'hide until the next version',
+    updateApply: 'Update & restart',
+    updateApplying: 'Updating… the radar restarts and the page reloads on its own.',
+    updateRefused_branch: 'Not updated: this folder is on branch {branch}, not main.',
+    updateRefused_dirty: 'Not updated: tracked files have local changes.',
+    updateRefused_diverged: 'Not updated: this folder has commits main does not.',
+    updateRefused_git: 'Not updated: git failed ({message}).',
+    updateRefused_demo: 'In the demo, nothing is updated.',
+    updateRefused_other: 'Not updated: {message}.',
+    updateBlocked: 'Code pulled ({from} → {to}), but the dependencies or the Node version changed: run {command}, then restart the server.',
+    updateNoRestart: 'Code pulled ({from} → {to}). Restart the server to apply it.',
+    updateTimeout: 'The server did not come back. Start it again with {start}, or go back to the previous version with {back}.',
+    updateDone: 'Updated ({from} → {to}).',
+    updateEnvVars: 'New in .env.example: {names}.',
     themeTitle: 'Light / dark theme',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
@@ -2737,10 +2779,52 @@ const UPDATE_TITLES_SHOWN = 8;
 // Shown only when this clone is behind origin/main, and only until dismissed for that
 // exact remote commit: the next push brings it back. Nothing here pulls or reloads —
 // updating means a terminal and a restart, so the banner says so and gets out of the way.
+const code = text => `<code>${escapeHtml(text)}</code>`;
+
+function updateStateHtml(status) {
+  if (!status) return '';
+  const { kind, result = {} } = status;
+  const range = { from: escapeHtml(result.from ?? ''), to: escapeHtml(result.to ?? '') };
+  const envVars = result.newEnvVars?.length
+    ? ` ${t('updateEnvVars', { names: result.newEnvVars.map(code).join(', ') })}`
+    : '';
+  const line = (text, bad = false) => `<span class="update-state${bad ? ' bad' : ''}" role="status">${text}</span>`;
+  if (kind === 'updating') return line(t('updateApplying'));
+  if (kind === 'done') return line(t('updateDone', range) + envVars);
+  if (kind === 'blocked') return line(t('updateBlocked', { ...range, command: code('npm install') }) + envVars, true);
+  if (kind === 'no-restart') return line(t('updateNoRestart', range) + envVars);
+  if (kind === 'timeout') {
+    return line(t('updateTimeout', { start: code('node server.js'), back: code(`git reset --hard ${status.from}`) }), true);
+  }
+  const reason = ['branch', 'dirty', 'diverged', 'git', 'demo'].includes(result.reason) ? result.reason : 'other';
+  return line(t(`updateRefused_${reason}`, {
+    branch: escapeHtml(result.branch ?? ''),
+    message: escapeHtml(result.message ?? result.error ?? ''),
+  }), true);
+}
+
+// What the previous page learnt before the restart, shown once by the new one.
+function takeUpdateNotice() {
+  try {
+    const raw = sessionStorage.getItem('pr-radar:updateNotice');
+    sessionStorage.removeItem('pr-radar:updateNotice');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function renderUpdate(update) {
   const box = el('update');
   const dismissed = store.get('updateDismissed', null);
-  if (!update?.behind || dismissed === update.latest) {
+  // Once pulled the clone is no longer behind, but what is left to do still has to show.
+  if (state.updateStatus && !update?.behind) {
+    box.innerHTML = updateStateHtml(state.updateStatus).replace('class="update-state"', 'class="update-state notice"')
+      + `<button type="button" class="notes-act dismiss" data-update-notice-dismiss aria-label="${escapeHtml(t('updateDismiss'))}">×</button>`;
+    box.hidden = false;
+    return;
+  }
+  if (!update?.behind || (dismissed === update.latest && !state.updateStatus)) {
     box.hidden = true;
     return;
   }
@@ -2748,12 +2832,62 @@ function renderUpdate(update) {
   const more = update.titles.length - UPDATE_TITLES_SHOWN;
   box.innerHTML = `<b>${t('updateTitle')}</b>`
     + `<span>${tn('updateBehind', update.behind)}</span>`
-    + `<span>${t('updateHow', { command: '<code>git pull</code>' })}</span>`
-    + `<button type="button" class="notes-act" data-update-copy>${t('updateCopy')}</button>`
+    + `<span class="update-actions">`
+    + `<button type="button" class="update-apply" data-update-apply${state.updateStatus?.kind === 'updating' ? ' disabled' : ''}>`
+    + `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg>`
+    + `${t('updateApply')}</button>`
     + `<button type="button" class="notes-act dismiss" data-update-dismiss="${escapeHtml(update.latest)}"`
     + ` title="${escapeHtml(t('updateDismiss'))}" aria-label="${escapeHtml(t('updateDismiss'))}">×</button>`
-    + `<ul class="update-titles">${titles.join('')}${more > 0 ? `<li>${t('updateMore', { n: more })}</li>` : ''}</ul>`;
+    + `</span>`
+    + updateStateHtml(state.updateStatus)
+    + `<ul class="update-titles">${titles.join('')}${more > 0 ? `<li>${t('updateMore', { n: more })}</li>` : ''}</ul>`
+    + `<span class="update-manual">${t('updateHow', { command: '<code>git pull</code>' })}`
+    + `<button type="button" class="notes-act" data-update-copy>${t('updateCopy')}</button></span>`;
   box.hidden = false;
+}
+
+function setUpdateStatus(status) {
+  state.updateStatus = status;
+  renderUpdate(state.data?.update);
+}
+
+const RESTART_WAIT_MS = 30_000;
+
+async function applyUpdate() {
+  setUpdateStatus({ kind: 'updating' });
+  let result;
+  try {
+    const response = await fetch('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    result = await response.json();
+  } catch (error) {
+    setUpdateStatus({ kind: 'refused', result: { reason: 'other', message: error.message } });
+    return;
+  }
+  if (!result.ok) return setUpdateStatus({ kind: 'refused', result });
+  if (result.blockers?.length) return setUpdateStatus({ kind: 'blocked', result });
+  if (!result.restart) return setUpdateStatus({ kind: 'no-restart', result });
+
+  try {
+    sessionStorage.setItem('pr-radar:updateNotice', JSON.stringify(result));
+  } catch {
+    /* storage refused: the reload just shows no summary */
+  }
+  const deadline = Date.now() + RESTART_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Not /api/prs: a fresh server answers it only after a full search, which can outlast the wait.
+      const response = await fetch('/api/boot');
+      const boot = response.headers.get('x-pr-radar-boot');
+      if (response.ok && boot && boot !== bootId) {
+        location.reload();
+        return;
+      }
+    } catch {
+      /* the old server is gone and the new one not up yet */
+    }
+  }
+  setUpdateStatus({ kind: 'timeout', from: result.from });
 }
 
 // What a render depends on, minus the check time: the page polls the server every few
@@ -2761,6 +2895,8 @@ function renderUpdate(update) {
 const boardSignature = payload => JSON.stringify([payload.mine, payload.reviews, payload.warnings, payload.update, payload.counts]);
 
 async function load(force, { check = false } = {}) {
+  // The server is going down on purpose; its absence is not an error to show.
+  if (state.updateStatus?.kind === 'updating') return;
   // Only an asked-for refresh spins the button: the background polls would make it twitch.
   if (force) el('refresh').classList.add('busy');
   try {
@@ -2769,6 +2905,7 @@ async function load(force, { check = false } = {}) {
     if (check) params.set('check', '1');
     if (document.hidden) params.set('hidden', '1');
     const response = await fetch(`/api/prs${params.size ? `?${params}` : ''}`);
+    bootId ??= response.headers.get('x-pr-radar-boot');
     const version = response.headers.get('x-pr-radar-version');
     if (version) {
       bootVersion ??= version;
@@ -2855,6 +2992,15 @@ document.addEventListener('click', event => {
   if (dismissUpdate) {
     store.set('updateDismissed', dismissUpdate.dataset.updateDismiss);
     el('update').hidden = true;
+    return;
+  }
+
+  if (event.target.closest('[data-update-apply]')) {
+    applyUpdate();
+    return;
+  }
+  if (event.target.closest('[data-update-notice-dismiss]')) {
+    setUpdateStatus(null);
     return;
   }
 

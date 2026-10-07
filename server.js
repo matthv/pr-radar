@@ -4,7 +4,8 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
+const { spawn } = require('node:child_process');
 
 // Variables already exported in the shell keep precedence over the file.
 try {
@@ -74,6 +75,11 @@ const SOUND_TYPES = {
 // almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// A radar run by launchd or pm2 is restarted by them: relaunching itself would start a second one.
+const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
+// Which process answered: the page waiting on an update reloads once it changes, even when
+// the update touched no file the asset version is made of.
+const BOOT_ID = randomUUID().slice(0, 8);
 
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
@@ -350,6 +356,7 @@ function json(res, status, body, version) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    'X-PR-Radar-Boot': BOOT_ID,
     ...(version ? { 'X-PR-Radar-Version': version } : {}),
   });
   res.end(JSON.stringify(body));
@@ -480,6 +487,26 @@ const server = http.createServer(async (req, res) => {
     return json(res, status, error ? { error } : { ok: true });
   }
 
+  if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID });
+
+  if (url.pathname === '/api/update' && req.method === 'POST') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 200, { ok: false, reason: 'demo' });
+    let result;
+    try {
+      result = await update.apply();
+    } catch (error) {
+      return json(res, 200, { ok: false, reason: 'git', message: error.message.split('\n')[0] });
+    }
+    const restart = result.ok && result.restart && SELF_RESTART;
+    json(res, 200, { ...result, restart, selfRestart: SELF_RESTART });
+    if (restart) res.on('finish', relaunch);
+    return;
+  }
+
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -492,6 +519,19 @@ const server = http.createServer(async (req, res) => {
 
   await serveStatic(res, url.pathname);
 });
+
+// The port has to be free before the new process binds it, hence close first. Detached, so
+// the new server outlives this one; the same streams, so its log goes where this one's went.
+function relaunch() {
+  console.log('update: restarting on the new code');
+  server.close(() => {
+    spawn(process.execPath, process.argv.slice(1), {
+      cwd: __dirname, env: process.env, detached: true, stdio: 'inherit',
+    }).unref();
+    process.exit(0);
+  });
+  server.closeAllConnections();
+}
 
 server.listen(PORT, async () => {
   if (DEMO) {
