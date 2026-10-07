@@ -108,6 +108,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
+| `PR_RADAR_SLACK_CLAIM_EMOJI` | — | An emoji, `pr-radar` say: your reaction on an announcement puts that PR on your review side — see [Claiming a PR from Slack](#claiming-a-pr-from-slack). Empty, off |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
 | `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update & restart** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
@@ -346,7 +347,12 @@ that module exports and none of its network calls:
   superseded changes-requested still counting, a continue-on-error job failing a release,
   a review body that asks nothing or was answered inline;
 - `test/digest.test.js` — shaping a board into what the standup notes take;
-- `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge,
+- `test/slack.test.js` — reading PR links out of Slack messages, the oldest-wins merge, the
+  claimed PRs (the links of my reactions, read every five minutes or on Refresh, a new search
+  only when the set moved, an empty answer confirmed before it empties the list, a failure
+  waiting its back-off), with `test/slack-claims.test.js` reading them end to end against a
+  stubbed model and a temporary state file, and `test/slack-state.test.js` setting a corrupt
+  state file aside,
   permalinks, the model's transcription, and the retry schedule;
 - `test/claude-sessions.test.js` — finding a PR's session in the transcripts, read
   incrementally, a running copy and the terminal it runs in, and the route with its guards;
@@ -710,6 +716,53 @@ so a burst larger than that between two reads loses its oldest ones.
 
 A Slack failure lands in the warning banner under the source `slack`, and the board
 itself is unaffected.
+
+### Claiming a PR from Slack
+
+Opt-in, with `PR_RADAR_SLACK_CLAIM_EMOJI=pr-radar` (any emoji, without the colons). Put
+that reaction on a PR's announcement in the channel, and the PR comes to **PRs I review**
+as a review you owe, *On my plate*, with a **claimed on Slack** pill, though nobody asked
+you on GitHub. Nothing changes on GitHub: the author is not notified.
+
+- **Then the usual rules**: once you comment or approve, the card moves like any other.
+- **Remove the reaction** and the PR leaves at the next read, unless something else keeps
+  it there: a comment of yours, a review request.
+- **A PR of yours** stays on your side.
+- **The Slack button shows at once**: the search lands on the announcement itself, so its
+  link is recorded as the channel read would, and that read is spared for these PRs.
+- **Only announcements posted since you turned it on** count: the first read records the
+  day in `.slack-links.json` (`claimSince`), so a reaction used before then, with another
+  meaning, claims nothing. The other side of it: a reaction put today on an announcement
+  posted before that day does not count either.
+- **How it is read**: Slack's own search, `in:<#channel> hasmy::pr-radar: after:<age
+  window>`, through `claude -p` and your Slack connector, with the search that covers
+  private channels too: the announcements channel is private, and the public-only one
+  sees nothing in it. It only ever sees channels you are in. `hasmy:` is your reactions, so no
+  Slack user id is needed. Reading the channel would not do: it only ever looks at new
+  messages, and a reaction lands on an announcement long after it was posted.
+- **What it costs**: one Haiku call every five minutes at most, on its own clock (checked
+  every minute), only while a page holds the lease, and one at once on **Refresh**, never
+  twice within ten seconds. A reaction added or removed shows within five minutes and the
+  read's own delay, at once with **Refresh**. A list that changed runs a full search
+  straight away, after one already running. The last answer is kept in
+  `.slack-links.json`, so a restart shows the claimed PRs at once.
+- **A claim that would go is asked twice**, and goes only if both answers miss it: a
+  message the model left out, or copied without its links, looks exactly like a reaction
+  removed. A confirmation that fails keeps the claim for now. Messages returned but none
+  readable is an error, and the last list stays.
+- **Up to 60 announcements** (three pages of the search); when more are left, or the model
+  did not say and returned a full page, the banner says the oldest may be missing.
+- **Only PRs of the org** (and `PR_RADAR_EXTRA_REPOS`) are claimed, whatever else an
+  announcement links to. One that cannot be found on GitHub is named in the banner and does
+  not hide the others; GitHub failing is a lost source, so the webhook keeps the last
+  statuses meanwhile.
+- **The state file is kept whole**: written to a temp file then renamed, one write at a
+  time. One that cannot be parsed is set aside (`.slack-links.json.corrupt-<time>`) rather
+  than written over, since it holds the day claims were turned on.
+- **The API path cannot do it**: `search.messages` wants a user token, not a bot's. With
+  `PR_RADAR_SLACK_TOKEN` set, the startup line says it is off.
+- A failed read keeps the last claimed PRs on the board, says so in the warning banner, and
+  waits 30 minutes before trying again, **Refresh** included.
 
 ## Standup notes
 

@@ -90,3 +90,9 @@ test('demo: two polls give the same cards, so nothing reads as changed between t
   const strip = board => JSON.stringify([board.mine, board.reviews]);
   assert.equal(strip(demo.payload(false)), strip(demo.payload(false)));
 });
+
+test('demo: a PR claimed on Slack shows, owed and marked', () => {
+  const claimed = demo.payload(false).reviews.find(pr => pr.claimed);
+  assert.ok(claimed, 'a claimed card on the review side');
+  assert.equal(claimed.reviewOwedByMe, true);
+});

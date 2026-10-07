@@ -960,9 +960,53 @@ const SOURCES = [
   'events',
 ];
 // The warnings whose failure leaves PRs off the board, as opposed to a field left unknown.
-const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve'];
+const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve'];
 
-async function discover({ org, extraRepos = [], maxAgeDays }) {
+// An announcement links whatever its author pasted: another org's PR, a private repo, a typo.
+// Those are left out first; one that still does not resolve must not take the others with
+// it, since GitHub fails a whole batch on a single unknown PR. An unknown PR is not a lost
+// source — the board stays whole, the warning names it — but GitHub failing is: the claimed
+// PRs are then missing for a while, and the webhook must not take that as their departure.
+const NOT_FOUND = /Could not resolve to a (PullRequest|Repository)/;
+function claimInScope({ repo }, org, extraRepos) {
+  const lower = repo.toLowerCase();
+  return lower.startsWith(`${org.toLowerCase()}/`) || extraRepos.some(extra => extra.toLowerCase() === lower);
+}
+
+async function resolveClaimed(claimedRefs, { org, extraRepos }, warnings, resolve = resolvePullRequestIds) {
+  const refs = claimedRefs
+    .filter(ref => claimInScope(ref, org, extraRepos))
+    .map(({ repo, number }) => {
+      const [owner, name] = repo.split('/');
+      return { owner, name, number };
+    });
+  if (!refs.length) return [];
+  try {
+    return await resolve(refs);
+  } catch (error) {
+    if (!NOT_FOUND.test(error.message)) {
+      warnings.push({ source: 'claims-resolve', message: error.message });
+      return [];
+    }
+    const ids = [];
+    const missing = [];
+    for (const ref of refs) {
+      try {
+        ids.push(...(await resolve([ref])));
+      } catch (refError) {
+        if (!NOT_FOUND.test(refError.message)) {
+          warnings.push({ source: 'claims-resolve', message: refError.message });
+          return ids;
+        }
+        missing.push(`${ref.owner}/${ref.name}#${ref.number}`);
+      }
+    }
+    if (missing.length) warnings.push({ source: 'claims-missing', refs: missing, message: 'not found' });
+    return ids;
+  }
+}
+
+async function discover({ org, extraRepos = [], maxAgeDays, claimedRefs = [] }) {
   const owners = ownerScope(org, extraRepos);
   const scope = `${owners} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
@@ -1058,8 +1102,11 @@ async function discover({ org, extraRepos = [], maxAgeDays }) {
   } catch (error) {
     warnings.push({ source: 'events-resolve', message: error.message });
   }
+  // PRs claimed with a Slack reaction: on the review side as a review I owe. Loaded like the
+  // event feed's, since no search found them; one of mine still goes to my side.
+  const claimedIds = await resolveClaimed(claimedRefs, { org, extraRepos }, warnings);
   const known = new Set([...mineSet, ...reviewSet]);
-  const extraIds = touchedIds.filter(id => !known.has(id));
+  const extraIds = [...new Set([...touchedIds, ...claimedIds])].filter(id => !known.has(id));
 
   return {
     me,
@@ -1074,6 +1121,7 @@ async function discover({ org, extraRepos = [], maxAgeDays }) {
     requestedSet,
     assignedSet,
     mergedReviewedIds,
+    claimedSet: new Set(claimedIds),
     extraIds: new Set(extraIds),
     ids: [...known, ...extraIds],
   };
@@ -1095,6 +1143,7 @@ function shapeBoard(nodes, context, detailWarnings = []) {
   const reviewSet = new Set(context.reviewSet);
   const warnings = [...context.warnings, ...detailWarnings];
   const extraIds = [...context.extraIds];
+  const claimedSet = context.claimedSet ?? new Set();
   const byId = nodes;
 
   const shapes = new Map();
@@ -1160,7 +1209,10 @@ function shapeBoard(nodes, context, detailWarnings = []) {
   const reviews = [...reviewSet]
     .map(id => shapes.get(id))
     .filter(Boolean)
-    .map(pr => decorateReview(pr, me, requestedSet.has(pr.id) || assignedSet.has(pr.id)))
+    .map(pr => {
+      const claimed = claimedSet.has(pr.id);
+      return { ...decorateReview(pr, me, requestedSet.has(pr.id) || assignedSet.has(pr.id) || claimed), claimed };
+    })
     .sort(byActionThenFreshness);
 
   return {
@@ -1248,6 +1300,8 @@ module.exports = {
   statusFingerprint,
   fetchStatusFingerprints,
   recentlyTouchedPullRequests,
+  resolveClaimed,
+  claimInScope,
   fetchBoard,
   loadNodes,
   shapeBoard,

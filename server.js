@@ -114,6 +114,10 @@ const exclusive = task => {
 };
 let digestAvailable = false;
 let slackMode = 'off';
+let claimMode = 'off';
+let claimWarning = null;
+let claimReading = null;
+let claimReadAt = 0;
 let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
@@ -178,6 +182,45 @@ function readSlackInBackground(prs) {
     });
 }
 
+// The reactions are read behind the board, like the Claude channel read: a search through
+// Claude takes seconds. The full search uses the last list known, and a list that changed
+// runs another one at once, so a card claimed or let go shows within the read's own delay.
+// Only while a page holds the lease: a webhook keeps searching with no page, and each of
+// those searches would otherwise cost a model call. `asked` is the Refresh button only — the
+// live loop and the webhook pass `force` to skip the cache, which must not skip the cadence —
+// and even then never twice within ten seconds of the last read's end.
+const CLAIM_FORCE_GAP_MS = 10_000;
+function readClaimsInBackground(asked) {
+  if (claimMode !== 'on' || claimReading) return;
+  const now = Date.now();
+  if (now - live.pageAt > LEASE_MS) return;
+  claimReading = slack
+    .readClaims({ maxAgeDays: MAX_AGE_DAYS, now, force: asked && now - claimReadAt > CLAIM_FORCE_GAP_MS })
+    .then(({ changed, truncated, read }) => {
+      // Only a read that asked the model: the minute's tick finding nothing due must not
+      // push back a Refresh that follows it.
+      if (read) claimReadAt = Date.now();
+      claimWarning = truncated ? { source: 'slack-claims', kind: 'truncated', message: '' } : null;
+      if (changed) {
+        console.log(`[${new Date().toISOString()}] slack: claimed PRs changed, searching again`);
+        // A search already running was started with the previous list: joining it would show
+        // that one again, so the new search waits for it to end.
+        const again = () => dashboard(true).catch(error => console.error('Claimed PRs refresh failed:', error.message));
+        // Its own failure is reported by whoever awaited it; left unhandled here it would
+        // end the process (Node 22).
+        if (inFlight) inFlight.catch(() => {}).then(again);
+        else setImmediate(again);
+      }
+    })
+    .catch(error => {
+      claimReadAt = Date.now();
+      claimWarning = { source: 'slack-claims', kind: error.code ?? 'failed', message: error.message };
+    })
+    .finally(() => {
+      claimReading = null;
+    });
+}
+
 // What every board served carries besides the GitHub data, whether it comes from a full
 // search or from a few reloaded PRs.
 async function layered(board, discoveredAt) {
@@ -185,7 +228,7 @@ async function layered(board, discoveredAt) {
   const payload = slackMode === 'off' ? withSessions : await withSlackLinks(withSessions);
   return {
     ...payload,
-    warnings: slackWarning ? [...payload.warnings, slackWarning] : payload.warnings,
+    warnings: [...payload.warnings, ...(slackWarning ? [slackWarning] : []), ...(claimWarning ? [claimWarning] : [])],
     discoveredAt,
     refreshSeconds: REFRESH_SECONDS,
     pageRefreshSeconds: LIVE ? PAGE_REFRESH_SECONDS : REFRESH_SECONDS,
@@ -205,7 +248,7 @@ function reusableNodes() {
 
 // `reuse`: the live loop's own searches only. The Refresh button, a lapsed lease and the first
 // search reload everything.
-async function dashboard(force, { reuse = false } = {}) {
+async function dashboard(force, { reuse = false, asked = false } = {}) {
   if (DEMO) {
     return {
       ...demo.payload(force),
@@ -225,8 +268,9 @@ async function dashboard(force, { reuse = false } = {}) {
   scanned?.then(() => {
     scanDone = true;
   });
+  const claimedRefs = claimMode === 'on' ? slack.claimedRefs() : [];
   inFlight = exclusive(() => Promise.all([
-    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS }, reuse ? reusableNodes() : new Map()),
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs }, reuse ? reusableNodes() : new Map()),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
@@ -238,6 +282,7 @@ async function dashboard(force, { reuse = false } = {}) {
       const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
       if (slackMode === 'claude') readSlackInBackground(prs);
+      readClaimsInBackground(asked);
       const at = Date.now();
       cache = { at, payload: await layered(fetched.board, new Date(at).toISOString()) };
       if (!scanDone) {
@@ -452,7 +497,10 @@ const server = http.createServer(async (req, res) => {
         live.checkNow = true;
         liveTick();
       }
-      const payload = await dashboard(url.searchParams.get('force') === '1' || lapsed);
+      const asked = url.searchParams.get('force') === '1';
+      // Read now, not only after the search: a search already running would otherwise swallow it.
+      if (asked) readClaimsInBackground(true);
+      const payload = await dashboard(asked || lapsed, { asked });
       json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
@@ -568,6 +616,18 @@ server.listen(PORT, async () => {
   }
   digestAvailable = await digest.available();
   slackMode = slack.mode(digestAvailable);
+  claimMode = slack.claimMode(slackMode);
+  if (claimMode === 'on') {
+    await slack.loadClaims();
+    // Its own clock: waiting for a full search to end as well put up to ten minutes between a
+    // reaction removed and the card leaving. Checked every minute, read when due.
+    setInterval(() => readClaimsInBackground(false), 60_000).unref();
+  }
+  const CLAIM_MODES = {
+    on: `via :${slack.CLAIM_EMOJI}: on #${process.env.PR_RADAR_SLACK_CHANNEL}, read every 5 min through Claude`,
+    'needs-claude': 'off (needs the Slack link through Claude: the API path cannot search your reactions)',
+    off: 'off (no PR_RADAR_SLACK_CLAIM_EMOJI)',
+  };
   const SLACK_MODES = {
     api: 'via the Slack API',
     claude: 'via Claude, when a PR on the board has no link yet',
@@ -579,6 +639,7 @@ server.listen(PORT, async () => {
       `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
       `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  slack link ${SLACK_MODES[slackMode]}\n` +
+      `  claimed PRs ${CLAIM_MODES[claimMode]}\n` +
       `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
