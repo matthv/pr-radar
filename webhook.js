@@ -37,16 +37,19 @@ function nextSnapshot(previous, current, incomplete) {
   return merged;
 }
 
+const prOf = ({ url, project, pr_number }) => ({ url, project, pr_number });
+
 function eventsBetween(previous, current, statuses = []) {
   if (!previous) return [];
-  const firstByStatus = new Map();
+  const byStatus = new Map();
   for (const [id, entry] of current) {
     const { status } = entry;
     if (previous.get(id)?.status === status) continue;
     if (statuses.length && !statuses.includes(status)) continue;
-    if (!firstByStatus.has(status)) firstByStatus.set(status, entry);
+    if (!byStatus.has(status)) byStatus.set(status, { status, ...prOf(entry), prs: [] });
+    byStatus.get(status).prs.push(prOf(entry));
   }
-  return [...firstByStatus.values()];
+  return [...byStatus.values()];
 }
 
 async function send(url, events, { fetchImpl = fetch, log = console.error } = {}) {
@@ -67,4 +70,17 @@ async function send(url, events, { fetchImpl = fetch, log = console.error } = {}
   );
 }
 
-module.exports = { STATUSES, parseStatuses, statusOf, snapshot, nextSnapshot, eventsBetween, send };
+function createNotifier({ url, statuses = [], hideDrafts = false, post = send }) {
+  let previous = null;
+  return {
+    notify(board) {
+      const current = snapshot(board, { hideDrafts });
+      const events = eventsBetween(previous, current, statuses);
+      previous = nextSnapshot(previous, current, board.warnings.length > 0);
+      if (events.length) post(url, events);
+      return events;
+    },
+  };
+}
+
+module.exports = { STATUSES, parseStatuses, statusOf, snapshot, nextSnapshot, eventsBetween, send, createNotifier };

@@ -93,7 +93,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
-| `PR_RADAR_WEBHOOK_URL` | — | POSTs each status change to that URL — see [The webhook](#the-webhook). Empty, no call |
+| `PR_RADAR_WEBHOOK_URL` | — | POSTs the status changes to that URL, one call per status with every PR that reached it — see [The webhook](#the-webhook). Empty, no call |
 | `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
@@ -842,7 +842,7 @@ cannot update one caller and quietly leave the other stale.
 
 ### The webhook
 
-`PR_RADAR_WEBHOOK_URL` makes the server POST a status change to that URL, for a Slack
+`PR_RADAR_WEBHOOK_URL` makes the server POST the status changes to that URL, for a Slack
 workflow, an n8n flow or anything else that takes JSON:
 
 ```json
@@ -850,7 +850,11 @@ workflow, an n8n flow or anything else that takes JSON:
   "status": "reviews.action",
   "url": "https://github.com/ForestAdmin/agent-nodejs/pull/1912",
   "project": "ForestAdmin/agent-nodejs",
-  "pr_number": 1912
+  "pr_number": 1912,
+  "prs": [
+    { "url": "https://github.com/ForestAdmin/agent-nodejs/pull/1912", "project": "ForestAdmin/agent-nodejs", "pr_number": 1912 },
+    { "url": "https://github.com/ForestAdmin/agent-ruby/pull/402", "project": "ForestAdmin/agent-ruby", "pr_number": 402 }
+  ]
 }
 ```
 
@@ -863,10 +867,11 @@ workflow, an n8n flow or anything else that takes JSON:
 - **An event** is a PR whose status changed since the previous refresh, or that just
   appeared on the board. The first refresh after startup only takes a picture, the way
   the first render does not chime.
-- **One call per status.** When several PRs reach the same status in one refresh, only
-  the first one in board order is sent.
-- **`PR_RADAR_WEBHOOK_STATUSES`** keeps only the listed statuses — the first PR is then
-  picked among those kept. An unknown value stops the server at startup rather than
+- **One call per status.** When several PRs reach the same status in one refresh, they
+  all go in `prs`, in board order, and the first one is also at the top level: a receiver
+  that reads one PR reads that one, and none is lost to one that reads them all. Two
+  review requests in a row, a stack or a Dependabot batch often land in one refresh.
+- **`PR_RADAR_WEBHOOK_STATUSES`** keeps only the listed statuses. An unknown value stops the server at startup rather than
   silently sending nothing.
 - It is the server's view: `PR_RADAR_HIDE_DRAFTS` applies, but snoozes, "hide bots"
   and the search filter live in the browser and do not.

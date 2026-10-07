@@ -3,10 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseStatuses, snapshot, nextSnapshot, eventsBetween, send } = require('../webhook');
+const { parseStatuses, snapshot, nextSnapshot, eventsBetween, send, createNotifier } = require('../webhook');
 
 const pr = (id, side, bucket, extra = {}) => ({ id, side, bucket, url: `https://github.com/o/r/pull/${id}`, repo: 'o/r', number: id, ...extra });
-const event = (status, number) => ({ status, url: `https://github.com/o/r/pull/${number}`, project: 'o/r', pr_number: number });
+const ref = number => ({ url: `https://github.com/o/r/pull/${number}`, project: 'o/r', pr_number: number });
+const event = (status, ...numbers) => ({ status, ...ref(numbers[0]), prs: numbers.map(ref) });
 const board = (mine, reviews = [], warnings = []) => ({ mine, reviews, warnings });
 
 test('statuses: a comma list, blanks ignored, empty means every status', () => {
@@ -41,10 +42,10 @@ test('a PR new on the board sends its status', () => {
   assert.deepEqual(eventsBetween(before, after), [event('reviews.action', 2)]);
 });
 
-test('several PRs moving to one status send one call, for the first of them', () => {
+test('several PRs moving to one status send one call: the first on top, all of them in prs', () => {
   const before = snapshot(board([pr(1, 'mine', 'waiting'), pr(2, 'mine', 'waiting')]));
   const after = snapshot(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'action')]));
-  assert.deepEqual(eventsBetween(before, after), [event('mine.action', 1)]);
+  assert.deepEqual(eventsBetween(before, after), [event('mine.action', 1, 2)]);
 });
 
 test('different statuses send one call each', () => {
@@ -98,4 +99,23 @@ test('send logs a failure instead of throwing', async () => {
   assert.equal(logs.length, 2);
   assert.match(logs[0], /mine\.action u1: ECONNREFUSED/);
   assert.match(logs[1], /mine\.ready u2: HTTP 500/);
+});
+
+test('the notifier posts what changed between two boards, and nothing on the first', () => {
+  const posted = [];
+  const notifier = createNotifier({ url: 'https://hook.test/x', post: (url, events) => posted.push({ url, events }) });
+  assert.deepEqual(notifier.notify(board([pr(1, 'mine', 'waiting')])), []);
+  notifier.notify(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'action')], [pr(3, 'reviews', 'action')]));
+  notifier.notify(board([pr(1, 'mine', 'action'), pr(2, 'mine', 'action')], [pr(3, 'reviews', 'action')]));
+  assert.deepEqual(posted, [
+    { url: 'https://hook.test/x', events: [event('mine.action', 1, 2), event('reviews.action', 3)] },
+  ]);
+});
+
+test('the notifier applies the status filter and hidden drafts', () => {
+  const posted = [];
+  const notifier = createNotifier({ url: 'u', statuses: ['mine.action'], hideDrafts: true, post: (_, events) => posted.push(...events) });
+  notifier.notify(board([]));
+  notifier.notify(board([pr(1, 'mine', 'action', { isDraft: true }), pr(2, 'mine', 'ready'), pr(3, 'mine', 'action')]));
+  assert.deepEqual(posted, [event('mine.action', 3)]);
 });

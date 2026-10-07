@@ -106,16 +106,7 @@ let slackMode = 'off';
 let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
-let webhookStatuses = [];
-let webhookSnapshot = null;
-
-function notifyWebhook(board) {
-  if (!WEBHOOK_URL) return;
-  const current = webhook.snapshot(board, { hideDrafts: HIDE_DRAFTS });
-  const events = webhook.eventsBetween(webhookSnapshot, current, webhookStatuses);
-  webhookSnapshot = webhook.nextSnapshot(webhookSnapshot, current, board.warnings.length > 0);
-  if (events.length) webhook.send(WEBHOOK_URL, events);
-}
+let webhookNotifier = null;
 
 function withClaudeSessions(payload) {
   const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
@@ -231,7 +222,7 @@ async function dashboard(force, { reuse = false } = {}) {
       const loadedNow = Date.now();
       const loadedAt = new Map([...fetched.nodes.keys()].map(id => [id, store?.loadedAt.get(id) ?? loadedNow]));
       for (const id of fetched.loaded) loadedAt.set(id, loadedNow);
-      notifyWebhook(fetched.board);
+      webhookNotifier?.notify(fetched.board);
       store = { context: fetched.context, nodes: fetched.nodes, loadedAt, detailWarnings: fetched.board.warnings.slice(fetched.context.warnings.length) };
       const prs = [...fetched.board.mine, ...fetched.board.reviews];
       if (slackMode === 'api') await readSlack(prs);
@@ -265,7 +256,7 @@ function patchPrs(ids) {
       store.loadedAt.set(id, Date.now());
     }
     const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
-    notifyWebhook(board);
+    webhookNotifier?.notify(board);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });
 }
@@ -406,8 +397,10 @@ try {
   console.error(`PR_RADAR_WEBHOOK_URL: not a valid URL (${error.message})`);
   process.exit(1);
 }
+let webhookStatuses;
 try {
   webhookStatuses = webhook.parseStatuses(process.env.PR_RADAR_WEBHOOK_STATUSES);
+  if (WEBHOOK_URL) webhookNotifier = webhook.createNotifier({ url: WEBHOOK_URL, statuses: webhookStatuses, hideDrafts: HIDE_DRAFTS });
 } catch (error) {
   console.error(error.message);
   process.exit(1);
