@@ -520,10 +520,13 @@ server.listen(PORT, async () => {
   update.start();
   if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => console.error('First fetch failed:', error.message));
-  // Webhooks go out with no tab open. Live, the checks never stop; otherwise the server polls.
+  // Webhooks go out with no tab open. Live, the checks never stop; otherwise the server runs
+  // the full search itself, spaced out like the live one when no page is looking.
   if (WEBHOOK_URL && !LIVE) {
     setInterval(() => {
-      dashboard(false).catch(error => console.error('Webhook refresh failed:', error.message));
-    }, REFRESH_SECONDS * 1000).unref();
+      const now = Date.now();
+      if (now - cache.at < watch.searchEveryMs(REFRESH_SECONDS * 1000, now - live.pageAt <= LEASE_MS)) return;
+      dashboard(true).catch(error => console.error('Webhook refresh failed:', error.message));
+    }, 60_000).unref();
   }
 });

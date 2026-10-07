@@ -123,6 +123,10 @@ overnight, with nothing else running).
   hour** at a quiet time, plus the reloads of whatever moves — around 1,200 a day overnight
   and on weekends, instead of none. That is an estimate from the figures above, not a
   measurement. With a page open, the cost is the table's.
+- **A webhook with `PR_RADAR_CHECK_SECONDS=0`** has no checks to lean on: the server runs
+  the full search itself, spaced out the same way, every 15 minutes with no page. Each one
+  reloads every PR, about 24 calls, so roughly 100 counted calls an hour, about 2,300 a day,
+  twice the live setup. Also an estimate.
 - **Targeted reloads grow with activity**, one PR at a time, and a CI in flight is read every
   30 s. The Oct 6 morning included a release run re-run after a flaky test.
 

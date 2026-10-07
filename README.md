@@ -885,8 +885,12 @@ workflow, an n8n flow or anything else that takes JSON:
 - It is the server's view: `PR_RADAR_HIDE_DRAFTS` applies, but snoozes, "hide bots"
   and the search filter live in the browser and do not.
 - **It follows the live refresh.** A change found by the checks is sent within
-  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search. With
-  `PR_RADAR_CHECK_SECONDS=0`, the server runs that full search on its own instead.
+  `PR_RADAR_CHECK_SECONDS`, a new PR with the next full search.
+- **With `PR_RADAR_CHECK_SECONDS=0`** there are no checks: the server runs the full search
+  itself, every `PR_RADAR_REFRESH_SECONDS` while a page is open and every 15 minutes
+  otherwise. Each one reloads every PR, about 24 calls, so roughly **100 counted calls an
+  hour** with no page, about 2,300 a day — twice the live setup, and a change waits up to
+  15 minutes. An estimate, not a measurement.
 - **It runs around the clock, and that has a cost.** While the URL is set the checks never
   stop, so calls go out with no tab open. They are free when nothing moved, but with no
   page the full search still runs every 15 minutes: roughly 50 counted GitHub calls an
