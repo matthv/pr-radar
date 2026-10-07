@@ -19,7 +19,7 @@ follows reality without any manual step.
 | --- | --- | --- |
 | `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, replies to your comments, new commits since your feedback |
 | `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
-| `Waiting` | you replied — the ball is with the reviewers | your open threads / your changes-requested await a fix |
+| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix |
 | `Nothing to report` | drafts, shown as `Drafts` | everything else |
 
 **Ready to merge** sits right under *On my plate* and above the merged group. An approved
@@ -31,6 +31,14 @@ move, because it is approved — no new hue, two that already mean exactly that.
 its own counter in the summary band, so *of my PRs to fix* keeps meaning what to fix, and
 it rings and lights its rail when an approval lands, like any card that turns your way.
 On my side *Nothing to report* now only ever holds drafts, so it is labelled *Drafts*.
+
+**Asking for a review again hands a changes-requested back.** GitHub keeps a reviewer's
+changes-requested as the PR's verdict until they approve or someone dismisses it, so a PR
+whose fixes were pushed and whose reviewer was asked again stayed *On my plate*, the next
+move theirs. A changes-requested no longer counts while its reviewer has a review request
+pending: GitHub drops the request once they submit, so a pending one is newer than their
+verdict. A new changes-requested from them brings the PR back. The comment threads are not
+covered: each still needs its reply, in the thread it was written in.
 
 ## Running it
 

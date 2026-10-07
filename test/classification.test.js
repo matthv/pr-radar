@@ -406,6 +406,34 @@ test('my PR: changes requested carries who asked', () => {
   assert.deepEqual(reason.authors, ['reviewer']);
 });
 
+test('my PR: asking the reviewer again hands their changes-requested back to them', () => {
+  const pr = node({
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviews: { nodes: [{ author: user('reviewer'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' }] },
+    reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'User', login: 'reviewer' } }] },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.reasons.some(r => r.kind === 'changes-requested'), false);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('my PR: asking someone else again leaves a changes-requested on my plate', () => {
+  const pr = node({
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviews: {
+      nodes: [
+        { author: user('reviewer'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' },
+        { author: user('other'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' },
+      ],
+    },
+    reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'User', login: 'other' } }] },
+  });
+  const reason = decorateMine(baseShape(pr, ME)).reasons.find(r => r.kind === 'changes-requested');
+
+  assert.deepEqual(reason.authors, ['reviewer']);
+});
+
 test('a dismissed or superseded review does not count as the latest verdict', () => {
   const pr = node({
     reviews: {
@@ -1073,4 +1101,32 @@ test('my PR: a /verify-fixes comment settles the conversation only when every ve
 
   const prose = mineWith({ comments: { nodes: [myAnswer, issueComment(['Scra3', ago(0.5)])] } });
   assert.equal(prose.toFix.length, 1, 'a comment with no marker is a remark, as before');
+});
+
+// Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
+// and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
+test('my PR: a release published after its failed pipeline settles it', () => {
+  const failedAt = ago(1);
+  const merged = releasedAt => decorateMine(baseShape(node({
+    author: user(ME),
+    merged: true,
+    mergedAt: ago(1.1),
+    baseRefName: 'main',
+    repository: {
+      nameWithOwner: 'o/r',
+      defaultBranchRef: { name: 'main' },
+      latestRelease: releasedAt && { tagName: 'v2', url: 'u', publishedAt: releasedAt },
+    },
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'FAILURE' }, checkSuites: { nodes: [
+      suite('push', 'Build, Test and Deploy', 'FAILURE', { updatedAt: failedAt }),
+    ] } },
+  }), ME));
+
+  const shipped = merged(ago(0.5));
+  assert.equal(shipped.pipelineOutcome, 'done');
+  assert.equal(shipped.pipelineFailure, null);
+  assert.deepEqual(shipped.reasons, []);
+
+  assert.equal(merged(null).pipelineOutcome, 'failed', 'no release since: still to fix');
+  assert.equal(merged(ago(1.05)).pipelineOutcome, 'failed', 'a release cut before the failure need not carry the merge');
 });
