@@ -310,6 +310,14 @@ says why and leaves the command to you:
   and the one to go back to the previous commit.
 - **`PR_RADAR_SELF_RESTART=0`**, for a radar that `launchd` or `pm2` keeps running: it
   pulls and leaves the restart to them, rather than starting a second server.
+- **A pull not restarted on** (dependencies, `PR_RADAR_SELF_RESTART=0`) stays on the banner,
+  in every tab and after a reload, until the server restarts.
+
+The new server starts with the environment the old one was launched with, so `.env` is read
+afresh. It runs detached from the terminal that started the old one: Ctrl+C there no longer
+reaches it, and its pid is in the log (`kill <pid>`). If it cannot start, the old one takes
+the port back. Every `git` call has a 60 s ceiling and never prompts for a password or a
+passphrase.
 
 Like the Claude session button, the endpoint only answers a JSON request to `localhost`
 from this machine: another site open in the browser cannot set it off.

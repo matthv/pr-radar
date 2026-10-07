@@ -1358,6 +1358,7 @@ const I18N = {
     updateRefused_diverged: 'Pas mis à jour : ce dossier a des commits que main n’a pas.',
     updateRefused_git: 'Pas mis à jour : git a échoué ({message}).',
     updateRefused_demo: 'En démo, rien n’est mis à jour.',
+    updateRefused_current: 'Rien à récupérer : ce dossier est déjà sur la dernière version.',
     updateRefused_other: 'Pas mis à jour : {message}.',
     updateBlocked: 'Code récupéré ({from} → {to}), mais les dépendances ou la version de Node ont changé : lance {command}, puis redémarre le serveur.',
     updateNoRestart: 'Code récupéré ({from} → {to}). Redémarre le serveur pour l’appliquer.',
@@ -1539,6 +1540,7 @@ const I18N = {
     updateRefused_diverged: 'Not updated: this folder has commits main does not.',
     updateRefused_git: 'Not updated: git failed ({message}).',
     updateRefused_demo: 'In the demo, nothing is updated.',
+    updateRefused_current: 'Nothing to pull: this folder is already on the latest version.',
     updateRefused_other: 'Not updated: {message}.',
     updateBlocked: 'Code pulled ({from} → {to}), but the dependencies or the Node version changed: run {command}, then restart the server.',
     updateNoRestart: 'Code pulled ({from} → {to}). Restart the server to apply it.',
@@ -2796,7 +2798,7 @@ function updateStateHtml(status) {
   if (kind === 'timeout') {
     return line(t('updateTimeout', { start: code('node server.js'), back: code(`git reset --hard ${status.from}`) }), true);
   }
-  const reason = ['branch', 'dirty', 'diverged', 'git', 'demo'].includes(result.reason) ? result.reason : 'other';
+  const reason = ['branch', 'dirty', 'diverged', 'git', 'demo', 'current'].includes(result.reason) ? result.reason : 'other';
   return line(t(`updateRefused_${reason}`, {
     branch: escapeHtml(result.branch ?? ''),
     message: escapeHtml(result.message ?? result.error ?? ''),
@@ -2814,17 +2816,27 @@ function takeUpdateNotice() {
   }
 }
 
+// The server remembers a pull it did not restart on, so every tab and every reload still
+// says what is left to do, until the restart that applies it.
+function currentUpdateStatus(update) {
+  if (state.updateStatus) return state.updateStatus;
+  const pending = update?.pending;
+  if (!pending || state.pendingDismissed === pending.to) return null;
+  return { kind: pending.blockers?.length ? 'blocked' : 'no-restart', result: pending };
+}
+
 function renderUpdate(update) {
   const box = el('update');
   const dismissed = store.get('updateDismissed', null);
+  const status = currentUpdateStatus(update);
   // Once pulled the clone is no longer behind, but what is left to do still has to show.
-  if (state.updateStatus && !update?.behind) {
-    box.innerHTML = updateStateHtml(state.updateStatus).replace('class="update-state"', 'class="update-state notice"')
+  if (status && !update?.behind) {
+    box.innerHTML = updateStateHtml(status).replace('class="update-state', 'class="update-state notice')
       + `<button type="button" class="notes-act dismiss" data-update-notice-dismiss aria-label="${escapeHtml(t('updateDismiss'))}">×</button>`;
     box.hidden = false;
     return;
   }
-  if (!update?.behind || (dismissed === update.latest && !state.updateStatus)) {
+  if (!update?.behind || (dismissed === update.latest && !status)) {
     box.hidden = true;
     return;
   }
@@ -2833,13 +2845,13 @@ function renderUpdate(update) {
   box.innerHTML = `<b>${t('updateTitle')}</b>`
     + `<span>${tn('updateBehind', update.behind)}</span>`
     + `<span class="update-actions">`
-    + `<button type="button" class="update-apply" data-update-apply${state.updateStatus?.kind === 'updating' ? ' disabled' : ''}>`
+    + `<button type="button" class="update-apply" data-update-apply${['updating', 'blocked', 'no-restart'].includes(status?.kind) ? ' disabled' : ''}>`
     + `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg>`
     + `${t('updateApply')}</button>`
     + `<button type="button" class="notes-act dismiss" data-update-dismiss="${escapeHtml(update.latest)}"`
     + ` title="${escapeHtml(t('updateDismiss'))}" aria-label="${escapeHtml(t('updateDismiss'))}">×</button>`
     + `</span>`
-    + updateStateHtml(state.updateStatus)
+    + updateStateHtml(status)
     + `<ul class="update-titles">${titles.join('')}${more > 0 ? `<li>${t('updateMore', { n: more })}</li>` : ''}</ul>`
     + `<span class="update-manual">${t('updateHow', { command: '<code>git pull</code>' })}`
     + `<button type="button" class="notes-act" data-update-copy>${t('updateCopy')}</button></span>`;
@@ -2852,12 +2864,16 @@ function setUpdateStatus(status) {
 }
 
 const RESTART_WAIT_MS = 30_000;
+// Above the server's own git ceiling, so a slow fetch answers before the page gives up.
+const UPDATE_REQUEST_MS = 90_000;
 
 async function applyUpdate() {
   setUpdateStatus({ kind: 'updating' });
   let result;
   try {
-    const response = await fetch('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await fetch('/api/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(UPDATE_REQUEST_MS),
+    });
     result = await response.json();
   } catch (error) {
     setUpdateStatus({ kind: 'refused', result: { reason: 'other', message: error.message } });
@@ -3000,6 +3016,7 @@ document.addEventListener('click', event => {
     return;
   }
   if (event.target.closest('[data-update-notice-dismiss]')) {
+    state.pendingDismissed = state.data?.update?.pending?.to ?? null;
     setUpdateStatus(null);
     return;
   }

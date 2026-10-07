@@ -8,9 +8,24 @@ const execFile = promisify(require('node:child_process').execFile);
 // asked from the page, and only when that is safe (see `apply`).
 const HOURS = Number(process.env.PR_RADAR_UPDATE_HOURS ?? 2);
 
+// A git waiting on a passphrase or a password would hang the request, and the page with
+// it: no prompt, and a ceiling on every call.
+const GIT_ENV = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
+};
+const GIT_TIMEOUT_MS = 60_000;
+
 async function git(...args) {
-  const { stdout } = await execFile('git', args, { cwd: __dirname, encoding: 'utf8' });
+  const { stdout } = await execFile('git', args, { cwd: __dirname, encoding: 'utf8', env: GIT_ENV, timeout: GIT_TIMEOUT_MS });
   return stdout;
+}
+
+// execFile's message starts with "Command failed: git …"; what git said is in stderr.
+function reasonOf(error) {
+  const lines = `${error?.stderr ?? ''}\n${error?.message ?? ''}`.split('\n').map(line => line.trim());
+  return lines.find(line => line && !line.startsWith('Command failed')) ?? 'git failed';
 }
 
 // Only "behind" counts. Being ahead — commits not pushed yet — is the author's normal
@@ -59,7 +74,20 @@ function start() {
   setInterval(refresh, HOURS * 60 * 60 * 1000).unref();
 }
 
-const status = () => latest;
+// Pulled, but this process still runs the code it started with: shown until a restart,
+// which is the only thing that clears it.
+let pending = null;
+
+const status = () => (latest || pending ? { ...(latest ?? { behind: 0, titles: [] }), pending } : null);
+
+function markPending(result) {
+  pending = { from: result.from, to: result.to, blockers: result.blockers, newEnvVars: result.newEnvVars };
+}
+
+// The clone is at origin/main now; no need to ask the network again to say so.
+function settle(to) {
+  if (latest) latest = { ...latest, behind: 0, current: to.slice(0, 7), latest: to, titles: [] };
+}
 
 // A clone someone works in is theirs: local edits, another branch or a history of its own
 // are never pulled over, the page says why and leaves the command to them.
@@ -75,15 +103,17 @@ const LOCKFILES = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'yarn.loc
 // The tool has no dependency today. The day it gets one, restarting on the new code before
 // `npm install` would crash it, so the pull happens and the restart is left to the person.
 function blockers(oldPackage, newPackage, changedFiles = []) {
+  // An unreadable package.json is not "no dependencies": restarting on it is the risk.
   const parse = text => {
     try {
       return JSON.parse(text || '{}');
     } catch {
-      return {};
+      return null;
     }
   };
   const before = parse(oldPackage);
   const after = parse(newPackage);
+  if (!before || !after) return ['dependencies'];
   const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const found = [];
   if (!same(before.dependencies, after.dependencies) || changedFiles.some(file => LOCKFILES.has(file))) {
@@ -102,8 +132,10 @@ function newEnvVars(oldExample, newExample) {
   return [...names(newExample)].filter(name => !before.has(name));
 }
 
-async function apply(exec = git, { pulled = refresh } = {}) {
-  const read = (...args) => exec(...args).then(String, () => '');
+async function apply(exec = git, { pulled = settle } = {}) {
+  // Only .env.example may be missing, at a commit older than the file; every other read
+  // failing stops the update before anything is touched.
+  const readExample = ref => exec('show', `${ref}:.env.example`).then(String, () => '');
   await exec('fetch', '--quiet', 'origin', 'main');
   const [branch, dirty, from, to] = await Promise.all([
     exec('rev-parse', '--abbrev-ref', 'HEAD'),
@@ -111,19 +143,29 @@ async function apply(exec = git, { pulled = refresh } = {}) {
     exec('rev-parse', 'HEAD'),
     exec('rev-parse', 'origin/main'),
   ]).then(values => values.map(value => String(value).trim()));
-  const fastForward = await exec('merge-base', '--is-ancestor', 'HEAD', 'origin/main').then(() => true, () => false);
+  // Exit code 1 is git's "not an ancestor"; anything else is an error, not a divergence.
+  const fastForward = await exec('merge-base', '--is-ancestor', 'HEAD', 'origin/main').then(
+    () => true,
+    error => {
+      if (error.code === 1) return false;
+      throw error;
+    },
+  );
+  // Already there: a second click after a pull that asked for `npm install` would otherwise
+  // compare a package.json with itself, find nothing, and restart without the dependencies.
+  if (from === to) return { ok: false, reason: 'current' };
   const refused = refusal({ branch, dirty: dirty !== '', fastForward });
   if (refused) return { ok: false, ...refused };
 
   const [oldPackage, newPackage, changed, oldExample, newExample] = await Promise.all([
-    read('show', 'HEAD:package.json'),
-    read('show', 'origin/main:package.json'),
-    read('diff', '--name-only', 'HEAD', 'origin/main'),
-    read('show', 'HEAD:.env.example'),
-    read('show', 'origin/main:.env.example'),
-  ]);
+    exec('show', 'HEAD:package.json'),
+    exec('show', 'origin/main:package.json'),
+    exec('diff', '--name-only', 'HEAD', 'origin/main'),
+    readExample('HEAD'),
+    readExample('origin/main'),
+  ]).then(values => values.map(String));
   await exec('merge', '--ff-only', '--quiet', 'origin/main');
-  await pulled();
+  await pulled(to);
   const blocked = blockers(oldPackage, newPackage, changed.split('\n').map(line => line.trim()).filter(Boolean));
   return {
     ok: true,
@@ -135,4 +177,4 @@ async function apply(exec = git, { pulled = refresh } = {}) {
   };
 }
 
-module.exports = { HOURS, start, status, check, summarize, refusal, blockers, newEnvVars, apply };
+module.exports = { HOURS, start, status, check, summarize, refusal, blockers, newEnvVars, apply, reasonOf, markPending };

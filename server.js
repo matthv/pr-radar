@@ -7,6 +7,10 @@ const os = require('node:os');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 
+// The environment as launched, before .env: a restart from the page passes this one on, so
+// the new process reads .env afresh instead of inheriting its old values as shell ones.
+const LAUNCH_ENV = { ...process.env };
+
 // Variables already exported in the shell keep precedence over the file.
 try {
   process.loadEnvFile(path.join(__dirname, '.env'));
@@ -499,11 +503,13 @@ const server = http.createServer(async (req, res) => {
     try {
       result = await update.apply();
     } catch (error) {
-      return json(res, 200, { ok: false, reason: 'git', message: error.message.split('\n')[0] });
+      console.error(`update failed: ${error.message}`);
+      return json(res, 200, { ok: false, reason: 'git', message: update.reasonOf(error) });
     }
     const restart = result.ok && result.restart && SELF_RESTART;
+    if (result.ok && !restart) update.markPending(result);
     json(res, 200, { ...result, restart, selfRestart: SELF_RESTART });
-    if (restart) res.on('finish', relaunch);
+    if (restart) res.on('finish', () => relaunch(result));
     return;
   }
 
@@ -522,13 +528,24 @@ const server = http.createServer(async (req, res) => {
 
 // The port has to be free before the new process binds it, hence close first. Detached, so
 // the new server outlives this one; the same streams, so its log goes where this one's went.
-function relaunch() {
+// This process only exits once the new one is running; if it cannot start (node moved by
+// an upgrade, say), this one takes the port back and keeps serving the old code.
+function relaunch(result) {
   console.log('update: restarting on the new code');
   server.close(() => {
-    spawn(process.execPath, process.argv.slice(1), {
-      cwd: __dirname, env: process.env, detached: true, stdio: 'inherit',
-    }).unref();
-    process.exit(0);
+    const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
+      cwd: __dirname, env: LAUNCH_ENV, detached: true, stdio: 'inherit',
+    });
+    child.once('error', error => {
+      console.error(`update: could not start the new server (${error.message}), still on the old code`);
+      update.markPending(result);
+      server.listen(PORT);
+    });
+    child.once('spawn', () => {
+      console.log(`update: new server started (pid ${child.pid}), detached from this terminal; stop it with kill ${child.pid}`);
+      child.unref();
+      process.exit(0);
+    });
   });
   server.closeAllConnections();
 }
