@@ -1,19 +1,30 @@
 'use strict';
 
 const { promisify } = require('node:util');
-const execFile = promisify(require('node:child_process').execFile);
+const { execFile: execFileCb, execFileSync } = require('node:child_process');
+const execFile = promisify(execFileCb);
 
 // The commit is the version: the tool has no other. Every few hours the server compares
 // its own HEAD with origin/main and the page says so when it is behind. It pulls only when
 // asked from the page, and only when that is safe (see `apply`).
 const HOURS = Number(process.env.PR_RADAR_UPDATE_HOURS ?? 2);
 
+function sshConfigured() {
+  if (process.env.GIT_SSH_COMMAND || process.env.GIT_SSH) return true;
+  try {
+    return execFileSync('git', ['config', '--get', 'core.sshCommand'], { cwd: __dirname, encoding: 'utf8' }).trim() !== '';
+  } catch {
+    return false;
+  }
+}
+
 // A git waiting on a passphrase or a password would hang the request, and the page with
-// it: no prompt, and a ceiling on every call.
+// it: no prompt, and a ceiling on every call. An ssh command of one's own (a key per
+// GitHub account, say) is left alone: replacing it would lose the key.
 const GIT_ENV = {
   ...process.env,
   GIT_TERMINAL_PROMPT: '0',
-  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
+  ...(sshConfigured() ? {} : { GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' }),
 };
 const GIT_TIMEOUT_MS = 60_000;
 
@@ -24,6 +35,7 @@ async function git(...args) {
 
 // execFile's message starts with "Command failed: git …"; what git said is in stderr.
 function reasonOf(error) {
+  if (error?.killed) return `git gave no answer within ${GIT_TIMEOUT_MS / 1000} s (network or ssh)`;
   const lines = `${error?.stderr ?? ''}\n${error?.message ?? ''}`.split('\n').map(line => line.trim());
   return lines.find(line => line && !line.startsWith('Command failed')) ?? 'git failed';
 }
@@ -80,8 +92,15 @@ let pending = null;
 
 const status = () => (latest || pending ? { ...(latest ?? { behind: 0, titles: [] }), pending } : null);
 
+// Two pulls without a restart in between add up: the first one's npm install is still owed.
 function markPending(result) {
-  pending = { from: result.from, to: result.to, blockers: result.blockers, newEnvVars: result.newEnvVars };
+  const union = (a = [], b = []) => [...new Set([...a, ...b])];
+  pending = {
+    from: pending?.from ?? result.from,
+    to: result.to,
+    blockers: union(pending?.blockers, result.blockers),
+    newEnvVars: union(pending?.newEnvVars, result.newEnvVars),
+  };
 }
 
 // The clone is at origin/main now; no need to ask the network again to say so.
@@ -135,7 +154,10 @@ function newEnvVars(oldExample, newExample) {
 async function apply(exec = git, { pulled = settle } = {}) {
   // Only .env.example may be missing, at a commit older than the file; every other read
   // failing stops the update before anything is touched.
-  const readExample = ref => exec('show', `${ref}:.env.example`).then(String, () => '');
+  const readExample = ref => exec('show', `${ref}:.env.example`).then(String, error => {
+    if (/does not exist|exists on disk, but not in/.test(error.stderr ?? '')) return '';
+    throw error;
+  });
   await exec('fetch', '--quiet', 'origin', 'main');
   const [branch, dirty, from, to] = await Promise.all([
     exec('rev-parse', '--abbrev-ref', 'HEAD'),
@@ -166,7 +188,12 @@ async function apply(exec = git, { pulled = settle } = {}) {
   ]).then(values => values.map(String));
   await exec('merge', '--ff-only', '--quiet', 'origin/main');
   await pulled(to);
-  const blocked = blockers(oldPackage, newPackage, changed.split('\n').map(line => line.trim()).filter(Boolean));
+  // HEAD may already hold a package.json pulled earlier and never installed: what that pull
+  // asked for still stands, whatever this one compares.
+  const blocked = [...new Set([
+    ...(pending?.blockers ?? []),
+    ...blockers(oldPackage, newPackage, changed.split('\n').map(line => line.trim()).filter(Boolean)),
+  ])];
   return {
     ok: true,
     from: from.slice(0, 7),

@@ -508,8 +508,15 @@ const server = http.createServer(async (req, res) => {
     }
     const restart = result.ok && result.restart && SELF_RESTART;
     if (result.ok && !restart) update.markPending(result);
+    console.log(`update: ${result.ok ? `pulled ${result.from} → ${result.to}, ${restart ? 'restarting' : 'restart left to you'}` : `refused (${result.reason})`}`);
+    // On close, not on finish: a tab closed or reloaded meanwhile must not leave a pulled
+    // clone running its old code with nothing saying so.
+    if (restart) {
+      // Already gone (the tab closed while git ran): no close event is coming.
+      if (res.destroyed || req.socket.destroyed) setImmediate(() => relaunch(result));
+      else res.once('close', () => relaunch(result));
+    }
     json(res, 200, { ...result, restart, selfRestart: SELF_RESTART });
-    if (restart) res.on('finish', () => relaunch(result));
     return;
   }
 
@@ -539,7 +546,11 @@ function relaunch(result) {
     child.once('error', error => {
       console.error(`update: could not start the new server (${error.message}), still on the old code`);
       update.markPending(result);
-      server.listen(PORT);
+      server.once('error', listenError => {
+        console.error(`update: could not take port ${PORT} back either (${listenError.message}); the radar is down, start it with: node server.js`);
+        process.exit(1);
+      });
+      server.listen(PORT, () => console.log(`update: back on the old code, port ${PORT}`));
     });
     child.once('spawn', () => {
       console.log(`update: new server started (pid ${child.pid}), detached from this terminal; stop it with kill ${child.pid}`);

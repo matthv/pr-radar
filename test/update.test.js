@@ -63,6 +63,7 @@ const gitError = (code, stderr) => Object.assign(new Error(`Command failed: git\
 function fakeGit({
   branch = 'main', dirty = '', fastForward = true, newPackage = '{}', changed = '', fetchFails = false,
   head = 'aaaaaaa1111', mergeBaseError = null, oldExample = 'A=1\n', newExample = 'A=1\n', noOldExample = false,
+  mergeFails = false, exampleFails = false,
 } = {}) {
   const calls = [];
   const exec = async (...args) => {
@@ -80,8 +81,10 @@ function fakeGit({
     if (line === 'rev-parse origin/main') return 'bbbbbbb2222\n';
     if (command === 'status') return dirty;
     if (line === 'show origin/main:package.json') return newPackage;
+    if (command === 'merge' && mergeFails) throw gitError(128, 'error: Your local changes to the following files would be overwritten by merge');
     if (line === 'show HEAD:.env.example') {
       if (noOldExample) throw gitError(128, "fatal: path '.env.example' does not exist in 'HEAD'");
+      if (exampleFails) throw gitError(128, 'fatal: unable to read 1234abcd');
       return oldExample;
     }
     if (line === 'show origin/main:.env.example') return newExample;
@@ -156,4 +159,45 @@ test('reasonOf: what git said, not the command line', () => {
   assert.equal(reasonOf(gitError(128, '\nfatal: unable to access: Could not resolve host: github.com\n')), 'fatal: unable to access: Could not resolve host: github.com');
   assert.equal(reasonOf(new Error('spawn git ENOENT')), 'spawn git ENOENT');
   assert.equal(reasonOf(gitError(1, '')), 'git failed');
+});
+
+test('apply: a failed merge rejects, and the clone is not settled', async () => {
+  let settled = false;
+  const { exec } = fakeGit({ mergeFails: true });
+  await assert.rejects(apply(exec, { pulled: async () => { settled = true; } }), /overwritten/);
+  assert.equal(settled, false);
+});
+
+test('apply: only a missing .env.example is tolerated, not any git failure', async () => {
+  const { exec, calls } = fakeGit({ exampleFails: true });
+  await assert.rejects(apply(exec, noRefresh), /unable to read/);
+  assert.equal(merged(calls), false);
+});
+
+test('reasonOf: a git killed by the ceiling says so', () => {
+  assert.match(reasonOf(Object.assign(new Error('Command failed: git fetch'), { killed: true, signal: 'SIGTERM', stderr: '' })), /no answer within 60 s/);
+});
+
+// The pending pull lives in the module: each of these starts from a fresh one.
+const freshUpdate = () => {
+  delete require.cache[require.resolve('../update')];
+  return require('../update');
+};
+
+test('pending: a pull not restarted on shows in the status, and two of them add up', () => {
+  const fresh = freshUpdate();
+  fresh.markPending({ from: 'a', to: 'b', blockers: ['dependencies'], newEnvVars: ['X'], restart: false });
+  fresh.markPending({ from: 'b', to: 'c', blockers: [], newEnvVars: ['Y'], restart: false });
+  assert.deepEqual(fresh.status(), {
+    behind: 0, titles: [], pending: { from: 'a', to: 'c', blockers: ['dependencies'], newEnvVars: ['X', 'Y'] },
+  });
+});
+
+test('pending: an npm install owed by an earlier pull still stops the restart', async () => {
+  const fresh = freshUpdate();
+  fresh.markPending({ from: 'a', to: 'b', blockers: ['dependencies'], newEnvVars: [], restart: false });
+  const { exec, calls } = fakeGit();
+  const result = await fresh.apply(exec, noRefresh);
+  assert.ok(merged(calls));
+  assert.deepEqual([result.blockers, result.restart], [['dependencies'], false]);
 });

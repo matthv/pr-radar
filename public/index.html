@@ -1359,6 +1359,8 @@ const I18N = {
     updateRefused_git: 'Pas mis à jour : git a échoué ({message}).',
     updateRefused_demo: 'En démo, rien n’est mis à jour.',
     updateRefused_current: 'Rien à récupérer : ce dossier est déjà sur la dernière version.',
+    updateUnknown: 'Pas de réponse du serveur : la mise à jour a peut-être eu lieu. Recharge la page dans une minute pour voir où elle en est.',
+    updateNotRestarted: 'Code récupéré, mais le nouveau serveur n’a pas pu démarrer : le radar tourne toujours sur l’ancienne version.',
     updateRefused_other: 'Pas mis à jour : {message}.',
     updateBlocked: 'Code récupéré ({from} → {to}), mais les dépendances ou la version de Node ont changé : lance {command}, puis redémarre le serveur.',
     updateNoRestart: 'Code récupéré ({from} → {to}). Redémarre le serveur pour l’appliquer.',
@@ -1541,6 +1543,8 @@ const I18N = {
     updateRefused_git: 'Not updated: git failed ({message}).',
     updateRefused_demo: 'In the demo, nothing is updated.',
     updateRefused_current: 'Nothing to pull: this folder is already on the latest version.',
+    updateUnknown: 'No answer from the server: the update may have happened. Reload the page in a minute to see where it stands.',
+    updateNotRestarted: 'Code pulled, but the new server could not start: the radar still runs the previous version.',
     updateRefused_other: 'Not updated: {message}.',
     updateBlocked: 'Code pulled ({from} → {to}), but the dependencies or the Node version changed: run {command}, then restart the server.',
     updateNoRestart: 'Code pulled ({from} → {to}). Restart the server to apply it.',
@@ -2792,6 +2796,8 @@ function updateStateHtml(status) {
     : '';
   const line = (text, bad = false) => `<span class="update-state${bad ? ' bad' : ''}" role="status">${text}</span>`;
   if (kind === 'updating') return line(t('updateApplying'));
+  if (kind === 'unknown') return line(t('updateUnknown'), true);
+  if (kind === 'not-restarted') return line(t('updateNotRestarted'), true);
   if (kind === 'done') return line(t('updateDone', range) + envVars);
   if (kind === 'blocked') return line(t('updateBlocked', { ...range, command: code('npm install') }) + envVars, true);
   if (kind === 'no-restart') return line(t('updateNoRestart', range) + envVars);
@@ -2870,13 +2876,16 @@ const UPDATE_REQUEST_MS = 90_000;
 async function applyUpdate() {
   setUpdateStatus({ kind: 'updating' });
   let result;
+  let oldBoot = bootId;
   try {
     const response = await fetch('/api/update', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(UPDATE_REQUEST_MS),
     });
+    oldBoot = response.headers.get('x-pr-radar-boot') ?? bootId;
     result = await response.json();
-  } catch (error) {
-    setUpdateStatus({ kind: 'refused', result: { reason: 'other', message: error.message } });
+  } catch {
+    // The server may have pulled and restarted all the same: say so rather than "not updated".
+    setUpdateStatus({ kind: 'unknown' });
     return;
   }
   if (!result.ok) return setUpdateStatus({ kind: 'refused', result });
@@ -2895,8 +2904,14 @@ async function applyUpdate() {
       // Not /api/prs: a fresh server answers it only after a full search, which can outlast the wait.
       const response = await fetch('/api/boot');
       const boot = response.headers.get('x-pr-radar-boot');
-      if (response.ok && boot && boot !== bootId) {
+      if (response.ok && boot && boot !== oldBoot) {
         location.reload();
+        return;
+      }
+      // The old server answering again: the new one could not start and it took the port back.
+      if (response.ok && boot === oldBoot) {
+        setUpdateStatus({ kind: 'not-restarted' });
+        load();
         return;
       }
     } catch {

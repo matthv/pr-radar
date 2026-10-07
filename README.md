@@ -315,9 +315,13 @@ says why and leaves the command to you:
 
 The new server starts with the environment the old one was launched with, so `.env` is read
 afresh. It runs detached from the terminal that started the old one: Ctrl+C there no longer
-reaches it, and its pid is in the log (`kill <pid>`). If it cannot start, the old one takes
-the port back. Every `git` call has a 60 s ceiling and never prompts for a password or a
-passphrase.
+reaches it, and its pid is in the log (`kill <pid>`). If the new process cannot be
+launched at all, the old one takes the port back and keeps serving; a new server that
+crashes while starting is only caught by the page, which then gives the commands. Every
+`git` call has a 60 s ceiling and never prompts for a password (and, unless you set an ssh
+command of your own, for a passphrase). Two pulls without a restart add up: an
+`npm install` the first one asked for is still asked for. The webhook starts from a fresh
+picture after a restart, so a change during those seconds is not sent.
 
 Like the Claude session button, the endpoint only answers a JSON request to `localhost`
 from this machine: another site open in the browser cannot set it off.
