@@ -1130,3 +1130,43 @@ test('my PR: a release published after its failed pipeline settles it', () => {
   assert.equal(merged(null).pipelineOutcome, 'failed', 'no release since: still to fix');
   assert.equal(merged(ago(1.05)).pipelineOutcome, 'failed', 'a release cut before the failure need not carry the merge');
 });
+
+// A :pr-radar: reaction on a Slack announcement: no search found the PR, so it comes in as
+// an extra id, claimed. Whose PR it is decides the side, the usual rules decide the rest.
+const claimContext = (id, extra = {}) => ({
+  me: ME, org: 'o', maxAgeDays: 60, warnings: [], cutoff: Date.now() - 60 * DAY, mergedCutoff: Date.now() - DAY,
+  stale: new Set(), mineSet: new Set(), reviewSet: new Set(), requestedSet: new Set(), assignedSet: new Set(),
+  mergedReviewedIds: new Set(), extraIds: new Set([id]), claimedSet: new Set([id]), ...extra,
+});
+
+test('board: a PR claimed on Slack is a review I owe, and says why it is there', () => {
+  const id = 'PR_C';
+  const board = shapeBoard(new Map([[id, node({ id, author: user('nbouliol') })]]), claimContext(id));
+  assert.equal(board.reviews.length, 1);
+  const [card] = board.reviews;
+  assert.equal(card.claimed, true);
+  assert.equal(card.reviewOwedByMe, true);
+  assert.deepEqual(card.reasons.map(r => r.kind), ['to-review']);
+});
+
+test('board: a claimed PR I already reviewed follows the usual rules', () => {
+  const id = 'PR_C';
+  const reviewed = node({
+    id, author: user('nbouliol'), reviews: { nodes: [{ author: user(ME), state: 'APPROVED', submittedAt: ago(0.1), url: 'u', body: '' }] },
+  });
+  const [card] = shapeBoard(new Map([[id, reviewed]]), claimContext(id)).reviews;
+  assert.equal(card.claimed, true);
+  assert.equal(card.reasons.some(r => r.kind === 'to-review'), false, 'nothing owed once reviewed');
+});
+
+test('board: claiming my own PR keeps it on my side', () => {
+  const id = 'PR_C';
+  const board = shapeBoard(new Map([[id, node({ id, author: user(ME) })]]), claimContext(id));
+  assert.deepEqual([board.mine.length, board.reviews.length], [1, 0]);
+});
+
+test('board: a PR no longer claimed and found by no search leaves the board', () => {
+  const id = 'PR_C';
+  const board = shapeBoard(new Map([[id, node({ id, author: user('nbouliol') })]]), claimContext(id, { extraIds: new Set(), claimedSet: new Set() }));
+  assert.deepEqual([board.mine.length, board.reviews.length], [0, 0]);
+});

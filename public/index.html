@@ -1473,6 +1473,9 @@ const I18N = {
     pillWaitingReply: '{n} en attente de réponse',
     pillApproved: 'approuvée',
     pillTakenOver: 'reprise de {author}',
+    pillClaimed: 'prise sur Slack',
+    pillClaimedTitle: 'Tu as mis ta réaction sur son annonce : retire-la pour la rendre.',
+    claimsFailed: 'PRs prises sur Slack indisponibles ({message}) : les dernières connues restent affichées.',
     pillToReview: 'à reviewer',
     pillAnswers_one: '{n} réponse pour moi',
     pillAnswers_many: '{n} réponses pour moi',
@@ -1658,6 +1661,9 @@ const I18N = {
     pillWaitingReply: '{n} awaiting a reply',
     pillApproved: 'approved',
     pillTakenOver: 'taken over from {author}',
+    pillClaimed: 'claimed on Slack',
+    pillClaimedTitle: 'Your reaction is on its announcement: remove it to hand the PR back.',
+    claimsFailed: 'PRs claimed on Slack unavailable ({message}): the last known ones stay on the board.',
     pillToReview: 'to review',
     pillAnswers_one: '{n} reply for me',
     pillAnswers_many: '{n} replies for me',
@@ -2343,6 +2349,7 @@ function reviewPills(pr) {
   // verdict pill ("I approved") still said something once merged; it never said whether
   // the release had landed, so a card could only breathe amber with no word for why.
   const pills = pr.merged ? mergeOutcomePills(pr) : [];
+  if (pr.claimed) pills.push(pill('', t('pillClaimed'), t('pillClaimedTitle')));
   if (pr.reviewOwedByMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
@@ -2698,7 +2705,8 @@ function render() {
   const warnings = data.warnings ?? [];
   const slackWarning = warnings.find(w => w.source === 'slack');
   const claudeWarning = warnings.find(w => w.source === 'claude');
-  const sources = [...new Set(warnings.filter(w => w.source !== 'slack' && w.source !== 'claude').map(w => w.source))];
+  const claimWarning = warnings.find(w => w.source === 'slack-claims');
+  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims'].includes(w.source)).map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -2707,6 +2715,7 @@ function render() {
       : t('slackFailed', { message: slackWarning.message.replace(/^slack:\s*/, '') }));
   }
   if (claudeWarning) lines.push(t('claudeScanFailed', { message: claudeWarning.message }));
+  if (claimWarning) lines.push(t('claimsFailed', { message: claimWarning.message.replace(/^slack:\s*/, '') }));
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
 

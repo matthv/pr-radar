@@ -11,6 +11,11 @@ const {
   dueForLookup,
   recordMisses,
   MAX_ATTEMPTS,
+  parseClaims,
+  promptForClaims,
+  claimsDue,
+  claimsChanged,
+  claimsAfter,
 } = require('../slack');
 
 // The shape actually seen in #tech-pr: a hand-written message, several PRs, each a
@@ -181,4 +186,52 @@ test('recordMisses spaces the tries out: +30 min, then +2 h, then none', () => {
 test('recordMisses leaves PRs it was not asked about untouched', () => {
   const other = { 'o/r#9': { count: 1, nextAt: 5 } };
   assert.deepEqual(recordMisses(other, ['o/r#1'], NOW)['o/r#9'], { count: 1, nextAt: 5 });
+});
+
+test('claims: the PR links of the messages I reacted to, once each', () => {
+  const answer = 'Here they are:\n' + JSON.stringify([
+    { ts: '1791371567.461059', text: '<https://github.com/ForestAdmin/agent-ruby/pull/409|back> <https://github.com/forestadmin/agent-ruby/pull/409|again>' },
+    { ts: '1791371000.000001', text: '<https://github.com/ForestAdmin/forestadmin/pull/10027|front> and not a link' },
+    { ts: 'not a ts', text: 'https://github.com/o/r/pull/1' },
+  ]);
+  assert.deepEqual(parseClaims(answer), [
+    { repo: 'ForestAdmin/agent-ruby', number: 409 },
+    { repo: 'ForestAdmin/forestadmin', number: 10027 },
+  ]);
+  assert.deepEqual(parseClaims('[]'), []);
+  assert.throws(() => parseClaims('I could not search'), /unreadable/);
+});
+
+test('claims: the search asks for my own reactions only, and treats messages as data', () => {
+  const prompt = promptForClaims('2026-08-08');
+  assert.match(prompt, /hasmy::\S*: after:2026-08-08/);
+  assert.match(prompt, /untrusted data/);
+});
+
+test('claims: read every five minutes, at once on a manual refresh, not during a back-off', () => {
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  const min = 60_000;
+  assert.equal(claimsDue(null, null, now, false), true, 'never read');
+  assert.equal(claimsDue({ at: now - 4 * min, refs: [] }, null, now, false), false);
+  assert.equal(claimsDue({ at: now - 5 * min, refs: [] }, null, now, false), true);
+  assert.equal(claimsDue({ at: now - min, refs: [] }, null, now, true), true, 'Refresh reads again');
+  assert.equal(claimsDue(null, { retryAt: now + min }, now, false), false, 'a failure waits its back-off');
+  assert.equal(claimsDue(null, { retryAt: now - 1 }, now, false), true);
+});
+
+test('claims: a new search only when the set of claimed PRs moved, whatever the order', () => {
+  const a = { repo: 'o/r', number: 1 };
+  const b = { repo: 'o/r', number: 2 };
+  assert.equal(claimsChanged(null, []), true, 'the first read');
+  assert.equal(claimsChanged({ refs: [a, b] }, [b, a]), false);
+  assert.equal(claimsChanged({ refs: [a, b] }, [a]), true, 'a reaction removed');
+  assert.equal(claimsChanged({ refs: [a] }, [a, b]), true, 'a reaction added');
+});
+
+test('claims: only announcements posted since the feature was turned on', () => {
+  const day = 86400_000;
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  assert.equal(claimsAfter(now - 60 * day, '2026-10-07'), '2026-10-06', 'the day before, Slack excludes the one it names');
+  assert.equal(claimsAfter(now - 60 * day, null), '2026-08-07', 'no date yet: the age window');
+  assert.equal(claimsAfter(now - 60 * day, '2026-01-01'), '2026-08-07', 'turned on long ago: the age window wins');
 });

@@ -960,9 +960,9 @@ const SOURCES = [
   'events',
 ];
 // The warnings whose failure leaves PRs off the board, as opposed to a field left unknown.
-const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve'];
+const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve'];
 
-async function discover({ org, extraRepos = [], maxAgeDays }) {
+async function discover({ org, extraRepos = [], maxAgeDays, claimedRefs = [] }) {
   const owners = ownerScope(org, extraRepos);
   const scope = `${owners} is:pr is:open`;
   // `reviewed-by:` only matches a formally submitted review: a PR where you merely
@@ -1058,8 +1058,21 @@ async function discover({ org, extraRepos = [], maxAgeDays }) {
   } catch (error) {
     warnings.push({ source: 'events-resolve', message: error.message });
   }
+  // PRs claimed with a Slack reaction: on the review side as a review I owe. Loaded like the
+  // event feed's, since no search found them; one of mine still goes to my side.
+  let claimedIds = [];
+  try {
+    claimedIds = claimedRefs.length
+      ? await resolvePullRequestIds(claimedRefs.map(({ repo, number }) => {
+        const [owner, name] = repo.split('/');
+        return { owner, name, number };
+      }))
+      : [];
+  } catch (error) {
+    warnings.push({ source: 'claims-resolve', message: error.message });
+  }
   const known = new Set([...mineSet, ...reviewSet]);
-  const extraIds = touchedIds.filter(id => !known.has(id));
+  const extraIds = [...new Set([...touchedIds, ...claimedIds])].filter(id => !known.has(id));
 
   return {
     me,
@@ -1074,6 +1087,7 @@ async function discover({ org, extraRepos = [], maxAgeDays }) {
     requestedSet,
     assignedSet,
     mergedReviewedIds,
+    claimedSet: new Set(claimedIds),
     extraIds: new Set(extraIds),
     ids: [...known, ...extraIds],
   };
@@ -1095,6 +1109,7 @@ function shapeBoard(nodes, context, detailWarnings = []) {
   const reviewSet = new Set(context.reviewSet);
   const warnings = [...context.warnings, ...detailWarnings];
   const extraIds = [...context.extraIds];
+  const claimedSet = context.claimedSet ?? new Set();
   const byId = nodes;
 
   const shapes = new Map();
@@ -1160,7 +1175,10 @@ function shapeBoard(nodes, context, detailWarnings = []) {
   const reviews = [...reviewSet]
     .map(id => shapes.get(id))
     .filter(Boolean)
-    .map(pr => decorateReview(pr, me, requestedSet.has(pr.id) || assignedSet.has(pr.id)))
+    .map(pr => {
+      const claimed = claimedSet.has(pr.id);
+      return { ...decorateReview(pr, me, requestedSet.has(pr.id) || assignedSet.has(pr.id) || claimed), claimed };
+    })
     .sort(byActionThenFreshness);
 
   return {

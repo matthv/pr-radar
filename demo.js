@@ -251,6 +251,12 @@ function reviewPrs() {
       author: 'PMerlet', createdMin: 2 * 24 * 60, commitMin: 30 * 60,
       threads: [{ path: 'lib/forest_admin_agent/utils/search.rb', line: 57, messages: [[ME, 4 * 60, 'Should this skip polymorphic relations? They have no target table to join.']] }],
     }), false],
+    // Taken from Slack: a :pr-radar: reaction on its announcement, no review request.
+    [node({
+      repo: 'ForestAdmin/agent-ruby', number: 409,
+      title: 'feat(cache): share the schema cache across workers',
+      author: 'nbouliol', createdMin: 5 * 60, commitMin: 4 * 60, additions: 96, deletions: 31, changedFiles: 5,
+    }), true, true],
     [node({
       repo: 'ForestAdmin/forestadmin', number: 10004,
       title: 'feat(charts): leaderboard from the parent collection',
@@ -316,7 +322,7 @@ function payload(force) {
 
   const mine = minePrs().map(pr => decorateMine(baseShape(pr, ME))).sort(byActionThenFreshness);
   const reviews = [...(surpriseShown ? [surprise()] : []), ...reviewPrs()]
-    .map(([pr, owed]) => decorateReview(baseShape(pr, ME), ME, owed))
+    .map(([pr, owed, claimed = false]) => ({ ...decorateReview(baseShape(pr, ME), ME, owed), claimed }))
     .sort(byActionThenFreshness);
 
   // Not every PR gets announced: a draft, a review requested a minute ago, a few others.
@@ -401,6 +407,8 @@ const SUMMARIES = {
     'The leaderboard is built from the parent collection. Waiting on a fix for the columns lost in the join.'],
   8528: ['Les connecteurs OAuth sans jeton sont ignorés en silence. Fusionnée, publiée en v2.214.0.',
     'Token-less OAuth connectors are dropped silently. Merged, released in v2.214.0.'],
+  409: ['Le cache de schéma est partagé entre les workers. Prise sur Slack, à reviewer aujourd\'hui.',
+    'The schema cache is shared across workers. Claimed on Slack, to review today.'],
   1955: ['Un run en pause reprend depuis la boîte de réception. Revue demandée à l\'instant.',
     'A paused run resumes from the inbox. Review requested just now.'],
 };
