@@ -771,7 +771,9 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
 - **The API path cannot do it**: `search.messages` wants a user token, not a bot's. With
   `PR_RADAR_SLACK_TOKEN` set, the startup line says it is off.
 - A failed read keeps the last claimed PRs on the board, says so in the warning banner, and
-  waits 30 minutes before trying again, **Refresh** included.
+  waits 5 minutes before trying again, **Refresh** included: often Claude was not ready yet
+  when the radar started with the Mac. When Claude could not run the search, the banner says
+  so and that it tries again, rather than blaming the connector.
 
 ## Standup notes
 

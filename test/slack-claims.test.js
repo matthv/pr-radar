@@ -111,10 +111,11 @@ test('claims: a failed read keeps the last list and waits its back-off, then a s
   await assert.rejects(read(now + 5 * DAY), /exited/);
   assert.deepEqual(slack.claimedRefs().map(r => r.number), [3, 9]);
   await assert.rejects(read(now + 5 * DAY + MIN), /exited/, 'Refresh does not retry during the back-off');
+  await assert.rejects(read(now + 5 * DAY + 4 * MIN), /exited/, 'five minutes of it');
   assert.equal(answers.length, 0);
 
   answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false });
-  await read(now + 5 * DAY + 31 * MIN);
-  const after = await read(now + 5 * DAY + 32 * MIN, false);
+  await read(now + 5 * DAY + 6 * MIN);
+  const after = await read(now + 5 * DAY + 7 * MIN, false);
   assert.deepEqual(after.refs.map(r => r.number), [3, 9], 'the old error is not thrown again');
 });

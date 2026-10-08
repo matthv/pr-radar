@@ -209,6 +209,9 @@ async function readViaClaude(oldest) {
 // reported until a read succeeds: going quiet after the first refresh looked exactly
 // like "nothing announced". A missing connector only comes back with a restart.
 const FAILURE_BACKOFF_MS = 30 * 60_000;
+// Shorter for the claims: their failure is often Claude not ready yet when the radar starts
+// with the Mac, and it held the warning for half an hour, Refresh included.
+const CLAIM_FAILURE_BACKOFF_MS = 5 * 60_000;
 let lastFailure = null;
 
 // Persisted, or every server restart would cost a model call over the whole age window.
@@ -441,7 +444,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
     // Not the channel read's cursor: these messages can be newer than what it has read.
     state.byPr = mergeLinks({ byPr: state.byPr, latestTs: state.latestTs }, messages).byPr;
   } catch (error) {
-    claimFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
+    claimFailure = { error, retryAt: now + CLAIM_FAILURE_BACKOFF_MS };
     throw error;
   }
   claimFailure = null;
