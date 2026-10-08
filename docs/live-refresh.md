@@ -183,7 +183,7 @@ sequenceDiagram
 | Change | Reported when |
 | --- | --- |
 | A comment | a thread is new or grew, and its last word is someone else's, not a bot's |
-| A review | someone else approved or requested changes. A commented review counts as a comment. |
+| A review | someone else approved or requested changes. A commented review counts as a comment. On your PR, a changes-requested whose reviewer you asked again is not news, nor their comments up to it. |
 | Commits | the head commit moved and was not pushed by you |
 | The CI | it reached an outcome, green or red. Starting again comes with a push, already said. |
 | A conflict | the PR became unmergeable |

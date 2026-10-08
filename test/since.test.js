@@ -76,8 +76,30 @@ test('since: a change request is not news once its reviewer is asked again', () 
     ],
     threads: [thread('discussion:PR', 'Scra3', '2026-10-05T09:00:00Z')],
     requestedReviewers: ['Scra3'],
+    side: 'mine',
   });
   assert.deepEqual(plain(changesSince(photo, card, ME)), [{ kind: 'changesRequested', who: ['christophebrun-forest'] }]);
+});
+
+test('since: on a PR I review, a change request stays news when its reviewer is asked again', () => {
+  const photo = snapshotOf(pr());
+  const card = pr({
+    reviews: [review('Scra3', 'CHANGES_REQUESTED', '2026-10-05T09:00:00Z')],
+    requestedReviewers: ['Scra3'],
+    side: 'review',
+  });
+  assert.deepEqual(plain(changesSince(photo, card, ME)), [{ kind: 'changesRequested', who: ['Scra3'] }]);
+});
+
+test('since: a reviewer asked again who comments afterwards is news', () => {
+  const photo = snapshotOf(pr());
+  const card = pr({
+    reviews: [review('Scra3', 'CHANGES_REQUESTED', '2026-10-05T09:00:00Z')],
+    threads: [thread('discussion:PR', 'Scra3', '2026-10-05T10:00:00Z')],
+    requestedReviewers: ['Scra3'],
+    side: 'mine',
+  });
+  assert.deepEqual(changesSince(photo, card, ME), [{ kind: 'commented', who: ['Scra3'], at: '2026-10-05T10:00:00Z' }]);
 });
 
 test('since: commits pushed by someone else are news, mine are not', () => {
