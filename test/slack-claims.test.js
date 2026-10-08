@@ -119,3 +119,16 @@ test('claims: a failed read keeps the last list and waits its back-off, then a s
   const after = await read(now + 5 * DAY + 7 * MIN, false);
   assert.deepEqual(after.refs.map(r => r.number), [3, 9], 'the old error is not thrown again');
 });
+
+test('channel read: "no connector" is retried after its back-off, not kept until a restart', async () => {
+  const prs = [{ repo: 'o/r', number: 4242 }];
+  const at = now + 30 * DAY;
+  // One answer: the claims reads above already settled which model to ask.
+  answers.push('NO_SLACK_TOOL');
+  await assert.rejects(slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at }), error => error.code === 'no-connector');
+  await assert.rejects(slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at + MIN }), error => error.code === 'no-connector');
+  assert.equal(answers.length, 0, 'no model call during the back-off');
+
+  answers.push(JSON.stringify([{ ts: '1791400000.000001', text: 'https://github.com/o/r/pull/4242' }]));
+  assert.equal(await slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at + 31 * MIN }), true, 'read again once it is over');
+});
