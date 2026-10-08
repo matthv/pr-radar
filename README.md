@@ -1097,7 +1097,7 @@ state line, which is the real last activity and doubles as the sort key.
 
 ## The kanban view
 
-The middle icon of the view switch (board · kanban · by author) lays the same groups out as
+The last icon of the view switch (board · by author · kanban) lays the same groups out as
 columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
 group the board would have put it in.
 

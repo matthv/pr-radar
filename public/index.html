@@ -1109,8 +1109,8 @@
     <button type="button" id="sound" aria-pressed="true"></button>
     <button class="seg" id="view">
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
-      <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
+      <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
@@ -1530,7 +1530,7 @@ const I18N = {
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
-    viewTitle: 'vue tableau / kanban / vue par auteur',
+    viewTitle: 'vue tableau / vue par auteur / kanban',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
     kanbanIdle: 'Calme',
@@ -1725,7 +1725,7 @@ const I18N = {
     reloadTitle: 'this page is running an older version of the tool',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
-    viewTitle: 'board view / kanban / by author',
+    viewTitle: 'board view / by author / kanban',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
     kanbanIdle: 'Quiet',
@@ -1831,7 +1831,7 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
-const VIEWS = ['board', 'kanban', 'orbits'];
+const VIEWS = ['board', 'orbits', 'kanban'];
 let view = VIEWS.includes(store.get('view', 'board')) ? store.get('view', 'board') : 'board';
 
 const t = (key, vars) =>
