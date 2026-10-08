@@ -435,6 +435,17 @@ test('my PR: asking someone else again leaves a changes-requested on my plate', 
   assert.deepEqual(reason.authors, ['reviewer']);
 });
 
+test('my PR: asking a team again leaves its member\'s changes-requested on my plate', () => {
+  const pr = node({
+    reviewDecision: 'CHANGES_REQUESTED',
+    reviews: { nodes: [{ author: user('x'), state: 'CHANGES_REQUESTED', submittedAt: ago(2), url: 'u' }] },
+    reviewRequests: { nodes: [{ requestedReviewer: { __typename: 'Team', name: 'x' } }] },
+  });
+  const reason = decorateMine(baseShape(pr, ME)).reasons.find(r => r.kind === 'changes-requested');
+
+  assert.deepEqual(reason.authors, ['x']);
+});
+
 test('a dismissed or superseded review does not count as the latest verdict', () => {
   const pr = node({
     reviews: {
