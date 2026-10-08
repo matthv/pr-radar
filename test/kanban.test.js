@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const demo = require('../demo');
 const { DEFAULTS } = require('../public/order');
 const { AXIS, readFolds, layout, unfold } = require('../public/kanban');
 
@@ -25,6 +26,22 @@ test('kanban: stored folds are kept, even none', () => {
 test('kanban: columns run along the flow, ready to merge right before merged', () => {
   assert.deepEqual(AXIS, ['action', 'waiting', 'ready', 'merged', 'idle']);
   assert.deepEqual([...AXIS].sort(), [...DEFAULTS.mine].sort());
+  assert.ok(DEFAULTS.reviews.every(bucket => AXIS.includes(bucket)));
+});
+
+test('kanban: on the demo board every card lands in a cell of its lane', () => {
+  const { mine, reviews } = demo.payload(false);
+  const { lanes: shown } = layout({
+    axis: AXIS,
+    lanes: [
+      { side: 'mine', buckets: DEFAULTS.mine, prs: mine },
+      { side: 'reviews', buckets: DEFAULTS.reviews, prs: reviews },
+    ],
+  });
+  for (const lane of shown) {
+    assert.equal(lane.cells.reduce((sum, cell) => sum + cell.prs.length, 0), lane.total, lane.side);
+    for (const cell of lane.cells.filter(cell => !cell.applicable)) assert.deepEqual(cell.prs, [], `${lane.side}:${cell.bucket}`);
+  }
 });
 
 test('kanban: both lanes share the axis, in its order', () => {
@@ -71,4 +88,10 @@ test('kanban: a card landing unfolds its column and its lane', () => {
   assert.equal(unfold(folds, ['reviews:action']), true);
   assert.deepEqual([...folds], ['idle', 'lane:mine']);
   assert.equal(unfold(folds, ['reviews:waiting']), false);
+});
+
+test('kanban: two cards landing at once unfold both columns', () => {
+  const folds = new Set(['idle', 'merged', 'action', 'lane:reviews']);
+  assert.equal(unfold(folds, ['mine:merged', 'reviews:action']), true);
+  assert.deepEqual([...folds], ['idle']);
 });

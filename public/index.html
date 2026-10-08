@@ -579,11 +579,16 @@
 
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
-    padding: 22px 28px 70px; overflow-x: auto; scroll-snap-type: x proximity;
+    flex: 1 1 auto; min-height: 0;
+    padding: 0 28px 70px; overflow: auto; scroll-snap-type: x proximity;
   }
+  body:has(> #kanban:not([hidden])) { display: flex; flex-direction: column; height: 100dvh; }
+  body:has(> #kanban:not([hidden])) > * { flex-shrink: 0; }
+  body:has(> #kanban:not([hidden])) > #kanban { flex-shrink: 1; }
   .kb { display: grid; column-gap: 12px; row-gap: 0; align-items: start; min-width: min-content; }
   #kanban .kb-head {
-    margin: 0; padding: 0 2px 9px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 2; background: var(--bg);
+    margin: 0; padding: 22px 2px 9px; border-bottom: 1px solid var(--border);
     white-space: nowrap; scroll-snap-align: start; min-width: 0;
   }
   .kb-head .kb-name { overflow: hidden; text-overflow: ellipsis; }
@@ -634,10 +639,6 @@
     writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
     font-size: 10.5px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase; color: var(--text-faint);
   }
-  .kb-caption {
-    padding: 0 4px; font-size: 10.5px; font-weight: 620; letter-spacing: .4px;
-    text-transform: uppercase; color: var(--text-faint);
-  }
 
   .card-top .active-top { display: none; }
   #kanban .card { margin-bottom: 0; padding: 10px 11px 10px 13px; border-radius: 11px; }
@@ -661,7 +662,20 @@
   #kanban .card-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
   #kanban .expander, #kanban .snooze, #kanban .note-btn, #kanban .copy-btn,
   #kanban .slack-link, #kanban .linear-link, #kanban .claude-link { margin-top: 7px; }
-  #kanban .expander { font-size: 11.5px; }
+  .expander.in-meta { display: none; }
+  #kanban .card-foot > .expander, #kanban .note-text { display: none; }
+  #kanban .expander.in-meta {
+    display: inline-flex; margin: 0; padding: 1.5px 6px; border-radius: 20px;
+    font-size: 10.5px; background: var(--hairline); color: var(--text-soft);
+  }
+  #kanban .reason.since > span { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
+  #kanban .since-lead, #kanban .since-toggle { flex: none; }
+  #kanban .since-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #kanban .note-btn.has-note { position: relative; color: var(--indigo); }
+  #kanban .note-btn.has-note::after {
+    content: ""; position: absolute; top: 5px; right: 5px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--indigo);
+  }
 
   .card {
     position: relative; overflow: hidden;
@@ -2292,7 +2306,7 @@ function reasonsHtml(pr) {
       : '';
     rows.push(`<div class="reason since" title="${escapeHtml(changes.map(when).join('\n'))}"><span>`
       + `<span class="since-lead">${escapeHtml(t('sinceLead'))}</span> `
-      + `${changes.slice(0, SINCE_SHOWN).map(change => escapeHtml(sincePhrase(change))).join(' · ')}${toggle}</span></div>`);
+      + `<span class="since-text">${changes.slice(0, SINCE_SHOWN).map(change => escapeHtml(sincePhrase(change))).join(' · ')}</span>${toggle}</span></div>`);
     if (open) {
       const byTime = [...changes].sort((a, b) => (b.at ?? '\uffff').localeCompare(a.at ?? '\uffff'));
       rows.push(`<ul class="since-list">${byTime.map(change => `<li><span>${escapeHtml(sincePhrase(change))}</span>`
@@ -2316,6 +2330,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   const note = cardNotes.get(pr.id);
   const editingNote = state.editingNote === pr.id;
   const glow = glowAttrs(pr);
+  const expander = extra => `<button type="button" class="expander${extra}">${open ? '▾' : '▸'} ${tn('threads', count)}</button>`;
 
   return `
     <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${glow.cls}${open}" data-id="${pr.id}"${glow.style}>
@@ -2335,10 +2350,11 @@ function cardHtml(pr, threadsToShow, extraPills) {
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
         <span class="sep activity" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
+        ${count ? expander(' in-meta') : ''}
       </div>
       ${reasonsHtml(pr)}
       <div class="card-foot">
-        ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : '<span></span>'}
+        ${count ? expander('') : '<span></span>'}
         <div class="card-actions">
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
@@ -2600,8 +2616,6 @@ function kanbanHeadings() {
   };
 }
 
-const KANBAN_CAPTIONED = ['waiting', 'idle'];
-
 function renderKanban(mine, reviews, focus) {
   const { columns, lanes } = PRRadarKanban.layout({
     axis: PRRadarKanban.AXIS,
@@ -2614,7 +2628,8 @@ function renderKanban(mine, reviews, focus) {
   });
   const headings = kanbanHeadings();
   const dim = column => (column.dimmed ? ' kb-dimmed' : '');
-  const fold = column => ` data-kanban-fold="${column.bucket}" title="${escapeHtml(t('kanbanFoldTitle'))}"`
+  const fold = column => ` data-kanban-fold="${column.bucket}"`
+    + ` title="${escapeHtml(column.folded ? `${headings[column.bucket]} — ${t('kanbanFoldTitle')}` : t('kanbanFoldTitle'))}"`
     + `${column.folded ? ` aria-label="${escapeHtml(headings[column.bucket])}"` : ''} aria-expanded="${!column.folded}"`;
 
   const head = columns.map(column => {
@@ -2644,16 +2659,14 @@ function renderKanban(mine, reviews, focus) {
       }
       if (!cell.applicable) return `<div class="kb-cell na${dim(column)}">${escapeHtml(t('kanbanNotApplicable'))}</div>`;
       if (!cell.prs.length) return `<div class="kb-cell empty${dim(column)}">—</div>`;
-      const caption = KANBAN_CAPTIONED.includes(cell.bucket)
-        ? `<div class="kb-caption">${escapeHtml(labels[cell.bucket])}</div>`
-        : '';
-      return `<div class="kb-cell ${cell.bucket}${dim(column)}">${caption}${cell.prs.map(cardFn).join('')}</div>`;
+      return `<div class="kb-cell ${cell.bucket}${dim(column)}">${cell.prs.map(cardFn).join('')}</div>`;
     }).join('');
   }).join('');
 
   const tracks = columns.map(column => (column.folded ? 'var(--kb-rail)' : 'minmax(var(--kb-col), 1fr)')).join(' ');
   el('kanban').innerHTML = `<div class="kb" style="grid-template-columns: ${tracks}">${head}${body}</div>`;
   for (const title of el('kanban').querySelectorAll('.card .title')) title.title = title.textContent;
+  for (const button of el('kanban').querySelectorAll('.note-btn.has-note')) button.title = cardNotes.get(button.dataset.note);
 }
 
 function repoOptions() {
@@ -3212,7 +3225,7 @@ async function resumeClaudeSession(button) {
     alert(t('claudeError', { message: error.message }));
   } finally {
     resuming.delete(id);
-    document.querySelector(`.claude-link[data-claude="${id}"]`)?.classList.remove('busy');
+    document.querySelectorAll(`.claude-link[data-claude="${id}"]`).forEach(link => link.classList.remove('busy'));
   }
 }
 

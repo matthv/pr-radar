@@ -1108,7 +1108,10 @@ group the board would have put it in.
 - **Columns follow the flow**, not the board's section order: your move, waiting, ready to
   merge, recently merged, quiet. *Ready to merge* sits right before the merge it leads to.
 - **Columns never move.** An empty one keeps its place with a dash. Clicking a column's header
-  folds it into a narrow rail, in both lanes at once. **Quiet** starts folded.
+  folds it into a narrow rail, in both lanes at once; its name stays in the header's tooltip.
+  **Quiet** starts folded.
+- **The headers stay in sight.** The kanban fills the window under the summary band and scrolls
+  on its own, its column headers pinned at the top.
 - **A lane folds** from its title, like a group on the board. Column and lane folds are kept
   together in `pr-radar:kanbanFolds`, and a card that starts to glow unfolds its column and
   its lane.
@@ -1116,8 +1119,9 @@ group the board would have put it in.
   removing them.
 - **The card is the board's**, laid out for a narrow column: the last activity moves to the top
   right (the opening date is on hover), the title gets two lines, the names behind the faces go
-  to their tooltip. The bottom row keeps every action: threads, note, copy, snooze, Linear,
-  Claude and Slack.
+  to their tooltip. The open threads become a pill among the badges, *since you looked* holds
+  on one line (all of it on hover), and a note shows as a dot on its icon, its text on hover.
+  The bottom row keeps every action: note, copy, snooze, Linear, Claude and Slack.
 - Narrower than the columns need, the view scrolls sideways and snaps to each column.
 
 ## Reading the colours
