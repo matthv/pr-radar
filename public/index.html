@@ -2604,7 +2604,7 @@ const KANBAN_CAPTIONED = ['waiting', 'idle'];
 
 function renderKanban(mine, reviews, focus) {
   const { columns, lanes } = PRRadarKanban.layout({
-    axis: groupOrder.get('mine'),
+    axis: PRRadarKanban.AXIS,
     lanes: [
       { side: 'mine', buckets: PRRadarOrder.DEFAULTS.mine, prs: filterList(mine) },
       { side: 'reviews', buckets: PRRadarOrder.DEFAULTS.reviews, prs: filterList(reviews) },

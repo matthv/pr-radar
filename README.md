@@ -568,8 +568,7 @@ only, like the notes. It has two sections: **repo colours** and **section order*
   order. **default** shows once a column differs from the default and puts it back. The order
   is kept in `pr-radar:groupOrder`, only for a column that differs from the default. A saved
   order drops buckets that no longer exist, and a new bucket takes its default place
-  (`public/order.js`, `normalize`). The kanban's columns follow **My PRs**' order, the only
-  one holding every bucket.
+  (`public/order.js`, `normalize`).
 
 ## Since you looked
 
@@ -1106,6 +1105,8 @@ group the board would have put it in.
   across them, so reading one top to bottom gives, say, everything that is your move on both
   sides. *Ready to merge* only exists for your own PRs: the review lane keeps a hatched cell
   there, so nothing slides under the wrong header.
+- **Columns follow the flow**, not the board's section order: your move, waiting, ready to
+  merge, recently merged, quiet. *Ready to merge* sits right before the merge it leads to.
 - **Columns never move.** An empty one keeps its place with a dash. Clicking a column's header
   folds it into a narrow rail, in both lanes at once. **Quiet** starts folded.
 - **A lane folds** from its title, like a group on the board. Column and lane folds are kept

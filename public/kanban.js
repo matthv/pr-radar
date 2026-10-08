@@ -3,6 +3,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.PRRadarKanban = api;
 })(this, () => {
+  const AXIS = ['action', 'waiting', 'ready', 'merged', 'idle'];
   const DEFAULT_FOLDS = ['idle'];
 
   function readFolds(raw) {
@@ -51,5 +52,5 @@
     return changed;
   }
 
-  return { DEFAULT_FOLDS, readFolds, laneFold, layout, unfold };
+  return { AXIS, DEFAULT_FOLDS, readFolds, laneFold, layout, unfold };
 });

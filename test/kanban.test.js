@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { DEFAULTS } = require('../public/order');
-const { readFolds, layout, unfold } = require('../public/kanban');
+const { AXIS, readFolds, layout, unfold } = require('../public/kanban');
 
 const pr = (id, bucket) => ({ id, bucket });
 const lanes = () => [
@@ -20,6 +20,11 @@ test('kanban: nothing stored folds the quiet column', () => {
 test('kanban: stored folds are kept, even none', () => {
   assert.deepEqual(readFolds('[]'), []);
   assert.deepEqual(readFolds('["merged", 3, "lane:reviews"]'), ['merged', 'lane:reviews']);
+});
+
+test('kanban: columns run along the flow, ready to merge right before merged', () => {
+  assert.deepEqual(AXIS, ['action', 'waiting', 'ready', 'merged', 'idle']);
+  assert.deepEqual([...AXIS].sort(), [...DEFAULTS.mine].sort());
 });
 
 test('kanban: both lanes share the axis, in its order', () => {
