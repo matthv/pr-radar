@@ -72,7 +72,7 @@
     }
     // A review's body also feeds the conversation thread: one move, said once.
     for (const set of Object.values(reviewers)) for (const who of set) commenters.delete(who);
-    for (const [who, requestedAt] of handedBack) if (!(commenters.get(who) > requestedAt)) commenters.delete(who);
+    for (const [who, changesRequestedAt] of handedBack) if (!(commenters.get(who) > changesRequestedAt)) commenters.delete(who);
 
     if (commenters.size) changes.push({ kind: 'commented', who: [...commenters.keys()], at: latest.commented ?? null });
     if (reviewers.APPROVED.size) changes.push({ kind: 'approved', who: [...reviewers.APPROVED], at: latest.APPROVED });
