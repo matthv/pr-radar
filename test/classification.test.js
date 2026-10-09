@@ -185,6 +185,45 @@ test('reviewing: the author replied after me, so the ball is back in my court', 
   assert.ok(decorated.reasons.some(r => r.kind === 'answers'));
 });
 
+test('reviewing: one remark answered while another still waits on the author stays waiting', () => {
+  const pr = node({
+    reviewThreads: { nodes: [
+      { ...thread({ comments: [[ME, ago(3)], ['author', ago(1)]] }), id: 'T_1' },
+      { ...thread({ comments: [[ME, ago(3)]], path: 'src/b.rb' }), id: 'T_2' },
+    ] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.answeredToMe.length, 1);
+  assert.equal(decorated.awaitingAuthor.length, 1);
+  assert.ok(!decorated.reasons.some(r => r.kind === 'answers'));
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('reviewing: asked again after my review, the PR is back on my plate with remarks still open', () => {
+  const pr = node({
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'COMMENTED', body: '', submittedAt: ago(3), url: 'u' }] },
+    reviewRequests: { nodes: [{ requestedReviewer: user(ME) }] },
+    reviewThreads: { nodes: [
+      { ...thread({ comments: [[ME, ago(3)], ['author', ago(1)]] }), id: 'T_1' },
+      { ...thread({ comments: [[ME, ago(3)]], path: 'src/b.rb' }), id: 'T_2' },
+    ] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, true);
+
+  assert.equal(decorated.reRequested, true);
+  assert.ok(decorated.reasons.some(r => r.kind === 're-requested'));
+  assert.equal(decorated.bucket, 'action');
+});
+
+test('reviewing: a request I have not answered with a review yet is a first request, not a re-request', () => {
+  const pr = node({ reviewRequests: { nodes: [{ requestedReviewer: user(ME) }] } });
+  const decorated = decorateReview(baseShape(pr, ME), ME, true);
+
+  assert.equal(decorated.reRequested, false);
+  assert.ok(decorated.reasons.some(r => r.kind === 'to-review'));
+});
+
 test('reviewing: commits pushed after my feedback need a re-check', () => {
   const pr = node({
     comments: { nodes: [issueComment([ME, ago(5)])] },
