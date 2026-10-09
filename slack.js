@@ -210,6 +210,13 @@ async function readViaClaude(oldest) {
 // like "nothing announced". A missing connector is retried too: it is also what Claude says
 // when the radar starts with the Mac before Claude is ready, which only a restart cleared.
 const FAILURE_BACKOFF_MS = 30 * 60_000;
+
+// Only where a read actually failed: during the back-off the stored error is thrown again on
+// every board refresh, and logging those would bury the one line that matters.
+function logFailure(what, error, backoffMs) {
+  const reason = error.code === 'no-connector' ? 'Claude sees no Slack tool' : error.message;
+  console.error(`[${new Date().toISOString()}] slack: ${what} failed (${reason}), trying again in ${backoffMs / 60_000} min`);
+}
 // Shorter for the claims: their failure is often Claude not ready yet when the radar starts
 // with the Mac, and it held the warning for half an hour, Refresh included.
 const CLAIM_FAILURE_BACKOFF_MS = 5 * 60_000;
@@ -310,6 +317,7 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
     messages = via === 'api' ? await readViaApi(oldest) : await readViaClaude(oldest);
   } catch (error) {
     lastFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
+    logFailure('channel read', error, FAILURE_BACKOFF_MS);
     throw error;
   }
   lastFailure = null;
@@ -446,6 +454,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
     state.byPr = mergeLinks({ byPr: state.byPr, latestTs: state.latestTs }, messages).byPr;
   } catch (error) {
     claimFailure = { error, retryAt: now + CLAIM_FAILURE_BACKOFF_MS };
+    logFailure('claims read', error, CLAIM_FAILURE_BACKOFF_MS);
     throw error;
   }
   claimFailure = null;
