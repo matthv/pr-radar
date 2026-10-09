@@ -224,9 +224,24 @@ test('reviewing: a request I have not answered with a review yet is a first requ
   assert.ok(decorated.reasons.some(r => r.kind === 'to-review'));
 });
 
-test('reviewing: commits pushed after my feedback need a re-check', () => {
+// forestadmin#10041: three fresh remarks of mine, a push 3 minutes later, none of them
+// answered. The author is working through them; the push is not their "your turn".
+test('reviewing: a push while a remark of mine still waits on the author stays waiting', () => {
   const pr = node({
-    comments: { nodes: [issueComment([ME, ago(5)])] },
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'CHANGES_REQUESTED', body: '', submittedAt: ago(5), url: 'u' }] },
+    reviewThreads: { nodes: [thread({ comments: [[ME, ago(5)]] })] },
+    head: { nodes: [{ commit: { committedDate: ago(1), author: { user: user('author') }, statusCheckRollup: null } }] },
+  });
+  const decorated = decorateReview(baseShape(pr, ME), ME, false);
+
+  assert.equal(decorated.pushedSinceMyFeedback, true);
+  assert.equal(decorated.reasons.some(r => r.kind === 'recheck'), false);
+  assert.equal(decorated.bucket, 'waiting');
+});
+
+test('reviewing: commits pushed after my changes-requested, nothing left open, need a re-check', () => {
+  const pr = node({
+    reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'CHANGES_REQUESTED', body: '', submittedAt: ago(5), url: 'u' }] },
     head: { nodes: [{ commit: { committedDate: ago(1), author: { user: user('author') }, statusCheckRollup: null } }] },
   });
   const decorated = decorateReview(baseShape(pr, ME), ME, false);
