@@ -17,9 +17,9 @@ follows reality without any manual step.
 
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies once none of your threads still waits on the author, new commits since your feedback |
+| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies or new commits since your feedback once none of your threads still waits on the author |
 | `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
-| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix, some of them already answered included |
+| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix, some of them already answered or pushed on included |
 | `Nothing to report` | drafts, shown as `Drafts` | everything else |
 
 **Ready to merge** sits right under *On my plate* and above the merged group. An approved
@@ -47,7 +47,8 @@ plate* only once none of your threads still waits on the author; until then it s
 *Waiting*, its card counting the answers already in. Asking for your review again hands it
 back at once, answered or not: GitHub drops your request when you submit a review, so one
 pending after yours is the author's explicit "your turn", and the card says *review requested
-again*. New commits since your feedback still bring it back as before.
+again*. New commits follow the same rule: a push while a remark of yours has no reply is the
+author mid-way too, so it stays in *Waiting*.
 
 ## Running it
 
@@ -244,8 +245,8 @@ real activity: last commit, last human comment, last review. In short,
 "New commits since my feedback" ignores commits **you** authored. Without that
 guard, a PR you have taken over asks you to re-check your own work.
 
-It fires when someone else pushed after your last word, and one of these holds:
-- a remark of yours still waits on the author;
+It fires when someone else pushed after your last word, no remark of yours still waits on
+the author, and one of these holds:
 - your last verdict requested changes;
 - you raised remarks on it and have not approved since. A passing comment does not count
   here: it should not ring on every push.

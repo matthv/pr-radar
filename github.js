@@ -867,11 +867,13 @@ function decorateReview(pr, me, reviewOwedByMe) {
   // Remarks I raised, answered and resolved, then new commits: the PR waits on my second look
   // and my verdict, though nothing is left open — forestadmin-server#8561 sat in "nothing to
   // report" for its only reviewer. Raising the remark, not just commenting, is what counts:
-  // a passing comment should not ring on every push.
+  // a passing comment should not ring on every push. A push with a remark of mine still
+  // unanswered is the same as a partial reply: the author is mid-way, not done.
   const raisedRemarks = myThreads.some(thread => thread.startedByMe);
   if (
     pushedSinceMyFeedback &&
-    (awaitingAuthor.length || myLatestVerdict === 'CHANGES_REQUESTED' || (raisedRemarks && myLatestVerdict !== 'APPROVED'))
+    !awaitingAuthor.length &&
+    (myLatestVerdict === 'CHANGES_REQUESTED' || (raisedRemarks && myLatestVerdict !== 'APPROVED'))
   ) {
     reasons.push({ kind: 'recheck' });
   }
