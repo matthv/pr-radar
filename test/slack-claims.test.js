@@ -108,11 +108,20 @@ test('claims: a claim goes only when both reads miss it, and a failed confirmati
 
 test('claims: a failed read keeps the last list and waits its back-off, then a success clears it', async () => {
   answers.push(new Error('claude exited with 1'));
-  await assert.rejects(read(now + 5 * DAY), /exited/);
-  assert.deepEqual(slack.claimedRefs().map(r => r.number), [3, 9]);
-  await assert.rejects(read(now + 5 * DAY + MIN), /exited/, 'Refresh does not retry during the back-off');
-  await assert.rejects(read(now + 5 * DAY + 4 * MIN), /exited/, 'five minutes of it');
+  const logged = [];
+  const original = console.error;
+  console.error = line => logged.push(line);
+  try {
+    await assert.rejects(read(now + 5 * DAY), /exited/);
+    assert.deepEqual(slack.claimedRefs().map(r => r.number), [3, 9]);
+    await assert.rejects(read(now + 5 * DAY + MIN), /exited/, 'Refresh does not retry during the back-off');
+    await assert.rejects(read(now + 5 * DAY + 4 * MIN), /exited/, 'five minutes of it');
+  } finally {
+    console.error = original;
+  }
   assert.equal(answers.length, 0);
+  assert.equal(logged.length, 1, 'one line for the failure, none during its back-off');
+  assert.match(logged[0], /slack: claims read failed \(claude exited with 1\), trying again in 5 min/);
 
   answers.push({ messages: [announce('1791371567.461059', 3, 9)], more: false });
   await read(now + 5 * DAY + 6 * MIN);

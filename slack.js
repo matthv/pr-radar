@@ -211,16 +211,19 @@ async function readViaClaude(oldest) {
 // when the radar starts with the Mac before Claude is ready, which only a restart cleared.
 const FAILURE_BACKOFF_MS = 30 * 60_000;
 
-// Only where a read actually failed: during the back-off the stored error is thrown again on
-// every board refresh, and logging those would bury the one line that matters.
-function logFailure(what, error, backoffMs) {
-  const reason = error.code === 'no-connector' ? 'Claude sees no Slack tool' : error.message;
-  console.error(`[${new Date().toISOString()}] slack: ${what} failed (${reason}), trying again in ${backoffMs / 60_000} min`);
-}
 // Shorter for the claims: their failure is often Claude not ready yet when the radar starts
 // with the Mac, and it held the warning for half an hour, Refresh included.
 const CLAIM_FAILURE_BACKOFF_MS = 5 * 60_000;
 let lastFailure = null;
+
+// Only where a read actually failed: during the back-off the stored error is thrown again on
+// every board refresh, and logging those would bury the one line that matters. The API path
+// has no back-off, it reads again at the next refresh.
+function logFailure(what, error, backoffMs) {
+  const reason = error.code === 'no-connector' ? 'Claude sees no Slack tool' : error.message.replace(/^slack:\s*/, '');
+  const retry = backoffMs ? `in ${backoffMs / 60_000} min` : 'at the next refresh';
+  console.error(`[${new Date().toISOString()}] slack: ${what} failed (${reason}), trying again ${retry}`);
+}
 
 // Persisted, or every server restart would cost a model call over the whole age window.
 let state = null;
@@ -316,8 +319,11 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
   try {
     messages = via === 'api' ? await readViaApi(oldest) : await readViaClaude(oldest);
   } catch (error) {
+    // The API path tries again on every refresh: a lasting failure (a revoked token) is said
+    // once, not every five minutes.
+    const repeat = via === 'api' && lastFailure?.error.message === error.message;
     lastFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
-    logFailure('channel read', error, FAILURE_BACKOFF_MS);
+    if (!repeat) logFailure('channel read', error, via === 'api' ? null : FAILURE_BACKOFF_MS);
     throw error;
   }
   lastFailure = null;
