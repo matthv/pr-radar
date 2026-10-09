@@ -48,7 +48,8 @@ plate* only once none of your threads still waits on the author; until then it s
 back at once, answered or not: GitHub drops your request when you submit a review, so one
 pending after yours is the author's explicit "your turn", and the card says *review requested
 again*. New commits follow the same rule: a push while a remark of yours has no reply is the
-author mid-way too, so it stays in *Waiting*.
+author mid-way too, so it stays in *Waiting*. The cost: an author who pushes the fix without
+replying, resolving or asking for your review again leaves the PR in *Waiting* until they do.
 
 ## Running it
 
