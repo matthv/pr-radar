@@ -697,7 +697,8 @@ something:
 - **A failed read is not a miss.** A read that did not work (no connector, an answer
   that is not JSON) says nothing about the PRs, so it spends none of their tries: the
   next read simply waits 30 minutes, and the warning stays in the banner until a read
-  succeeds. A missing connector stays reported until the server restarts.
+  succeeds. A missing connector is retried the same way: Claude says it too when the radar
+  starts with the Mac before Claude is ready, and only a restart used to clear that.
 - **One read serves every PR.** Whatever PRs are due, a single call is made, in the
   background: the board is answered straight away, and the button shows up on the next
   refresh (or at once with *Refresh*).
@@ -771,7 +772,10 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
 - **The API path cannot do it**: `search.messages` wants a user token, not a bot's. With
   `PR_RADAR_SLACK_TOKEN` set, the startup line says it is off.
 - A failed read keeps the last claimed PRs on the board, says so in the warning banner, and
-  waits 30 minutes before trying again, **Refresh** included.
+  waits 5 minutes before trying again, **Refresh** included: often Claude was not ready yet
+  when the radar started with the Mac. When Claude could not run the search, the banner says
+  so, that it tries again, and, if it persists, to check the Slack connector on claude.ai,
+  since the same answer also means a connector missing or without the search.
 
 ## Standup notes
 

@@ -207,8 +207,12 @@ async function readViaClaude(oldest) {
 // PR's tries — it once did, and a reader who then turned the connector on still waited
 // hours for links. The read itself backs off instead, and the failure keeps being
 // reported until a read succeeds: going quiet after the first refresh looked exactly
-// like "nothing announced". A missing connector only comes back with a restart.
+// like "nothing announced". A missing connector is retried too: it is also what Claude says
+// when the radar starts with the Mac before Claude is ready, which only a restart cleared.
 const FAILURE_BACKOFF_MS = 30 * 60_000;
+// Shorter for the claims: their failure is often Claude not ready yet when the radar starts
+// with the Mac, and it held the warning for half an hour, Refresh included.
+const CLAIM_FAILURE_BACKOFF_MS = 5 * 60_000;
 let lastFailure = null;
 
 // Persisted, or every server restart would cost a model call over the whole age window.
@@ -295,7 +299,7 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
   state.attempts = Object.fromEntries(Object.entries(state.attempts).filter(([key]) => onBoard.has(key)));
 
   if (via === 'claude' && lastFailure) {
-    if (lastFailure.error.code === 'no-connector' || now < lastFailure.retryAt) throw lastFailure.error;
+    if (now < lastFailure.retryAt) throw lastFailure.error;
   }
   const due = dueForLookup(prs, state, now);
   if (via === 'claude' && !due.length) return false;
@@ -441,7 +445,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
     // Not the channel read's cursor: these messages can be newer than what it has read.
     state.byPr = mergeLinks({ byPr: state.byPr, latestTs: state.latestTs }, messages).byPr;
   } catch (error) {
-    claimFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
+    claimFailure = { error, retryAt: now + CLAIM_FAILURE_BACKOFF_MS };
     throw error;
   }
   claimFailure = null;
