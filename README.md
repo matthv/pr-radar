@@ -17,9 +17,9 @@ follows reality without any manual step.
 
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, replies to your comments, new commits since your feedback |
+| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies once none of your threads still waits on the author, new commits since your feedback |
 | `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
-| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix |
+| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix, some of them already answered included |
 | `Nothing to report` | drafts, shown as `Drafts` | everything else |
 
 **Ready to merge** sits right under *On my plate* and above the merged group. An approved
@@ -39,6 +39,15 @@ move theirs. A changes-requested no longer counts while its reviewer has a revie
 pending: GitHub drops the request once they submit, so a pending one is newer than their
 verdict. A new changes-requested from them brings the PR back. The comment threads are not
 covered: each still needs its reply, in the thread it was written in.
+
+**A reply hands a PR back once every remark has one.** Any reply in one of your threads used to
+count as your move, so an author working through ten remarks one by one put the PR on your
+plate at the first answer, and back again at each one after. A reply now moves it to *On my
+plate* only once none of your threads still waits on the author; until then it stays in
+*Waiting*, its card counting the answers already in. Asking for your review again hands it
+back at once, answered or not: GitHub drops your request when you submit a review, so one
+pending after yours is the author's explicit "your turn", and the card says *review requested
+again*. New commits since your feedback still bring it back as before.
 
 ## Running it
 

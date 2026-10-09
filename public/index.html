@@ -1479,6 +1479,7 @@ const I18N = {
     claimsMissing: 'Prises sur Slack mais introuvables sur GitHub : {refs} (supprimée, privée ou numéro faux).',
     claimsTruncated: 'Plus d’annonces avec ta réaction que n’en a lu la recherche : les plus anciennes peuvent manquer. Retire la réaction des PRs déjà traitées.',
     pillToReview: 'à reviewer',
+    pillReRequested: 'review redemandée',
     pillAnswers_one: '{n} réponse pour moi',
     pillAnswers_many: '{n} réponses pour moi',
     pillAwaitingFix: '{n} en attente de fix',
@@ -1669,6 +1670,7 @@ const I18N = {
     claimsMissing: 'Claimed on Slack but not found on GitHub: {refs} (deleted, private or a wrong number).',
     claimsTruncated: 'More announcements carry your reaction than the search read: the oldest may be missing. Remove it from the PRs already dealt with.',
     pillToReview: 'to review',
+    pillReRequested: 'review requested again',
     pillAnswers_one: '{n} reply for me',
     pillAnswers_many: '{n} replies for me',
     pillAwaitingFix: '{n} awaiting a fix',
@@ -2355,6 +2357,7 @@ function reviewPills(pr) {
   const pills = pr.merged ? mergeOutcomePills(pr) : [];
   if (pr.claimed) pills.push(pill('', t('pillClaimed'), t('pillClaimedTitle')));
   if (pr.reviewOwedByMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
+  if (pr.reRequested) pills.push(pill('todo', t('pillReRequested')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
   if (pr.awaiting.length) pills.push(pill('pending', t('pillAwaitingFix', { n: pr.awaiting.length })));
   if (pr.myLatestVerdict === 'CHANGES_REQUESTED') pills.push(pill('pending', t('pillIRequested')));
