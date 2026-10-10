@@ -577,6 +577,106 @@
   .group-label.waiting .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
+  #kanban {
+    --kb-col: 236px; --kb-rail: 44px;
+    flex: 1 1 auto; min-height: 0;
+    padding: 0 28px 70px; overflow: auto; scroll-snap-type: x proximity;
+  }
+  body:has(> #kanban:not([hidden])) { display: flex; flex-direction: column; height: 100dvh; }
+  body:has(> #kanban:not([hidden])) > * { flex-shrink: 0; }
+  body:has(> #kanban:not([hidden])) > #kanban { flex-shrink: 1; }
+  .kb { display: grid; column-gap: 12px; row-gap: 0; align-items: start; min-width: min-content; }
+  #kanban .kb-head {
+    position: sticky; top: 0; z-index: 2; background: var(--bg);
+    margin: 0; padding: 22px 2px 9px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; scroll-snap-align: start; min-width: 0;
+  }
+  .kb-head .kb-name { overflow: hidden; text-overflow: ellipsis; }
+  .kb-head.folded { justify-content: center; gap: 5px; padding-inline: 0; }
+  .kb-head.folded .kb-name { display: none; }
+  .kb-head:focus-visible, .kb-lane:focus-visible, .kb-cell.rail:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; border-radius: 6px; }
+  .kb-dimmed { opacity: .35; transition: opacity .15s; }
+  .kb-dimmed:hover { opacity: 1; }
+
+  .kb-lane {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 9px;
+    margin: 20px 0 10px; padding: 0; background: none; border: 0; cursor: pointer; text-align: left;
+    font: inherit; font-size: 13.5px; font-weight: 680; letter-spacing: -.1px; color: var(--text);
+  }
+  .kb-lane .bar { width: 4px; height: 15px; border-radius: 3px; background: linear-gradient(180deg, var(--col), var(--col-2)); }
+  .kb-lane .gcount, .kb-cell.rail .gcount {
+    font-size: 10.5px; font-weight: 620; padding: 1px 6px; border-radius: 20px;
+    background: var(--hairline); color: var(--text-faint);
+  }
+  .kb-lane .gchev {
+    width: 6px; height: 6px; flex: none; opacity: .6; color: var(--text-faint);
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
+  }
+  .kb-lane.folded .gchev { transform: rotate(-45deg); }
+
+  .kb-cell {
+    display: flex; flex-direction: column; gap: 9px; min-width: 0; min-height: 56px;
+    padding: 6px; border-radius: 12px; container-type: inline-size;
+    background: color-mix(in srgb, var(--sunken) 70%, transparent);
+  }
+  .kb-cell.empty {
+    align-items: center; justify-content: center;
+    background: none; border: 1px dashed var(--border); color: var(--text-faint);
+  }
+  .kb-cell.na {
+    align-items: center; justify-content: center; text-align: center; padding: 8px;
+    font-size: 11px; color: var(--text-faint); border: 1px dashed var(--border);
+    background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--border) 55%, transparent) 6px 7px);
+  }
+  .kb-cell.rail {
+    align-items: center; gap: 10px; padding: 10px 0; min-height: 120px; cursor: pointer;
+    font: inherit; background: none; border: 1px solid var(--border);
+  }
+  .kb-cell.rail:hover { border-color: var(--indigo); }
+  .kb-cell.rail.na { border-style: dashed; }
+  .kb-rail-name {
+    writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap;
+    font-size: 10.5px; font-weight: 620; letter-spacing: .5px; text-transform: uppercase; color: var(--text-faint);
+  }
+
+  .card-top .active-top { display: none; }
+  #kanban .card { margin-bottom: 0; padding: 10px 11px 10px 13px; border-radius: 11px; }
+  #kanban .card.idle { padding-left: 11px; }
+  #kanban .card-top { gap: 6px; align-items: center; }
+  #kanban .card-top .repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; padding: 1px 6px; }
+  #kanban .card-top .age { font-size: 10.5px; }
+  #kanban .card-top .age:not(.active-top), #kanban .meta .activity { display: none; }
+  #kanban .card-top .active-top { display: inline; }
+  #kanban .title {
+    order: 3; flex: 1 1 100%; font-size: 13px; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #kanban .meta { margin-top: 7px; gap: 4px 6px; font-size: 11px; }
+  #kanban .meta .sep::before { margin-right: 6px; }
+  #kanban .pill { padding: 1.5px 6px; font-size: 10.5px; }
+  #kanban .who > span:last-child { display: none; }
+  #kanban .reasons { margin-top: 7px; }
+  #kanban .reason { font-size: 11.5px; }
+  #kanban .card-foot { flex-wrap: wrap; gap: 0 6px; }
+  #kanban .card-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+  #kanban .expander, #kanban .snooze, #kanban .note-btn, #kanban .copy-btn,
+  #kanban .slack-link, #kanban .linear-link, #kanban .claude-link { margin-top: 7px; }
+  .expander.in-meta { display: none; }
+  #kanban .card-foot > .expander, #kanban .note-text { display: none; }
+  #kanban .expander.in-meta {
+    display: inline-flex; margin: 0; padding: 1.5px 6px; border-radius: 20px;
+    font-size: 10.5px; background: var(--hairline); color: var(--text-soft);
+  }
+  #kanban .reason.since > span { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
+  #kanban .since-lead, #kanban .since-toggle { flex: none; }
+  #kanban .since-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #kanban .note-btn.has-note { position: relative; color: var(--indigo); }
+  #kanban .note-btn.has-note::after {
+    content: ""; position: absolute; top: 5px; right: 5px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--indigo);
+  }
+
   .card {
     position: relative; overflow: hidden;
     background: var(--surface);
@@ -1024,6 +1124,7 @@
     <button class="seg" id="view">
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
+      <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button id="theme">☾</button>
@@ -1080,6 +1181,7 @@
   <ul id="notesBody"></ul>
 </div>
 <div id="orbits" hidden></div>
+<div id="kanban" hidden></div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -1093,6 +1195,7 @@
 
 <script src="/colors.js"></script>
 <script src="/order.js"></script>
+<script src="/kanban.js"></script>
 <script src="/since.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
@@ -1157,11 +1260,26 @@ function toggleGroup(label) {
   label.setAttribute('aria-expanded', String(!collapsed));
 }
 
+const kanbanFolds = new Set((() => {
+  try {
+    return PRRadarKanban.readFolds(localStorage.getItem('pr-radar:kanbanFolds'));
+  } catch {
+    return PRRadarKanban.DEFAULT_FOLDS;
+  }
+})());
+
+function saveKanbanFolds() {
+  try {
+    localStorage.setItem('pr-radar:kanbanFolds', JSON.stringify([...kanbanFolds]));
+  } catch {}
+}
+
 // Takes effect on the next render, which every caller is about to run.
 function expandGroups(keys) {
   let changed = false;
   for (const key of keys) changed = collapsedGroups.delete(key) || changed;
   if (changed) saveCollapsed();
+  if (PRRadarKanban.unfold(kanbanFolds, keys)) saveKanbanFolds();
 }
 
 // Snoozing records the activity timestamp seen at the time. A PR stays hidden only
@@ -1426,7 +1544,12 @@ const I18N = {
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
-    viewTitle: 'vue tableau / vue par auteur',
+    viewTitle: 'vue tableau / vue par auteur / kanban',
+    kanbanAction: 'À moi',
+    kanbanWaiting: 'En attente',
+    kanbanIdle: 'Calme',
+    kanbanNotApplicable: 'Sans objet de ce côté',
+    kanbanFoldTitle: 'replier / déplier la colonne',
     orbitPrs_one: '{n} PR',
     orbitPrs_many: '{n} PRs',
     orbit_action: 'à traiter',
@@ -1618,7 +1741,12 @@ const I18N = {
     reloadTitle: 'this page is running an older version of the tool',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
-    viewTitle: 'board view / by author',
+    viewTitle: 'board view / by author / kanban',
+    kanbanAction: 'My move',
+    kanbanWaiting: 'Waiting',
+    kanbanIdle: 'Quiet',
+    kanbanNotApplicable: 'Not on this side',
+    kanbanFoldTitle: 'fold / unfold the column',
     orbitPrs_one: '{n} PR',
     orbitPrs_many: '{n} PRs',
     orbit_action: 'on my plate',
@@ -1721,7 +1849,8 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
-let view = store.get('view', 'board') === 'orbits' ? 'orbits' : 'board';
+const VIEWS = ['board', 'orbits', 'kanban'];
+let view = VIEWS.includes(store.get('view', 'board')) ? store.get('view', 'board') : 'board';
 
 const t = (key, vars) =>
   String(I18N[lang][key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars?.[name] ?? '');
@@ -1740,16 +1869,24 @@ const SOUND_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" s
 // A view is a preference, unlike a filter: reopening on the one left behind is what you
 // asked for, where reopening on a filtered board would look like an empty one.
 function applyView(next) {
+  const switched = view !== next;
   view = next;
   store.set('view', next);
   for (const span of el('view').querySelectorAll('span')) {
     span.classList.toggle('on', span.dataset.view === next);
   }
   document.querySelector('main').hidden = next !== 'board';
+  el('kanban').hidden = next !== 'kanban';
   el('orbits').hidden = next !== 'orbits';
+  if (switched && next === 'kanban') render();
 }
 
-el('view').addEventListener('click', () => applyView(view === 'board' ? 'orbits' : 'board'));
+const viewRoot = () => (view === 'kanban' ? el('kanban') : document.querySelector('main'));
+
+el('view').addEventListener('click', event => {
+  const picked = event.target.closest('[data-view]')?.dataset.view;
+  applyView(picked ?? VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
+});
 
 function applySound(next) {
   soundOn = next;
@@ -2173,7 +2310,7 @@ function reasonsHtml(pr) {
       : '';
     rows.push(`<div class="reason since" title="${escapeHtml(changes.map(when).join('\n'))}"><span>`
       + `<span class="since-lead">${escapeHtml(t('sinceLead'))}</span> `
-      + `${changes.slice(0, SINCE_SHOWN).map(change => escapeHtml(sincePhrase(change))).join(' · ')}${toggle}</span></div>`);
+      + `<span class="since-text">${changes.slice(0, SINCE_SHOWN).map(change => escapeHtml(sincePhrase(change))).join(' · ')}</span>${toggle}</span></div>`);
     if (open) {
       const byTime = [...changes].sort((a, b) => (b.at ?? '\uffff').localeCompare(a.at ?? '\uffff'));
       rows.push(`<ul class="since-list">${byTime.map(change => `<li><span>${escapeHtml(sincePhrase(change))}</span>`
@@ -2197,6 +2334,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   const note = cardNotes.get(pr.id);
   const editingNote = state.editingNote === pr.id;
   const glow = glowAttrs(pr);
+  const expander = extra => `<button type="button" class="expander${extra}">${open ? '▾' : '▸'} ${tn('threads', count)}</button>`;
 
   return `
     <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${glow.cls}${open}" data-id="${pr.id}"${glow.style}>
@@ -2204,6 +2342,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
         ${repoChip(pr)}
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
         <span class="age" title="${t('openedTitle', { date: onDate(pr.createdAt) })}">${t('opened', { v: ago(pr.createdAt) })}</span>
+        <span class="age active-top" title="${t('openedTitle', { date: onDate(pr.createdAt) })}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
       </div>
       <div class="meta">
         ${pr.isDraft ? pill('draft', t('pillDraft')) : ''}
@@ -2213,12 +2352,13 @@ function cardHtml(pr, threadsToShow, extraPills) {
           ? (freshOn(pr, 'conflict') ? pill('alert fresh', t('pillConflicts'), t('sinceFreshTitle')) : pill('alert', t('pillConflicts')))
           : ''}
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
-        <span class="sep" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
+        <span class="sep activity" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
+        ${count ? expander(' in-meta') : ''}
       </div>
       ${reasonsHtml(pr)}
       <div class="card-foot">
-        ${count ? `<button type="button" class="expander">${open ? '▾' : '▸'} ${tn('threads', count)}</button>` : '<span></span>'}
+        ${count ? expander('') : '<span></span>'}
         <div class="card-actions">
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
@@ -2469,6 +2609,69 @@ function renderColumn(target, list, cardFn, emptyLabel, onlyBucket) {
     .join('');
 
   return groups.flatMap(([, group]) => group);
+}
+
+function kanbanHeadings() {
+  return {
+    action: t('kanbanAction'),
+    ready: t('groupMineReady'),
+    waiting: t('kanbanWaiting'),
+    merged: t('groupMineMerged'),
+    idle: t('kanbanIdle'),
+  };
+}
+
+function renderKanban(mine, reviews, focus) {
+  const { columns, lanes } = PRRadarKanban.layout({
+    axis: PRRadarKanban.AXIS,
+    lanes: [
+      { side: 'mine', buckets: PRRadarOrder.DEFAULTS.mine, prs: filterList(mine) },
+      { side: 'reviews', buckets: PRRadarOrder.DEFAULTS.reviews, prs: filterList(reviews) },
+    ],
+    focus,
+    folds: [...kanbanFolds],
+  });
+  const headings = kanbanHeadings();
+  const dim = column => (column.dimmed ? ' kb-dimmed' : '');
+  const fold = column => ` data-kanban-fold="${column.bucket}"`
+    + ` title="${escapeHtml(column.folded ? `${headings[column.bucket]} — ${t('kanbanFoldTitle')}` : t('kanbanFoldTitle'))}"`
+    + `${column.folded ? ` aria-label="${escapeHtml(headings[column.bucket])}"` : ''} aria-expanded="${!column.folded}"`;
+
+  const head = columns.map(column => {
+    const settled = column.bucket === 'merged'
+      && lanes.every(lane => lane.cells.find(cell => cell.bucket === 'merged').prs.every(pr => pr.pipelineOutcome !== 'running'));
+    return `<button type="button" class="group-label kb-head ${column.bucket}${settled ? ' settled' : ''}`
+      + `${column.folded ? ' folded' : ''}${dim(column)}"${fold(column)}>`
+      + `<span class="gdot"></span><span class="kb-name">${escapeHtml(headings[column.bucket])}</span>`
+      + `<span class="gcount">${column.count}</span></button>`;
+  }).join('');
+
+  const body = lanes.map(lane => {
+    const labels = groupLabels(lane.side);
+    const cardFn = lane.side === 'mine' ? mineCard : reviewCard;
+    const header = `<button type="button" class="kb-lane ${lane.side === 'mine' ? 'col-mine' : 'col-review'}${lane.folded ? ' folded' : ''}"`
+      + ` data-kanban-fold="${PRRadarKanban.laneFold(lane.side)}" aria-expanded="${!lane.folded}"><span class="bar"></span>`
+      + `${escapeHtml(t(lane.side === 'mine' ? 'titleMine' : 'titleReviews'))}`
+      + `<span class="gcount">${lane.total}</span><span class="gchev"></span></button>`;
+    if (lane.folded) return header;
+    return header + lane.cells.map((cell, index) => {
+      const column = columns[index];
+      if (column.folded) {
+        const inside = cell.applicable
+          ? `<span class="gcount">${cell.prs.length}</span><span class="kb-rail-name">${escapeHtml(labels[cell.bucket])}</span>`
+          : '';
+        return `<button type="button" class="kb-cell rail${cell.applicable ? '' : ' na'}${dim(column)}"${fold(column)}>${inside}</button>`;
+      }
+      if (!cell.applicable) return `<div class="kb-cell na${dim(column)}">${escapeHtml(t('kanbanNotApplicable'))}</div>`;
+      if (!cell.prs.length) return `<div class="kb-cell empty${dim(column)}">—</div>`;
+      return `<div class="kb-cell ${cell.bucket}${dim(column)}">${cell.prs.map(cardFn).join('')}</div>`;
+    }).join('');
+  }).join('');
+
+  const tracks = columns.map(column => (column.folded ? 'var(--kb-rail)' : 'minmax(var(--kb-col), 1fr)')).join(' ');
+  el('kanban').innerHTML = `<div class="kb" style="grid-template-columns: ${tracks}">${head}${body}</div>`;
+  for (const title of el('kanban').querySelectorAll('.card .title')) title.title = title.textContent;
+  for (const button of el('kanban').querySelectorAll('.note-btn.has-note')) button.title = cardNotes.get(button.dataset.note);
 }
 
 function repoOptions() {
@@ -2784,6 +2987,7 @@ function render() {
   const shownReviews = renderColumn(el('reviews'), reviews, reviewCard, t('emptyReviews'), focus?.column === 'reviews' ? focus.bucket : null);
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
+  if (view === 'kanban') renderKanban(mine, reviews, focus);
   renderOrbits([...shownMine, ...shownReviews]);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
@@ -2792,7 +2996,7 @@ function render() {
   // `autofocus` on a freshly injected textarea is not reliable enough across browsers to
   // depend on alone for landing the cursor at the end rather than the start.
   if (state.editingNote) {
-    const textarea = document.querySelector('.note-editor textarea');
+    const textarea = viewRoot().querySelector('.note-editor textarea');
     if (textarea) {
       textarea.focus();
       textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
@@ -2803,6 +3007,8 @@ function render() {
 function renderSkeleton() {
   el('mine').innerHTML = '<div class="card skeleton"></div>'.repeat(3);
   el('reviews').innerHTML = '<div class="card skeleton"></div>'.repeat(2);
+  const lane = [3, 1, 2, 1].map(n => `<div class="kb-cell">${'<div class="card skeleton"></div>'.repeat(n)}</div>`).join('');
+  el('kanban').innerHTML = `<div class="kb" style="grid-template-columns: repeat(4, minmax(var(--kb-col), 1fr))">${lane}${lane}</div>`;
   // Only the board had one: loading straight into the orbit view (it is remembered
   // across visits) left it a plain, unbroken fill with nothing saying data was coming.
   const cell = '<figure class="orbit"><div class="orbit-skel"></div>'
@@ -2996,6 +3202,7 @@ async function load(force, { check = false } = {}) {
     if (!state.data) {
       el('mine').innerHTML = '';
       el('reviews').innerHTML = '';
+      el('kanban').innerHTML = '';
     }
   } finally {
     el('refresh').classList.remove('busy');
@@ -3025,7 +3232,7 @@ async function resumeClaudeSession(button) {
     alert(t('claudeError', { message: error.message }));
   } finally {
     resuming.delete(id);
-    document.querySelector(`.claude-link[data-claude="${id}"]`)?.classList.remove('busy');
+    document.querySelectorAll(`.claude-link[data-claude="${id}"]`).forEach(link => link.classList.remove('busy'));
   }
 }
 
@@ -3076,6 +3283,15 @@ document.addEventListener('click', event => {
         copyUpdate.classList.remove('done');
       }, 1500);
     });
+    return;
+  }
+
+  const kanbanFold = event.target.closest('[data-kanban-fold]');
+  if (kanbanFold) {
+    const { kanbanFold: key } = kanbanFold.dataset;
+    if (!kanbanFolds.delete(key)) kanbanFolds.add(key);
+    saveKanbanFolds();
+    render();
     return;
   }
 
@@ -3242,7 +3458,7 @@ document.addEventListener('keydown', event => {
   if (state.editingNote) {
     // Escape does not blur the textarea on its own, so the focusout autosave never runs —
     // saved explicitly here instead, from whichever value is on screen right now.
-    const textarea = document.querySelector('.note-editor textarea');
+    const textarea = viewRoot().querySelector('.note-editor textarea');
     if (textarea) cardNotes.set(state.editingNote, textarea.value.trim());
     state.editingNote = null;
     render();
