@@ -17,9 +17,9 @@ follows reality without any manual step.
 
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, replies to your comments, new commits since your feedback |
+| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies or new commits since your feedback once none of your threads still waits on the author |
 | `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
-| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix |
+| `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix, some of them already answered or pushed on included |
 | `Nothing to report` | drafts, shown as `Drafts` | everything else |
 
 **Ready to merge** sits right under *On my plate* and above the merged group. An approved
@@ -39,6 +39,17 @@ move theirs. A changes-requested no longer counts while its reviewer has a revie
 pending: GitHub drops the request once they submit, so a pending one is newer than their
 verdict. A new changes-requested from them brings the PR back. The comment threads are not
 covered: each still needs its reply, in the thread it was written in.
+
+**A reply hands a PR back once every remark has one.** Any reply in one of your threads used to
+count as your move, so an author working through ten remarks one by one put the PR on your
+plate at the first answer, and back again at each one after. A reply now moves it to *On my
+plate* only once none of your threads still waits on the author; until then it stays in
+*Waiting*, its card counting the answers already in. Asking for your review again hands it
+back at once, answered or not: GitHub drops your request when you submit a review, so one
+pending after yours is the author's explicit "your turn", and the card says *review requested
+again*. New commits follow the same rule: a push while a remark of yours has no reply is the
+author mid-way too, so it stays in *Waiting*. The cost: an author who pushes the fix without
+replying, resolving or asking for your review again leaves the PR in *Waiting* until they do.
 
 ## Running it
 
@@ -235,8 +246,8 @@ real activity: last commit, last human comment, last review. In short,
 "New commits since my feedback" ignores commits **you** authored. Without that
 guard, a PR you have taken over asks you to re-check your own work.
 
-It fires when someone else pushed after your last word, and one of these holds:
-- a remark of yours still waits on the author;
+It fires when someone else pushed after your last word, no remark of yours still waits on
+the author, and one of these holds:
 - your last verdict requested changes;
 - you raised remarks on it and have not approved since. A passing comment does not count
   here: it should not ring on every push.
@@ -691,7 +702,8 @@ something:
 - **A failed read is not a miss.** A read that did not work (no connector, an answer
   that is not JSON) says nothing about the PRs, so it spends none of their tries: the
   next read simply waits 30 minutes, and the warning stays in the banner until a read
-  succeeds. A missing connector stays reported until the server restarts.
+  succeeds. A missing connector is retried the same way: Claude says it too when the radar
+  starts with the Mac before Claude is ready, and only a restart used to clear that.
 - **One read serves every PR.** Whatever PRs are due, a single call is made, in the
   background: the board is answered straight away, and the button shows up on the next
   refresh (or at once with *Refresh*).
@@ -765,7 +777,10 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
 - **The API path cannot do it**: `search.messages` wants a user token, not a bot's. With
   `PR_RADAR_SLACK_TOKEN` set, the startup line says it is off.
 - A failed read keeps the last claimed PRs on the board, says so in the warning banner, and
-  waits 30 minutes before trying again, **Refresh** included.
+  waits 5 minutes before trying again, **Refresh** included: often Claude was not ready yet
+  when the radar started with the Mac. When Claude could not run the search, the banner says
+  so, that it tries again, and, if it persists, to check the Slack connector on claude.ai,
+  since the same answer also means a connector missing or without the search.
 
 ## Standup notes
 

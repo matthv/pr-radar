@@ -813,6 +813,9 @@ function decorateReview(pr, me, reviewOwedByMe) {
   const myUnresolved = myThreads.filter(t => !t.isResolved);
 
   const myReviews = pr.reviews.filter(r => r.author === me);
+  // Asked again after I reviewed: GitHub drops a request once its reviewer submits, so one
+  // still pending is newer than my review — the author handing the PR back on purpose.
+  const reRequested = myReviews.length > 0 && pr.requestedReviewers.includes(me);
   const myLastActivity = [
     ...myReviews.map(r => r.submittedAt),
     ...myThreads.map(t => t.myLastAt),
@@ -857,15 +860,20 @@ function decorateReview(pr, me, reviewOwedByMe) {
 
   const reasons = [];
   if (reviewOwedByMe && !iHaveReviewed) reasons.push({ kind: 'to-review' });
-  if (answeredToMe.length) reasons.push({ kind: 'answers', count: answeredToMe.length });
+  if (reRequested) reasons.push({ kind: 're-requested' });
+  // A reply hands the PR back only once none of my threads still waits on the author: one
+  // answered out of several means they are working through them, not that they are done.
+  if (answeredToMe.length && !awaitingAuthor.length) reasons.push({ kind: 'answers', count: answeredToMe.length });
   // Remarks I raised, answered and resolved, then new commits: the PR waits on my second look
   // and my verdict, though nothing is left open — forestadmin-server#8561 sat in "nothing to
   // report" for its only reviewer. Raising the remark, not just commenting, is what counts:
-  // a passing comment should not ring on every push.
+  // a passing comment should not ring on every push. A push with a remark of mine still
+  // unanswered is the same as a partial reply: the author is mid-way, not done.
   const raisedRemarks = myThreads.some(thread => thread.startedByMe);
   if (
     pushedSinceMyFeedback &&
-    (awaitingAuthor.length || myLatestVerdict === 'CHANGES_REQUESTED' || (raisedRemarks && myLatestVerdict !== 'APPROVED'))
+    !awaitingAuthor.length &&
+    (myLatestVerdict === 'CHANGES_REQUESTED' || (raisedRemarks && myLatestVerdict !== 'APPROVED'))
   ) {
     reasons.push({ kind: 'recheck' });
   }
@@ -879,6 +887,7 @@ function decorateReview(pr, me, reviewOwedByMe) {
     ...pr,
     side: 'review',
     reviewOwedByMe,
+    reRequested: pr.merged ? false : reRequested,
     iHaveReviewed,
     myLatestVerdict,
     myLastActivity: myLastActivity ?? null,

@@ -243,7 +243,8 @@ function reviewPrs() {
       repo: 'ForestAdmin/forestadmin-server', number: 8549,
       title: 'feat(inbox): PRD-845 require the On data change trigger on automated workflows',
       author: 'christophebrun-forest', createdMin: 3 * 24 * 60, commitMin: 30,
-      reviews: [[ME, 'CHANGES_REQUESTED', 20 * 60, 'The check must also run when the workflow is edited, not only when the inbox is saved.']],
+      reviews: [[ME, 'CHANGES_REQUESTED', 20 * 60]],
+      threads: [{ path: 'src/services/inbox/automation-check.ts', line: 42, resolved: true, messages: [[ME, 20 * 60, 'The check must also run when the workflow is edited, not only when the inbox is saved.'], ['christophebrun-forest', 40, 'Done, the workflow update route runs it too.']] }],
     }), false],
     [node({
       repo: 'ForestAdmin/agent-ruby', number: 404,

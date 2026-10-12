@@ -207,9 +207,23 @@ async function readViaClaude(oldest) {
 // PR's tries — it once did, and a reader who then turned the connector on still waited
 // hours for links. The read itself backs off instead, and the failure keeps being
 // reported until a read succeeds: going quiet after the first refresh looked exactly
-// like "nothing announced". A missing connector only comes back with a restart.
+// like "nothing announced". A missing connector is retried too: it is also what Claude says
+// when the radar starts with the Mac before Claude is ready, which only a restart cleared.
 const FAILURE_BACKOFF_MS = 30 * 60_000;
+
+// Shorter for the claims: their failure is often Claude not ready yet when the radar starts
+// with the Mac, and it held the warning for half an hour, Refresh included.
+const CLAIM_FAILURE_BACKOFF_MS = 5 * 60_000;
 let lastFailure = null;
+
+// Only where a read actually failed: during the back-off the stored error is thrown again on
+// every board refresh, and logging those would bury the one line that matters. The API path
+// has no back-off, it reads again at the next refresh.
+function logFailure(what, error, backoffMs) {
+  const reason = error.code === 'no-connector' ? 'Claude sees no Slack tool' : error.message.replace(/^slack:\s*/, '');
+  const retry = backoffMs ? `in ${backoffMs / 60_000} min` : 'at the next refresh';
+  console.error(`[${new Date().toISOString()}] slack: ${what} failed (${reason}), trying again ${retry}`);
+}
 
 // Persisted, or every server restart would cost a model call over the whole age window.
 let state = null;
@@ -295,7 +309,7 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
   state.attempts = Object.fromEntries(Object.entries(state.attempts).filter(([key]) => onBoard.has(key)));
 
   if (via === 'claude' && lastFailure) {
-    if (lastFailure.error.code === 'no-connector' || now < lastFailure.retryAt) throw lastFailure.error;
+    if (now < lastFailure.retryAt) throw lastFailure.error;
   }
   const due = dueForLookup(prs, state, now);
   if (via === 'claude' && !due.length) return false;
@@ -305,7 +319,11 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
   try {
     messages = via === 'api' ? await readViaApi(oldest) : await readViaClaude(oldest);
   } catch (error) {
+    // The API path tries again on every refresh: a lasting failure (a revoked token) is said
+    // once, not every five minutes.
+    const repeat = via === 'api' && lastFailure?.error.message === error.message;
     lastFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
+    if (!repeat) logFailure('channel read', error, via === 'api' ? null : FAILURE_BACKOFF_MS);
     throw error;
   }
   lastFailure = null;
@@ -441,7 +459,8 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
     // Not the channel read's cursor: these messages can be newer than what it has read.
     state.byPr = mergeLinks({ byPr: state.byPr, latestTs: state.latestTs }, messages).byPr;
   } catch (error) {
-    claimFailure = { error, retryAt: now + FAILURE_BACKOFF_MS };
+    claimFailure = { error, retryAt: now + CLAIM_FAILURE_BACKOFF_MS };
+    logFailure('claims read', error, CLAIM_FAILURE_BACKOFF_MS);
     throw error;
   }
   claimFailure = null;
