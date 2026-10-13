@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const logger = require('./log');
 
 // Where the team announces its PRs: a Slack channel. Read either through the Slack API
 // with a bot token, or — when no token could be had, since installing an app takes a
@@ -222,7 +223,7 @@ let lastFailure = null;
 function logFailure(what, error, backoffMs) {
   const reason = error.code === 'no-connector' ? 'Claude sees no Slack tool' : error.message.replace(/^slack:\s*/, '');
   const retry = backoffMs ? `in ${backoffMs / 60_000} min` : 'at the next refresh';
-  console.error(`[${new Date().toISOString()}] slack: ${what} failed (${reason}), trying again ${retry}`);
+  logger.fail('slack', `${what} failed (${reason}), trying again ${retry}`);
 }
 
 // Persisted, or every server restart would cost a model call over the whole age window.
@@ -239,7 +240,7 @@ async function loadState() {
   try {
     text = await fs.readFile(STATE_FILE, 'utf8');
   } catch (error) {
-    if (error.code !== 'ENOENT') console.error(`slack: cannot read ${STATE_FILE} (${error.message}), starting afresh`);
+    if (error.code !== 'ENOENT') logger.fail('slack', `cannot read ${STATE_FILE} (${error.message}), starting afresh`);
     state = emptyState();
     return state;
   }
@@ -255,7 +256,7 @@ async function loadState() {
   } catch (error) {
     const aside = `${STATE_FILE}.corrupt-${Date.now()}`;
     await fs.rename(STATE_FILE, aside).catch(() => {});
-    console.error(`slack: ${STATE_FILE} is unreadable (${error.message}), set aside as ${aside}`);
+    logger.fail('slack', `${STATE_FILE} is unreadable (${error.message}), set aside as ${aside}`);
     state = emptyState();
   }
   return state;
@@ -447,7 +448,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
       try {
         second = await readClaimsViaClaude(after);
       } catch (error) {
-        console.error(`slack: confirming a removed claim failed (${error.message}), kept for now`);
+        logger.fail('slack', `confirming a removed claim failed (${error.message}), kept for now`);
       }
       const kept = second ? pullRequestLinks(second.messages) : state.claimed.refs;
       refs = unionRefs(refs, kept);

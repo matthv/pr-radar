@@ -28,6 +28,7 @@ try {
 
 const { fetchDashboard, mergedSince } = require('./github');
 const digest = require('./digest');
+const logger = require('./log');
 
 const ORG = process.env.PR_RADAR_ORG;
 const MAX_AGE_DAYS = Number(process.env.PR_RADAR_MAX_AGE_DAYS || 60);
@@ -52,7 +53,7 @@ function withinMorningWindow(now) {
 }
 
 function log(message) {
-  console.log(`[${new Date().toISOString()}] ${message}`);
+  logger.info('notes', message);
 }
 
 // Same window as the panel's default "since <previous working day>" — oldest activity
@@ -99,6 +100,6 @@ async function main() {
 }
 
 main().catch(error => {
-  log(`failed: ${error.message}`);
+  logger.fail('notes', error.message);
   process.exitCode = 1;
 });

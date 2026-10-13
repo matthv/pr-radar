@@ -26,6 +26,7 @@ const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const webhook = require('./webhook');
+const logger = require('./log');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -161,7 +162,7 @@ async function withSlackLinks(payload) {
 async function readSlack(prs) {
   try {
     const read = await slack.lookup(prs, { maxAgeDays: MAX_AGE_DAYS, via: slackMode });
-    if (read && slackMode === 'claude') console.log(`[${new Date().toISOString()}] slack: channel read via claude`);
+    if (read && slackMode === 'claude') logger.info('slack', 'channel read via claude');
     slackWarning = null;
   } catch (error) {
     // The kind picks the banner's sentence: only the board knows how to say what to do.
@@ -202,10 +203,10 @@ function readClaimsInBackground(asked) {
       if (read) claimReadAt = Date.now();
       claimWarning = truncated ? { source: 'slack-claims', kind: 'truncated', message: '' } : null;
       if (changed) {
-        console.log(`[${new Date().toISOString()}] slack: claimed PRs changed, searching again`);
+        logger.info('slack', 'claimed PRs changed, searching again');
         // A search already running was started with the previous list: joining it would show
         // that one again, so the new search waits for it to end.
-        const again = () => dashboard(true).catch(error => console.error('Claimed PRs refresh failed:', error.message));
+        const again = () => dashboard(true).catch(error => logger.fail('search', `after a claims change: ${error.message}`));
         // Its own failure is reported by whoever awaited it; left unhandled here it would
         // end the process (Node 22).
         if (inFlight) inFlight.catch(() => {}).then(again);
@@ -349,12 +350,12 @@ async function liveStep() {
       else if (inScopeUrl(url)) live.earlyDiscovery = true;
     }
     const { changed, unknownTouched, failures } = await watcher.check(cache.payload, now);
-    if (failures.length) console.error(`[${new Date().toISOString()}] change check: ${failures.length} failed, first: ${failures[0]}`);
+    if (failures.length) logger.fail('live', `change check: ${failures.length} failed, first: ${failures[0]}`);
     if (unknownTouched) live.earlyDiscovery = true;
     for (const id of changed) ids.add(id);
     if (ids.size) {
       await patchOrForget(ids);
-      console.log(`[${new Date().toISOString()}] live: ${ids.size} PR(s) reloaded`);
+      logger.info('live', `${ids.size} PR(s) reloaded`);
     }
     else cache = { ...cache, payload: { ...cache.payload, fetchedAt: new Date(now).toISOString() } };
     return;
@@ -387,7 +388,7 @@ function liveTick() {
     if (!WEBHOOK_URL || Date.now() - live.firstSearchAt < FIRST_SEARCH_RETRY_MS) return;
     live.firstSearchAt = Date.now();
     live.working = dashboard(true)
-      .catch(error => console.error(`[${new Date().toISOString()}] first search, retried: ${error.message}`))
+      .catch(error => logger.fail('search', `first search, retried: ${error.message}`))
       .finally(() => {
         live.working = null;
       });
@@ -395,7 +396,7 @@ function liveTick() {
   }
   if (!watch.watched(live.pageAt, Date.now(), LEASE_MS, Boolean(WEBHOOK_URL))) return;
   live.working = liveStep()
-    .catch(error => console.error(`[${new Date().toISOString()}] live refresh: ${error.message}`))
+    .catch(error => logger.fail('live', `refresh: ${error.message}`))
     .finally(() => {
       live.working = null;
     });
@@ -551,12 +552,12 @@ const server = http.createServer(async (req, res) => {
     try {
       result = await update.apply();
     } catch (error) {
-      console.error(`update failed: ${error.message}`);
+      logger.fail('update', error.message);
       return json(res, 200, { ok: false, reason: 'git', message: update.reasonOf(error) });
     }
     const restart = result.ok && result.restart && SELF_RESTART;
     if (result.ok && !restart) update.markPending(result);
-    console.log(`update: ${result.ok ? `pulled ${result.from} → ${result.to}, ${restart ? 'restarting' : 'restart left to you'}` : `refused (${result.reason})`}`);
+    logger.info('update', `${result.ok ? `pulled ${result.from} → ${result.to}, ${restart ? 'restarting' : 'restart left to you'}` : `refused (${result.reason})`}`);
     // On close, not on finish: a tab closed or reloaded meanwhile must not leave a pulled
     // clone running its old code with nothing saying so.
     if (restart) {
@@ -586,22 +587,22 @@ const server = http.createServer(async (req, res) => {
 // This process only exits once the new one is running; if it cannot start (node moved by
 // an upgrade, say), this one takes the port back and keeps serving the old code.
 function relaunch(result) {
-  console.log('update: restarting on the new code');
+  logger.info('update', 'restarting on the new code');
   server.close(() => {
     const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
       cwd: __dirname, env: LAUNCH_ENV, detached: true, stdio: 'inherit',
     });
     child.once('error', error => {
-      console.error(`update: could not start the new server (${error.message}), still on the old code`);
+      logger.fail('update', `could not start the new server (${error.message}), still on the old code`);
       update.markPending(result);
       server.once('error', listenError => {
-        console.error(`update: could not take port ${PORT} back either (${listenError.message}); the radar is down, start it with: node server.js`);
+        logger.fail('update', `could not take port ${PORT} back either (${listenError.message}); the radar is down, start it with: node server.js`);
         process.exit(1);
       });
-      server.listen(PORT, () => console.log(`update: back on the old code, port ${PORT}`));
+      server.listen(PORT, () => logger.info('update', `back on the old code, port ${PORT}`));
     });
     child.once('spawn', () => {
-      console.log(`update: new server started (pid ${child.pid}), detached from this terminal; stop it with kill ${child.pid}`);
+      logger.info('update', `new server started (pid ${child.pid}), detached from this terminal; stop it with kill ${child.pid}`);
       child.unref();
       process.exit(0);
     });
@@ -635,27 +636,27 @@ server.listen(PORT, async () => {
   };
   console.log(
     `PR Radar → http://localhost:${PORT}\n` +
-      `  org ${ORG}${EXTRA_REPOS.length ? ` + ${EXTRA_REPOS.join(', ')}` : ''} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · ${LIVE ? `full search every ${REFRESH_SECONDS}s, changes checked every ${CHECK_SECONDS}s` : `refresh ${REFRESH_SECONDS}s`}\n` +
-      `  drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
-      `  standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
-      `  slack link ${SLACK_MODES[slackMode]}\n` +
-      `  claimed PRs ${CLAIM_MODES[claimMode]}\n` +
-      `  sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
-      `  claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
-      `  linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
-      `  webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
-      `  updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
+      `  🌐 org ${ORG}${EXTRA_REPOS.length ? ` + ${EXTRA_REPOS.join(', ')}` : ''} · PRs active within ${MAX_AGE_DAYS} days · merges since the previous working day · ${LIVE ? `full search every ${REFRESH_SECONDS}s, changes checked every ${CHECK_SECONDS}s` : `refresh ${REFRESH_SECONDS}s`}\n` +
+      `  📄 drafts ${HIDE_DRAFTS ? 'hidden' : 'shown'}\n` +
+      `  📝 standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
+      `  💬 slack link ${SLACK_MODES[slackMode]}\n` +
+      `  🙋 claimed PRs ${CLAIM_MODES[claimMode]}\n` +
+      `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
+      `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
+      `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
+      `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
+      `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );
   update.start();
   if (LIVE) setInterval(liveTick, 5000).unref();
-  dashboard(true).catch(error => console.error('First fetch failed:', error.message));
+  dashboard(true).catch(error => logger.fail('search', `first search: ${error.message}`));
   // Webhooks go out with no tab open. Live, the checks never stop; otherwise the server runs
   // the full search itself, spaced out like the live one when no page is looking.
   if (WEBHOOK_URL && !LIVE) {
     setInterval(() => {
       const now = Date.now();
       if (now - cache.at < watch.searchEveryMs(REFRESH_SECONDS * 1000, now - live.pageAt <= LEASE_MS)) return;
-      dashboard(true).catch(error => console.error('Webhook refresh failed:', error.message));
+      dashboard(true).catch(error => logger.fail('search', `for the webhook: ${error.message}`));
     }, 60_000).unref();
   }
 });

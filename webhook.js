@@ -1,6 +1,7 @@
 'use strict';
 
 const { LOSING_SOURCES } = require('./github');
+const logger = require('./log');
 
 const STATUSES = [
   'mine.action', 'mine.ready', 'mine.waiting', 'mine.idle', 'mine.merged',
@@ -84,7 +85,7 @@ function step(previous, current, { incomplete: partial = false, statuses = [] } 
   return { events: [...byStatus.values()], next };
 }
 
-async function send(url, events, { fetchImpl = fetch, log = console.error, info = console.log } = {}) {
+async function send(url, events, { fetchImpl = fetch, log = line => logger.fail('webhook', line), info = line => logger.info('webhook', line) } = {}) {
   const forms = [...new Set([url, URL.canParse(url) ? new URL(url).href : url])];
   const scrub = text => forms.reduce((line, form) => line.split(form).join('<webhook>'), text);
   await Promise.all(
@@ -100,10 +101,10 @@ async function send(url, events, { fetchImpl = fetch, log = console.error, info 
         // Left unread, the body would hold the socket open.
         res.body?.cancel().catch(() => {});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        info(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: HTTP ${res.status}`);
+        info(`${event.status} ${event.url}${more}: HTTP ${res.status}`);
       } catch (error) {
         const cause = error.cause?.message ? ` (${error.cause.message})` : '';
-        log(`[${new Date().toISOString()}] webhook ${event.status} ${event.url}${more}: ${scrub(`${error.message}${cause}`)}`);
+        log(`${event.status} ${event.url}${more}: ${scrub(`${error.message}${cause}`)}`);
       }
     }),
   );

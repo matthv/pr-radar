@@ -197,7 +197,7 @@ test('the statuses of a board shaped by the real classification are the document
 test('send logs each call that went through', async () => {
   const infos = [];
   await send('https://hook.test/x', [event('mine.action', 1, 2)], { fetchImpl: async () => ({ ok: true, status: 200 }), info: line => infos.push(line) });
-  assert.match(infos[0], /webhook mine\.action https:\/\/github\.com\/o\/r\/pull\/1 \(\+1 PR\): HTTP 200/);
+  assert.match(infos[0], /^mine\.action https:\/\/github\.com\/o\/r\/pull\/1 \(\+1 PR\): HTTP 200/);
 });
 
 test('url: empty means off, an http(s) URL is kept as given', () => {

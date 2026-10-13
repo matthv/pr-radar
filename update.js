@@ -1,6 +1,7 @@
 'use strict';
 
 const { promisify } = require('node:util');
+const logger = require('./log');
 const { execFile: execFileCb, execFileSync } = require('node:child_process');
 const execFile = promisify(execFileCb);
 
@@ -75,7 +76,7 @@ async function refresh() {
     latest = await check();
   } catch (error) {
     latest = null;
-    console.error(`update check failed: ${error.message.split('\n')[0]}`);
+    logger.fail('update', `check failed: ${error.message.split('\n')[0]}`);
   }
   return latest;
 }
