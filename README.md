@@ -379,6 +379,9 @@ that module exports and none of its network calls:
   that does;
 - `test/order.test.js` — the section order: a saved one read back safely from storage, unknown,
   duplicate and new buckets, and moves before or after;
+- `test/kanban.test.js` — the kanban layout: one axis for both lanes, a bucket a side never
+  has kept as an empty cell, a focused counter, folded columns and the "quiet" one folded by
+  default;
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
@@ -1106,6 +1109,35 @@ a `+N`.
 Each card carries two ages, both labelled so they cannot be confused: **"opened
 X ago"** in the top right (exact date on hover) and **"active Y ago"** in the
 state line, which is the real last activity and doubles as the sort key.
+
+## The kanban view
+
+The last icon of the view switch (board · by author · kanban) lays the same groups out as
+columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
+group the board would have put it in.
+
+- **Two lanes, one axis.** **My PRs** on top, **PRs I review** below, and the columns line up
+  across them, so reading one top to bottom gives, say, everything that is your move on both
+  sides. *Ready to merge* only exists for your own PRs: the review lane keeps a hatched cell
+  there, so nothing slides under the wrong header.
+- **Columns follow the flow**, not the board's section order: your move, waiting, ready to
+  merge, recently merged, quiet. *Ready to merge* sits right before the merge it leads to.
+- **Columns never move.** An empty one keeps its place with a dash. Clicking a column's header
+  folds it into a narrow rail, in both lanes at once; its name stays in the header's tooltip.
+  **Quiet** starts folded.
+- **The headers stay in sight.** The kanban fills the window under the summary band and scrolls
+  on its own, its column headers pinned at the top.
+- **A lane folds** from its title, like a group on the board. Column and lane folds are kept
+  together in `pr-radar:kanbanFolds`, and a card that starts to glow unfolds its column and
+  its lane.
+- **A counter in the summary band** keeps its lane only and dims the other columns rather than
+  removing them.
+- **The card is the board's**, laid out for a narrow column: the last activity moves to the top
+  right (the opening date is on hover), the title gets two lines, the names behind the faces go
+  to their tooltip. The open threads become a pill among the badges, *since you looked* holds
+  on one line (all of it on hover), and a note shows as a dot on its icon, its text on hover.
+  The bottom row keeps every action: note, copy, snooze, Linear, Claude and Slack.
+- Narrower than the columns need, the view scrolls sideways and snaps to each column.
 
 ## Reading the colours
 
