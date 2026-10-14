@@ -6,6 +6,7 @@
 
 const { baseShape, decorateMine, decorateReview, byActionThenFreshness, mergedSince } = require('./github');
 const { snapshotOf } = require('./public/since');
+const { withTwins } = require('./ticket');
 
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
@@ -329,9 +330,12 @@ function payload(force) {
   // Not every PR gets announced: a draft, a review requested a minute ago, a few others.
   const unannounced = new Set([1955, 8561]);
   const announced = pr => !pr.isDraft && !unannounced.has(pr.number);
-  const withSlack = pr => ({ ...pr, slackUrl: announced(pr) ? 'https://app.slack.com/client' : null });
+  // One announcement per PR: a shared link would make every announced card a twin of the others.
+  const withSlack = pr => ({ ...pr, slackUrl: announced(pr) ? `https://app.slack.com/client#${pr.repo}-${pr.number}` : null });
   // Your own PRs are the ones written in a Claude session; a review seldom is.
   const withLinks = pr => ({ ...withSlack(pr), claudeSession: pr.side === 'mine' });
+
+  const cards = withTwins([...mine, ...reviews].map(withLinks));
 
   return {
     me: ME,
@@ -351,8 +355,8 @@ function payload(force) {
     },
     demoSeen: demoSeen([...mine, ...reviews]),
     demoStartedAt: STARTED_AT,
-    mine: mine.map(withLinks),
-    reviews: reviews.map(withLinks),
+    mine: cards.slice(0, mine.length),
+    reviews: cards.slice(mine.length),
     counts: {
       hiddenStale: 7,
       seenTotal: mine.length + reviews.length + 7,

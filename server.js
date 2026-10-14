@@ -27,6 +27,7 @@ const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const webhook = require('./webhook');
 const logger = require('./log');
+const { withTwins } = require('./ticket');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -151,7 +152,12 @@ function scanClaudeSessions() {
 async function withSlackLinks(payload) {
   const links = await slack.linksFor([...payload.mine, ...payload.reviews]);
   const withSlack = pr => ({ ...pr, slackUrl: links.get(pr.id) ?? null });
-  return { ...payload, mine: payload.mine.map(withSlack), reviews: payload.reviews.map(withSlack) };
+  return splitTwins(payload, withTwins([...payload.mine, ...payload.reviews].map(withSlack)));
+}
+
+// Twins are found across both sides, after the Slack links: one announcement is one of the signals.
+function splitTwins(payload, cards) {
+  return { ...payload, mine: cards.slice(0, payload.mine.length), reviews: cards.slice(payload.mine.length) };
 }
 
 // Slack is asked after GitHub, only about the PRs on the board, and its failure is a

@@ -7,7 +7,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 
 const { fetchDigestInputs } = require('./github');
-const { ticketKey } = require('./ticket');
+const { ticketKey, workKey } = require('./ticket');
 
 const MODEL = 'claude-haiku-4-5-20251001';
 // Part of the cache key: reword the prompt and every stored digest is stale, since it
@@ -88,16 +88,7 @@ function blockFor(pr) {
     .join('\n');
 }
 
-// A standup is told by piece of work, not by pull request: the back and the front of one
-// change are one thing to say (Alban's feedback, forestadmin#9977 + forestadmin-server#8522).
-// The grouping is decided here, from what can be checked — the model only words it.
-// The same ticket, or the very same title once its conventional prefix is gone: the two
-// halves of one change are opened with one title, and not always with the ticket in it.
-function workKey(pr) {
-  const ticket = ticketKey(pr);
-  if (ticket) return `ticket:${ticket}`;
-  return `title:${String(pr.title ?? '').replace(/^\w+(\([^)]*\))?!?:\s*/, '').trim().toLowerCase()}`;
-}
+// The grouping is decided here, from what can be checked (workKey) — the model only words it.
 
 // First-appearance order, so the oldest-activity-first order of the input survives.
 function clusterForDigest(prs) {

@@ -502,6 +502,22 @@ ticket says what it is about. Down with Slack, the two ways out of a card sit to
 The key stays written next to the mark, since it mostly comes from the branch and appears
 nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 
+## Linked PRs
+
+One change often comes as two or three PRs, a back and a front. A card whose PR has such
+twins on the board wears a `🔗 +1 linked PR` pill; its tooltip names them, and a click
+makes them all blink where they are, the way a card that just arrived does, for a few
+seconds. No scroll, so the board stays where you were reading; a folded group or kanban
+column holding one opens. When none can be shown (a project filter, a hidden snooze, the
+orbits), the first one opens on GitHub.
+
+Twins are the PRs of one piece of work, the way the standup notes already group them
+(`workKey` in `ticket.js`): the same ticket, or the same title once its `feat(…):` prefix
+is gone. Plus one signal of the board's own: one Slack announcement linking several PRs,
+the "Server / front" posts whose titles differ and name no ticket. Both sides count, and
+merged PRs too: "the back is already merged" is worth knowing while reviewing the front.
+Only PRs on the board are linked; it asks GitHub nothing more.
+
 ## The Claude session
 
 macOS only. With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a
