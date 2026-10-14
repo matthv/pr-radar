@@ -18,7 +18,7 @@ try {
   /* no .env: fall back to the defaults */
 }
 
-const { fetchBoard, loadNodes, shapeBoard, ownerScope, parseExtraRepos, fetchStatusFingerprints, statusFingerprint } = require('./github');
+const { fetchBoard, loadNodes, shapeBoard, ownerScope, parseExtraRepos, fetchStatusFingerprints, statusFingerprint, fetchAnnounced, claimInScope } = require('./github');
 const watch = require('./watch');
 const digest = require('./digest');
 const slack = require('./slack');
@@ -28,6 +28,7 @@ const claudeSessions = require('./claude-sessions');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
+const { createOrphanWatch } = require('./orphans');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -57,6 +58,7 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
+const ORPHAN_DAYS = Math.max(0, Number(process.env.PR_RADAR_ORPHAN_DAYS ?? 2) || 0);
 const TERMINAL = (process.env.PR_RADAR_TERMINAL ?? '').trim() || 'Terminal';
 const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
   ? 'off (PR_RADAR_CLAUDE_SESSIONS=false)'
@@ -120,6 +122,9 @@ let claimMode = 'off';
 let claimWarning = null;
 let claimReading = null;
 let claimReadAt = 0;
+let orphanWatch = null;
+let orphansMissing = '';
+let channelReadAt = 0;
 let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
@@ -160,10 +165,11 @@ async function withLinksAndTwins(payload) {
 // it or breaks because of it. Through the API it is read inline — a couple of hundred
 // milliseconds. Through Claude it takes seconds, so it runs behind the response and
 // patches the cached board when done: the button shows up on the next refresh.
-async function readSlack(prs) {
+async function readSlack(prs, { refresh = false } = {}) {
   try {
-    const read = await slack.lookup(prs, { maxAgeDays: MAX_AGE_DAYS, via: slackMode });
-    if (read && slackMode === 'claude') logger.info('slack', 'channel read via claude');
+    const read = await slack.lookup(prs, { maxAgeDays: MAX_AGE_DAYS, via: slackMode, refresh });
+    if (read) channelReadAt = Date.now();
+    if (read && slackMode === 'claude') logger.info('slack', `channel read via claude${refresh ? ', for the unreviewed announcements' : ''}`);
     slackWarning = null;
   } catch (error) {
     // The kind picks the banner's sentence: only the board knows how to say what to do.
@@ -171,17 +177,19 @@ async function readSlack(prs) {
   }
 }
 
-function readSlackInBackground(prs) {
-  if (slackReading) return;
-  slackReading = readSlack(prs)
+function readSlackInBackground(prs, { refresh = false } = {}) {
+  if (slackReading) return slackReading;
+  slackReading = readSlack(prs, { refresh })
     .then(async () => {
       if (!cache.payload) return;
       const warnings = cache.payload.warnings.filter(w => w.source !== 'slack');
       cache.payload = { ...(await withLinksAndTwins(cache.payload)), warnings: slackWarning ? [...warnings, slackWarning] : warnings };
     })
+    .catch(error => logger.fail('slack', `after the channel read: ${error.message}`))
     .finally(() => {
       slackReading = null;
     });
+  return slackReading;
 }
 
 // The reactions are read behind the board, like the Claude channel read: a search through
@@ -228,7 +236,7 @@ function readClaimsInBackground(asked) {
 async function layered(board, discoveredAt) {
   const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
   const payload = await withLinksAndTwins(withSessions);
-  return {
+  return withOrphans({
     ...payload,
     warnings: [...payload.warnings, ...(slackWarning ? [slackWarning] : []), ...(claimWarning ? [claimWarning] : [])],
     discoveredAt,
@@ -239,7 +247,59 @@ async function layered(board, discoveredAt) {
     hideDrafts: HIDE_DRAFTS,
     customSound: Boolean(SOUND_FILE),
     digestAvailable,
+  });
+}
+
+// A PR already on my board is shown there: the banner only lists the ones not on it.
+function withOrphans(payload) {
+  if (!orphanWatch) return payload;
+  const onBoard = new Set([...payload.mine, ...payload.reviews].map(pr => pr.id));
+  const warning = orphanWatch.warning();
+  return {
+    ...payload,
+    orphans: { ...orphanWatch.current({ me: payload.me, onBoard }), claimEmoji: claimMode === 'on' ? slack.CLAIM_EMOJI : null },
+    warnings: [...payload.warnings.filter(w => w.source !== 'orphans'), ...(warning ? [warning] : [])],
   };
+}
+
+// Through Claude the channel is otherwise read only for a PR on the board missing its link,
+// and the banner is about PRs that are not on it. An announcement only counts after days,
+// so a read every two hours is plenty: one Haiku call, of the messages since the last one.
+// It shares the board's single read slot; a failed one is tried again once Slack's own
+// back-off is over, at an orphan check.
+const CHANNEL_REFRESH_MS = 2 * 60 * 60_000;
+async function announcedFresh() {
+  if (slackMode === 'claude' && cache.payload && Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
+    if (slackReading) await slackReading;
+    if (Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
+      await readSlackInBackground([...cache.payload.mine, ...cache.payload.reviews], { refresh: true });
+    }
+  }
+  return slack.announced();
+}
+
+function readOrphansInBackground(asked) {
+  if (!orphanWatch || Date.now() - live.pageAt > LEASE_MS) return;
+  orphanWatch
+    .read({ force: asked })
+    .then(({ read, asked: count, missing = [], failed }) => {
+      if (!read) return;
+      if (cache.payload) cache.payload = withOrphans(cache.payload);
+      if (failed) {
+        logger.fail('orphans', `announced PRs read failed (${orphanWatch.warning()?.message}), trying again in 10 min`);
+        return;
+      }
+      logger.info('orphans', `${count} announced PR(s) checked, ${cache.payload?.orphans?.prs.length ?? 0} waiting for a review`);
+      // Once per change: a deleted PR is asked about again at every read until it ages out.
+      const missingNow = missing.join(' ');
+      if (missingNow === orphansMissing) return;
+      orphansMissing = missingNow;
+      if (missing.length) {
+        const shown = missing.slice(0, 5).join(', ') + (missing.length > 5 ? ', …' : '');
+        logger.fail('orphans', `${missing.length} announced PR(s) not found, deleted or out of the token's reach: ${shown}`);
+      }
+    })
+    .catch(error => logger.fail('orphans', error.message));
 }
 
 function reusableNodes() {
@@ -287,6 +347,8 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
       readClaimsInBackground(asked);
       const at = Date.now();
       cache = { at, payload: await layered(fetched.board, new Date(at).toISOString()) };
+      // After the cache: the channel read it may start needs the board's PRs.
+      readOrphansInBackground(asked);
       if (!scanDone) {
         scanned.then(() => {
           if (cache.payload) cache.payload = withClaudeSessions(cache.payload);
@@ -502,6 +564,7 @@ const server = http.createServer(async (req, res) => {
       const asked = url.searchParams.get('force') === '1';
       // Read now, not only after the search: a search already running would otherwise swallow it.
       if (asked) readClaimsInBackground(true);
+      if (asked) readOrphansInBackground(true);
       const payload = await dashboard(asked || lapsed, { asked });
       json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
@@ -625,6 +688,19 @@ server.listen(PORT, async () => {
     // reaction removed and the card leaving. Checked every minute, read when due.
     setInterval(() => readClaimsInBackground(false), 60_000).unref();
   }
+  if (ORPHAN_DAYS && slackMode !== 'off') {
+    orphanWatch = createOrphanWatch({
+      fetchAnnounced,
+      announced: announcedFresh,
+      inScope: ref => claimInScope(ref, ORG, EXTRA_REPOS),
+      days: ORPHAN_DAYS,
+      maxAgeDays: MAX_AGE_DAYS,
+    });
+    setInterval(() => readOrphansInBackground(false), 60_000).unref();
+  }
+  const ORPHAN_LINE = orphanWatch
+    ? `after ${ORPHAN_DAYS} working day${ORPHAN_DAYS > 1 ? 's' : ''} with no review, read every 30 min`
+    : `off (${ORPHAN_DAYS ? 'no Slack channel' : 'PR_RADAR_ORPHAN_DAYS=0'})`;
   const CLAIM_MODES = {
     on: `via :${slack.CLAIM_EMOJI}: on #${process.env.PR_RADAR_SLACK_CHANNEL}, read every 5 min through Claude`,
     'needs-claude': 'off (needs the Slack link through Claude: the API path cannot search your reactions)',
@@ -642,6 +718,7 @@ server.listen(PORT, async () => {
       `  📝 standup notes ${digestAvailable ? 'ready' : 'off (claude CLI not found)'}\n` +
       `  💬 slack link ${SLACK_MODES[slackMode]}\n` +
       `  🙋 claimed PRs ${CLAIM_MODES[claimMode]}\n` +
+      `  🧭 unreviewed announcements ${ORPHAN_LINE}\n` +
       `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +

@@ -150,3 +150,19 @@ test('channel read: "no connector" is retried after its back-off, not kept until
   answers.push(JSON.stringify([{ ts: '1791400000.000001', text: 'https://github.com/o/r/pull/4242' }]));
   assert.equal(await slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at + 31 * MIN }), true, 'read again once it is over');
 });
+
+test('announced: every PR the channel announced, with when and its message', async () => {
+  const seven = (await slack.announced()).find(ref => ref.repo === 'o/r' && ref.number === 7);
+  assert.deepEqual(seven, {
+    repo: 'o/r', number: 7, announcedAt: 1791371567461, slackUrl: 'https://forestadmin.slack.com/archives/C123/p1791371567461059',
+  });
+});
+
+test('channel read: with nothing waiting for its link it is skipped, unless asked to refresh', async () => {
+  const prs = [{ repo: 'o/r', number: 4242 }];
+  const at = now + 40 * DAY;
+  assert.equal(await slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at }), false, 'every PR on the board has its link');
+  answers.push(JSON.stringify([{ ts: '1791500000.000001', text: 'https://github.com/o/r/pull/5151' }]));
+  assert.equal(await slack.lookup(prs, { maxAgeDays: 60, via: 'claude', now: at, refresh: true }), true);
+  assert.ok((await slack.announced()).some(ref => ref.number === 5151), 'an announcement of a PR off the board');
+});

@@ -1078,6 +1078,44 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
   }
   .update b { font-weight: 650; }
+  /* Quieter than the update banner: a nudge for the team, not something wrong with the board. */
+  .orphans {
+    margin: 20px 28px 0; padding: 10px 15px; border-radius: 10px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--amber-soft) 70%, var(--surface)), var(--surface));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 22%, transparent); color: var(--text-soft); font-size: 13px;
+  }
+  .orphans-head {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none;
+    font: inherit; color: inherit; cursor: pointer; text-align: left;
+  }
+  .orphans-head b { color: var(--amber); font-weight: 560; }
+  .orphans-head .gdot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; }
+  .orphans-head .chev { margin-left: auto; color: var(--text-soft); font-size: 14px; line-height: 1; transition: transform .15s; }
+  .orphans.folded .chev { transform: rotate(-90deg); }
+  .orphans.folded .orphans-list { display: none; }
+  .orphans-list { list-style: none; margin: 10px 0 2px; padding: 0; display: grid; gap: 8px; }
+  .orphans-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .orphans-list .title { color: var(--text-soft); font-weight: 450; text-decoration: none; min-width: 0; }
+  .orphans-list .title:hover { color: var(--text); text-decoration: underline; }
+  .orphans-list .who { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font-size: 12px; }
+  .orphans-list .who img { width: 16px; height: 16px; border-radius: 50%; }
+  .orphans-list .wait { color: var(--amber); font-size: 12px; font-weight: 560; }
+  .orphans-list .asked { color: var(--text-faint); font-size: 12px; }
+  .orphans-list .acts { margin-left: auto; display: flex; gap: 6px; }
+  .orphans-list .acts a, .orphans-list .acts button {
+    display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px;
+    font: inherit; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;
+  }
+  .orphans-list .take {
+    border: 0; color: var(--indigo); background: var(--indigo-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 28%, transparent);
+  }
+  .orphans-list .take:hover { box-shadow: inset 0 0 0 1px var(--indigo); }
+  .orphans-list .skip {
+    border: 0; color: var(--text-soft); background: var(--surface); font-weight: 520;
+    box-shadow: inset 0 0 0 1px var(--hairline);
+  }
+  .orphans-list .skip:hover { color: var(--text); box-shadow: inset 0 0 0 1px var(--text-faint); }
   .update code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
     background: var(--surface); padding: 1px 6px; border-radius: 5px;
@@ -1161,6 +1199,7 @@
 <div id="error" class="error" hidden></div>
 <div id="warning" class="warning" hidden></div>
 <div id="update" class="update" hidden></div>
+<div id="orphans" class="orphans" hidden></div>
 <div class="summary" id="summary" hidden>
   <button type="button" class="picker-trigger notes-btn" id="notes" aria-expanded="false" hidden></button>
   <span class="band-sep" aria-hidden="true"></span>
@@ -1611,6 +1650,19 @@ const I18N = {
     claimsNoTool: 'Claude n’a pas pu lancer la recherche Slack : nouvel essai dans 5 min, les dernières PRs prises restent affichées. Si ça persiste, vérifie le connecteur Slack de Claude sur claude.ai (Paramètres → Connecteurs), puis redémarre le radar.',
     claimsMissing: 'Prises sur Slack mais introuvables sur GitHub : {refs} (supprimée, privée ou numéro faux).',
     claimsTruncated: 'Plus d’annonces avec ta réaction que n’en a lu la recherche : les plus anciennes peuvent manquer. Retire la réaction des PRs déjà traitées.',
+    orphansTitle_one: '{n} PR attend une review depuis {span} ou plus',
+    orphansTitle_many: '{n} PRs attendent une review depuis {span} ou plus',
+    orphansSince: 'depuis {span}',
+    orphansDays_one: '{n} jour ouvré',
+    orphansDays_many: '{n} jours ouvrés',
+    orphansAsked: 'demandée à {who}',
+    orphansTake: '🙋 Prendre',
+    orphansTakeHint: 'ouvre l’annonce : pose ta réaction :{emoji}: pour la prendre',
+    orphansSee: '💬 Voir l’annonce',
+    orphansDismiss: '🙈 Ignorer',
+    orphansDismissHint: 'la retirer de ce bandeau, chez toi seulement',
+    orphansFold: 'replier',
+    orphansFailed: 'Les PRs sans review n’ont pas pu être relues ({message}) : nouvel essai dans 10 min.',
     pillToReview: 'à reviewer',
     pillReRequested: 'review redemandée',
     pillAnswers_one: '{n} réponse pour moi',
@@ -1811,6 +1863,19 @@ const I18N = {
     claimsNoTool: 'Claude could not run the Slack search: trying again in 5 min, the last claimed PRs stay on the board. If it persists, check Claude’s Slack connector at claude.ai (Settings → Connectors), then restart the radar.',
     claimsMissing: 'Claimed on Slack but not found on GitHub: {refs} (deleted, private or a wrong number).',
     claimsTruncated: 'More announcements carry your reaction than the search read: the oldest may be missing. Remove it from the PRs already dealt with.',
+    orphansTitle_one: '{n} PR has waited {span} or more for a review',
+    orphansTitle_many: '{n} PRs have waited {span} or more for a review',
+    orphansSince: 'for {span}',
+    orphansDays_one: '{n} working day',
+    orphansDays_many: '{n} working days',
+    orphansAsked: 'asked of {who}',
+    orphansTake: '🙋 Take it',
+    orphansTakeHint: 'opens the announcement: put your :{emoji}: reaction on it to take it',
+    orphansSee: '💬 See the announcement',
+    orphansDismiss: '🙈 Dismiss',
+    orphansDismissHint: 'remove it from this banner, for you only',
+    orphansFold: 'fold',
+    orphansFailed: 'The PRs waiting for a review could not be read again ({message}): trying again in 10 min.',
     pillToReview: 'to review',
     pillReRequested: 'review requested again',
     pillAnswers_one: '{n} reply for me',
@@ -2968,7 +3033,8 @@ function render() {
   const claudeWarning = warnings.find(w => w.source === 'claude');
   const claimWarning = warnings.find(w => w.source === 'slack-claims');
   const claimsMissing = warnings.find(w => w.source === 'claims-missing');
-  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims', 'claims-missing'].includes(w.source)).map(w => w.source))];
+  const orphansWarning = warnings.find(w => w.source === 'orphans');
+  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims', 'claims-missing', 'orphans'].includes(w.source)).map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -2985,8 +3051,10 @@ function render() {
     }[claimWarning.kind] ?? (() => t('claimsFailed', { message: claimWarning.message.replace(/^slack:\s*/, '') }));
     lines.push(claimLine());
   }
+  if (orphansWarning) lines.push(t('orphansFailed', { message: orphansWarning.message }));
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
+  renderOrphans(data.orphans);
 
   const asleep = state.snoozed.size;
   el('snoozedNote').innerHTML = asleep
@@ -3114,6 +3182,58 @@ function currentUpdateStatus(update) {
   const pending = update?.pending;
   if (!pending || state.pendingDismissed === pending.to) return null;
   return { kind: pending.blockers?.length ? 'blocked' : 'no-restart', result: pending };
+}
+
+// Dismissed per PR, for this browser: someone else may still take it.
+const orphansDismissed = (() => {
+  try {
+    return JSON.parse(store.get('orphansDismissed', '{}')) ?? {};
+  } catch {
+    return {};
+  }
+})();
+let orphansFolded = (() => {
+  try {
+    return store.get('orphansFolded', 'false') === 'true';
+  } catch {
+    return false;
+  }
+})();
+// Blocked storage only costs the choice on the next load.
+const keepOrphansChoice = (key, value) => {
+  try {
+    store.set(key, value);
+  } catch {}
+};
+const orphanKey = pr => `${pr.repo}#${pr.number}`;
+
+function renderOrphans(orphans) {
+  const box = el('orphans');
+  const prs = (orphans?.prs ?? []).filter(pr => !orphansDismissed[orphanKey(pr)]);
+  if (!prs.length) {
+    box.hidden = true;
+    return;
+  }
+  const take = pr => (pr.slackUrl
+    ? `<a class="take" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
+      + ` title="${escapeHtml(orphans.claimEmoji ? t('orphansTakeHint', { emoji: orphans.claimEmoji }) : t('orphansSee'))}">`
+      + `${escapeHtml(orphans.claimEmoji ? t('orphansTake') : t('orphansSee'))}</a>`
+    : '');
+  const row = pr => `<li>${repoChip(pr)}`
+    + `<a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>`
+    + `<span class="who">${pr.avatarUrl ? `<img src="${escapeHtml(pr.avatarUrl)}&s=32" alt="" loading="lazy">` : ''}${escapeHtml(pr.author)}</span>`
+    + `<span class="wait">${escapeHtml(t('orphansSince', { span: tn('orphansDays', pr.waitingDays) }))}</span>`
+    + (pr.requested.length ? `<span class="asked">${escapeHtml(t('orphansAsked', { who: pr.requested.join(', ') }))}</span>` : '')
+    + `<span class="acts">${take(pr)}`
+    + `<button type="button" class="skip" data-orphan-dismiss="${escapeHtml(orphanKey(pr))}"`
+    + ` title="${escapeHtml(t('orphansDismissHint'))}">${escapeHtml(t('orphansDismiss'))}</button></span></li>`;
+  box.classList.toggle('folded', orphansFolded);
+  box.innerHTML = `<button type="button" class="orphans-head" data-orphans-fold aria-expanded="${!orphansFolded}" title="${escapeHtml(t('orphansFold'))}">`
+    + `<span aria-hidden="true">🧭</span><span class="gdot"></span>`
+    + `<b>${escapeHtml(tn('orphansTitle', prs.length, { span: tn('orphansDays', orphans.days) }))}</b>`
+    + `<span class="chev" aria-hidden="true">▾</span></button>`
+    + `<ul class="orphans-list">${prs.map(row).join('')}</ul>`;
+  box.hidden = false;
 }
 
 function renderUpdate(update) {
@@ -3402,6 +3522,20 @@ document.addEventListener('click', event => {
       snoozes.add(pr);
     }
     render();
+    return;
+  }
+
+  if (event.target.closest('[data-orphans-fold]')) {
+    orphansFolded = !orphansFolded;
+    keepOrphansChoice('orphansFolded', orphansFolded);
+    renderOrphans(state.data?.orphans);
+    return;
+  }
+  const dismissOrphan = event.target.closest('[data-orphan-dismiss]');
+  if (dismissOrphan) {
+    orphansDismissed[dismissOrphan.dataset.orphanDismiss] = true;
+    keepOrphansChoice('orphansDismissed', JSON.stringify(orphansDismissed));
+    renderOrphans(state.data?.orphans);
     return;
   }
 

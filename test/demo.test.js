@@ -73,6 +73,16 @@ test('demo: the PRs of one ticket point at each other, the others at nothing', (
   assert.equal(new Set(urls).size, urls.length, 'one announcement per PR, as the real board reads them');
 });
 
+test('demo: two announcements wait for a review, each with its link, none on the board', () => {
+  const board = demo.payload(false);
+  const onBoard = new Set([...board.mine, ...board.reviews].map(pr => pr.id));
+  assert.equal(board.orphans.prs.length, 2);
+  for (const pr of board.orphans.prs) {
+    assert.ok(pr.slackUrl && !onBoard.has(pr.id));
+    assert.ok(pr.waitingDays >= board.orphans.days);
+  }
+});
+
 test('demo: my PRs offer their Claude session, the reviews do not', () => {
   const { mine, reviews } = demo.payload(false);
   assert.ok(mine.every(pr => pr.claudeSession === true));

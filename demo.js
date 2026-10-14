@@ -7,6 +7,7 @@
 const { baseShape, decorateMine, decorateReview, byActionThenFreshness, mergedSince } = require('./github');
 const { snapshotOf } = require('./public/since');
 const { boardTwins } = require('./ticket');
+const { businessDaysSince } = require('./orphans');
 
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
@@ -319,6 +320,45 @@ function demoSeen(prs) {
   ]);
 }
 
+// At ten in the morning, so the wait shown is exactly that many working days.
+function workingDaysAgo(days) {
+  const at = new Date(STARTED_AT);
+  at.setHours(10, 0, 0, 0);
+  for (let left = days; left > 0;) {
+    at.setDate(at.getDate() - 1);
+    if (at.getDay() !== 0 && at.getDay() !== 6) left -= 1;
+  }
+  return at.getTime();
+}
+
+function orphans() {
+  const announced = [
+    { repo: 'ForestAdmin/forestadmin', number: 10061, title: 'feat(export): stream large CSV exports instead of building them in memory', author: 'PMerlet', days: 4, requested: ['Scra3'] },
+    { repo: 'ForestAdmin/agent-nodejs', number: 1996, title: 'fix(datasource-mongoose): keep the virtual fields on a projection with nested paths', author: 'hercemer42', days: 3, requested: [] },
+  ];
+  return {
+    days: 2,
+    claimEmoji: 'pr-radar',
+    checkedAt: new Date(STARTED_AT).toISOString(),
+    prs: announced.map(({ repo, number, title, author, days, requested }) => {
+      const announcedAt = workingDaysAgo(days);
+      return {
+        id: `DEMO_ORPHAN_${number}`,
+        repo,
+        number,
+        title,
+        url: `https://github.com/${repo}/pull/${number}`,
+        author,
+        avatarUrl: avatarOf(author),
+        announcedAt: new Date(announcedAt).toISOString(),
+        slackUrl: `https://app.slack.com/client#${repo}-${number}`,
+        waitingDays: businessDaysSince(announcedAt, Date.now()),
+        requested,
+      };
+    }),
+  };
+}
+
 function payload(force) {
   if (force) surpriseShown = !surpriseShown;
 
@@ -355,6 +395,7 @@ function payload(force) {
       'DEMO_forestadmin-server_8549': 'Demandé en DM, à repasser dès son push : https://app.slack.com/client',
     },
     demoSeen: demoSeen([...mine, ...reviews]),
+    orphans: orphans(),
     demoStartedAt: STARTED_AT,
     mine: board.mine,
     reviews: board.reviews,

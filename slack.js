@@ -296,6 +296,17 @@ async function linksFor(prs) {
   return links;
 }
 
+// Every PR the channel has announced, with when and where: what the unreviewed
+// announcements are looked for in.
+async function announced() {
+  await loadState();
+  if (!CHANNEL) return [];
+  return [...state.byPr].map(([key, ts]) => {
+    const [repo, number] = key.split('#');
+    return { repo, number: Number(number), announcedAt: Math.floor(Number(ts) * 1000), slackUrl: permalink(WORKSPACE, CHANNEL, ts) };
+  });
+}
+
 // Reads what came after the newest message seen — the board's age window on the very
 // first read — so one read profits every PR: a PR given up on after its three tries is
 // still linked the day its announcement shows up, as soon as another PR triggers a read.
@@ -303,8 +314,9 @@ async function linksFor(prs) {
 // older message edited to add a link is not seen again: its ts does not move.
 //
 // The API path reads on every refresh — it is cheap. The Claude path reads only when a
-// PR is due.
-async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
+// PR is due, or on `refresh`: the unreviewed banner looks for announcements of PRs that are
+// on no one's board, so none of them is ever due.
+async function lookup(prs, { maxAgeDays, via, now = Date.now(), refresh = false }) {
   await loadState();
   const onBoard = new Set(prs.map(pr => keyOf(pr.repo, pr.number)));
   state.attempts = Object.fromEntries(Object.entries(state.attempts).filter(([key]) => onBoard.has(key)));
@@ -313,7 +325,7 @@ async function lookup(prs, { maxAgeDays, via, now = Date.now() }) {
     if (now < lastFailure.retryAt) throw lastFailure.error;
   }
   const due = dueForLookup(prs, state, now);
-  if (via === 'claude' && !due.length) return false;
+  if (via === 'claude' && !due.length && !refresh) return false;
 
   const oldest = state.latestTs ?? String(Math.floor(now / 1000) - maxAgeDays * 86400);
   let messages;
@@ -503,6 +515,7 @@ module.exports = {
   claimsAfter,
   losesClaims,
   linksFor,
+  announced,
   lookup,
   pullRequestLinks,
   mergeLinks,

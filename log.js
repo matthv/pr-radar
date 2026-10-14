@@ -8,6 +8,7 @@ const EMOJI = {
   update: '⬆️',
   webhook: '🪝',
   notes: '📝',
+  orphans: '🧭',
 };
 const FAILED = '⚠️';
 

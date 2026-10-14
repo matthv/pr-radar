@@ -256,6 +256,53 @@ async function resolvePullRequestIds(refs) {
   );
 }
 
+const ANNOUNCED_FIELDS = `id number title url state isDraft
+  author { __typename login avatarUrl }
+  repository { nameWithOwner }
+  reviews(last: 50) { nodes { author { __typename login } } }
+  comments(last: 50) { nodes { author { __typename login } } }
+  reviewThreads(last: 50) { nodes { comments(first: 5) { nodes { author { __typename login } } } } }
+  reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } } }`;
+
+async function graphqlPartial(query) {
+  const body = await ghGraphql(JSON.stringify({ query, variables: {} }));
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(`GitHub a répondu autre chose que du JSON : ${body.trim().slice(0, 80)}`);
+  }
+}
+
+// The PRs announced on Slack, read by repo and number: no search, one request per batch.
+// Their refs come from messages, so only a well-formed one is put in a query. GitHub answers
+// a batch with one PR it cannot resolve (deleted, or a repo the token cannot see) with the
+// others' data next to the error: that one is null, any other error fails the read.
+async function fetchAnnounced(refs, run = graphqlPartial) {
+  const safe = refs.filter(({ repo, number }) => {
+    const [owner, name, ...rest] = repo.split('/');
+    return !rest.length && SAFE_REPO.test(owner ?? '') && SAFE_REPO.test(name ?? '') && Number.isInteger(number) && number > 0;
+  });
+  const queryFor = batch => `query { ${batch
+    .map(({ repo, number }, index) => {
+      const [owner, name] = repo.split('/');
+      return `p${index}: repository(owner: "${owner}", name: "${name}") { pullRequest(number: ${number}) { ${ANNOUNCED_FIELDS} } }`;
+    })
+    .join(' ')} }`;
+  const ask = async batch => {
+    const payload = await run(queryFor(batch));
+    const failed = (payload.errors ?? []).filter(error => !NOT_FOUND.test(error.message));
+    if (failed.length) throw new Error(failed.map(error => error.message).join(' | '));
+    // A refusal (bad credentials, rate limit) is a REST-shaped body: its message, no data.
+    if (!payload.data) throw new Error(payload.message ?? 'Réponse GitHub sans données.');
+    const { data } = payload;
+    return batch.map((ref, index) => [ref, data[`p${index}`]?.pullRequest ?? null]);
+  };
+  const batches = [];
+  for (let i = 0; i < safe.length; i += ID_BATCH_SIZE) batches.push(safe.slice(i, i + ID_BATCH_SIZE));
+  const answers = (await mapWithConcurrency(batches, PR_CONCURRENCY, ask)).flat();
+  return new Map(answers.map(([{ repo, number }, node]) => [`${repo.toLowerCase()}#${number}`, node]));
+}
+
 // GitHub's secondary rate limit triggers on bursts of concurrent requests, regardless
 // of the quota — which is why it fires while /rate_limit still reads 30/30. Its own
 // guidance is to send requests one after another, so REST calls are serialised and a
@@ -976,7 +1023,8 @@ const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve
 
 // An announcement links whatever its author pasted: another org's PR, a private repo, a typo.
 // Those are left out first; one that still does not resolve must not take the others with
-// it, since GitHub fails a whole batch on a single unknown PR. An unknown PR is not a lost
+// it, since graphql() throws on any error and so fails a whole batch on a single unknown
+// PR. An unknown PR is not a lost
 // source — the board stays whole, the warning names it — but GitHub failing is: the claimed
 // PRs are then missing for a while, and the webhook must not take that as their departure.
 const NOT_FOUND = /Could not resolve to a (PullRequest|Repository)/;
@@ -1308,6 +1356,7 @@ async function fetchDashboard(options) {
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  fetchAnnounced,
   assembleNodes,
   statusFingerprint,
   fetchStatusFingerprints,

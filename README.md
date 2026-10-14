@@ -122,6 +122,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SLACK_CLAIM_EMOJI` | — | An emoji, `pr-radar` say: your reaction on an announcement puts that PR on your review side — see [Claiming a PR from Slack](#claiming-a-pr-from-slack). Empty, off |
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
 | `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update & restart** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
+| `PR_RADAR_ORPHAN_DAYS` | `2` | Working days an announced PR may wait with no review before the banner offers it; `0` turns it off — see [Unreviewed announcements](#unreviewed-announcements) |
 | `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
@@ -725,7 +726,8 @@ A read through Claude takes a dozen seconds, so it is only made when it can find
 something:
 
 - **A PR new to the board, with no link yet, is due at once.** Nothing new on the board
-  means no call at all.
+  means no call at all, apart from the read every two hours of the
+  [Unreviewed announcements](#unreviewed-announcements) banner.
 - **A miss is retried twice**, 30 minutes and then 2 hours later — a PR is often opened
   before it is announced. After a third miss, that PR is no longer a reason to read.
 - **A failed read is not a miss.** A read that did not work (no connector, an answer
@@ -810,6 +812,36 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
   when the radar started with the Mac. When Claude could not run the search, the banner says
   so, that it tries again, and, if it persists, to check the Slack connector on claude.ai,
   since the same answer also means a connector missing or without the search.
+
+## Unreviewed announcements
+
+A PR announced in the channel can wait for days with nobody looking at it: no one is asked,
+everyone thinks someone else has it. A quiet banner above the board lists those, so anyone
+can take one: `🧭 2 PRs have waited 2 working days or more for a review`, folded or not,
+one line each with the repo, the title, the author, for how long, and to whom it was asked
+if it was.
+
+- **Which ones**: announced in `PR_RADAR_SLACK_CHANNEL` (the ones the Slack link already
+  knows) within `PR_RADAR_MAX_AGE_DAYS`, in your org or `PR_RADAR_EXTRA_REPOS`, open, not a
+  draft, not yours nor a bot's, not on your board already, and that no one but their
+  author has reviewed, commented or remarked on (bots aside), for at least
+  `PR_RADAR_ORPHAN_DAYS` working days (`2` by default) after the announcement. A weekend
+  never counts. A PR asked of someone who has not answered stays listed, with their name.
+- **🙋 Take it** opens the announcement: put your reaction on it and the PR comes onto your
+  board, the way [Claiming a PR from Slack](#claiming-a-pr-from-slack) does. Without claims
+  on (the emoji set, on the Claude path), the button only shows the announcement.
+  **🙈 Dismiss** takes a PR off the banner for good, in this browser only.
+- **On by default**, wherever the Slack link is set; `PR_RADAR_ORPHAN_DAYS=0` turns it off.
+- **The cost**: one GitHub request per 25 announced PRs, every 30 minutes while a page is
+  open, or at once on *Refresh*. A PR seen closed or merged is never asked about again, so
+  after the first read only the few still open are. One GitHub cannot find (deleted, or in
+  a repo your token cannot see) is asked again and named in the console. Through Claude,
+  the channel is otherwise read only for a PR on your board missing its link: it is also
+  read every two hours for this banner (one Haiku call, the messages since the last read),
+  plenty for an announcement that only counts after days. With a Slack token it is read on
+  every search already. A failed GitHub read keeps the last list, says so in the warning
+  banner, and tries again in 10 minutes.
+- **Only announced PRs**: one never posted in the channel is not seen.
 
 ## Standup notes
 
