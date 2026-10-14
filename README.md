@@ -810,6 +810,11 @@ you on GitHub. Nothing changes on GitHub: the author is not notified.
   when the radar started with the Mac. When Claude could not run the search, the banner says
   so, that it tries again, and, if it persists, to check the Slack connector on claude.ai,
   since the same answer also means a connector missing or without the search.
+- **Every change of the list is kept** in `.slack-claims-debug.log`, beside the state file:
+  the time, the PRs added and removed, and Claude's raw answers (two for a removal), with
+  the filters it says it passed. Claude runs with no session kept, so a card claimed by
+  mistake would otherwise leave nothing to read back. Nothing is written while the list
+  holds, so the file stays small.
 
 ## Standup notes
 

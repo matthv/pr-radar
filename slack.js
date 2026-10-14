@@ -13,6 +13,7 @@ const CHANNEL = process.env.PR_RADAR_SLACK_CHANNEL;
 const WORKSPACE = process.env.PR_RADAR_SLACK_WORKSPACE || 'https://forestadmin.slack.com/';
 // The override is for the tests, which must never write over a real board's state.
 const STATE_FILE = process.env.PR_RADAR_SLACK_STATE_FILE || path.join(__dirname, '.slack-links.json');
+const CLAIMS_DEBUG_FILE = path.join(path.dirname(STATE_FILE), '.slack-claims-debug.log');
 // Opt-in: an emoji of yours on an announcement puts that PR on your review side.
 const CLAIM_EMOJI = (process.env.PR_RADAR_SLACK_CLAIM_EMOJI ?? '').trim().replace(/^:|:$/g, '');
 const CLAIM_EVERY_MS = 5 * 60_000;
@@ -354,7 +355,8 @@ function promptForClaims(after) {
     '',
     'Answer ONLY with a JSON object, one entry per message returned, across all pages read:',
     '{"messages": [{"ts": "<Message_ts, copied exactly>", "text": "<message text, copied verbatim>"}],',
-    ` "more": <true if the last page read still offered a next page, else false>}`,
+    ` "more": <true if the last page read still offered a next page, else false>,`,
+    ' "filters": "<the filters you passed to the tool, copied exactly>"}',
     'Answer {"messages": [], "more": false} when there is no message. No other text before or after the object.',
     `If you have no slack_search_public_and_private tool, answer exactly ${NO_TOOL} and nothing else.`,
     '',
@@ -434,9 +436,11 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
   state.claimSince ??= isoDay(now);
   let refs;
   let truncated = false;
+  const answers = [];
   try {
     const after = claimsAfter(now - maxAgeDays * DAY_MS, state.claimSince);
     const first = await readClaimsViaClaude(after);
+    answers.push(first.output);
     let messages = first.messages;
     truncated = first.more;
     refs = pullRequestLinks(messages);
@@ -453,6 +457,7 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
       const kept = second ? pullRequestLinks(second.messages) : state.claimed.refs;
       refs = unionRefs(refs, kept);
       if (second) {
+        answers.push(second.output);
         messages = [...messages, ...second.messages];
         truncated = truncated || second.more;
       }
@@ -466,9 +471,27 @@ async function readClaims({ maxAgeDays, now = Date.now(), force = false }) {
   }
   claimFailure = null;
   const changed = claimsChanged(state.claimed, refs);
+  if (changed && state.claimed) await keepClaimsAnswers(state.claimed.refs, refs, answers, now);
   state.claimed = { at: now, refs, truncated };
   await saveState();
   return { refs, changed, truncated, read: true };
+}
+
+// Claude runs without a session kept, so a claim list gone wrong left nothing to read back.
+// Only when the list changes: that is rare, and the only time the answer matters.
+async function keepClaimsAnswers(before, after, answers, now) {
+  const keys = list => new Set(list.map(ref => keyOf(ref.repo, ref.number)));
+  const [was, is] = [keys(before), keys(after)];
+  const added = [...is].filter(key => !was.has(key));
+  const removed = [...was].filter(key => !is.has(key));
+  const entry = [
+    `=== ${new Date(now).toISOString()} added: ${added.join(', ') || '-'} · removed: ${removed.join(', ') || '-'}`,
+    ...answers.map((answer, index) => `--- answer ${index + 1}\n${answer.trim()}`),
+    '',
+  ].join('\n');
+  await fs.appendFile(CLAIMS_DEBUG_FILE, `${entry}\n`).catch(error => {
+    logger.fail('slack', `cannot write ${CLAIMS_DEBUG_FILE} (${error.message})`);
+  });
 }
 
 async function readClaimsViaClaude(after) {
@@ -478,7 +501,7 @@ async function readClaimsViaClaude(after) {
     const output = await claude(promptForClaims(after), variant.args, variant.cwd);
     if (sawNoTool(output)) continue;
     workingVariant = variant;
-    return parseClaimAnswer(output);
+    return { ...parseClaimAnswer(output), output };
   }
   throw Object.assign(new Error('slack: no Slack connector in Claude'), { code: 'no-connector' });
 }
