@@ -185,6 +185,7 @@ function readSlackInBackground(prs, { refresh = false } = {}) {
       const warnings = cache.payload.warnings.filter(w => w.source !== 'slack');
       cache.payload = { ...(await withLinksAndTwins(cache.payload)), warnings: slackWarning ? [...warnings, slackWarning] : warnings };
     })
+    .catch(error => logger.fail('slack', `after the channel read: ${error.message}`))
     .finally(() => {
       slackReading = null;
     });
@@ -264,13 +265,14 @@ function withOrphans(payload) {
 // Through Claude the channel is otherwise read only for a PR on the board missing its link,
 // and the banner is about PRs that are not on it. An announcement only counts after days,
 // so a read every two hours is plenty: one Haiku call, of the messages since the last one.
-// It shares the board's single read slot, and a failed one is tried again on the next check.
+// It shares the board's single read slot; a failed one is tried again once Slack's own
+// back-off is over, at an orphan check.
 const CHANNEL_REFRESH_MS = 2 * 60 * 60_000;
 async function announcedFresh() {
   if (slackMode === 'claude' && cache.payload && Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
-    if (slackReading) await slackReading.catch(() => {});
+    if (slackReading) await slackReading;
     if (Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
-      await readSlackInBackground([...cache.payload.mine, ...cache.payload.reviews], { refresh: true }).catch(() => {});
+      await readSlackInBackground([...cache.payload.mine, ...cache.payload.reviews], { refresh: true });
     }
   }
   return slack.announced();

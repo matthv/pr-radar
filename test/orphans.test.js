@@ -149,6 +149,13 @@ test('fetchAnnounced: one batch, a PR GitHub cannot resolve is null next to the 
   assert.deepEqual([...nodes], [['o/r#1', { id: 'A' }], ['o/gone#2', null], ['o/r#3', null]], 'keys lowercased, as the watch asks them');
 });
 
+test('fetchAnnounced: a refusal fails the read with GitHub\'s own reason', async () => {
+  await assert.rejects(
+    fetchAnnounced([{ repo: 'o/r', number: 1 }], async () => ({ message: 'Bad credentials', documentation_url: 'd' })),
+    /^Error: Bad credentials$/,
+  );
+});
+
 test('fetchAnnounced: any other error fails the read', async () => {
   await assert.rejects(
     fetchAnnounced([{ repo: 'o/r', number: 1 }], async () => ({ data: null, errors: [{ message: 'API rate limit exceeded' }] })),

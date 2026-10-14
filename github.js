@@ -265,7 +265,12 @@ const ANNOUNCED_FIELDS = `id number title url state isDraft
   reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } } }`;
 
 async function graphqlPartial(query) {
-  return JSON.parse(await ghGraphql(JSON.stringify({ query, variables: {} })));
+  const body = await ghGraphql(JSON.stringify({ query, variables: {} }));
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error(`GitHub a répondu autre chose que du JSON : ${body.trim().slice(0, 80)}`);
+  }
 }
 
 // The PRs announced on Slack, read by repo and number: no search, one request per batch.
@@ -284,10 +289,12 @@ async function fetchAnnounced(refs, run = graphqlPartial) {
     })
     .join(' ')} }`;
   const ask = async batch => {
-    const { data, errors = [] } = await run(queryFor(batch));
-    const failed = errors.filter(error => !NOT_FOUND.test(error.message));
+    const payload = await run(queryFor(batch));
+    const failed = (payload.errors ?? []).filter(error => !NOT_FOUND.test(error.message));
     if (failed.length) throw new Error(failed.map(error => error.message).join(' | '));
-    if (!data) throw new Error('Réponse GitHub sans données.');
+    // A refusal (bad credentials, rate limit) is a REST-shaped body: its message, no data.
+    if (!payload.data) throw new Error(payload.message ?? 'Réponse GitHub sans données.');
+    const { data } = payload;
     return batch.map((ref, index) => [ref, data[`p${index}`]?.pullRequest ?? null]);
   };
   const batches = [];
@@ -1016,7 +1023,8 @@ const LOSING_SOURCES = [...SOURCES, 'details', 'events-resolve', 'claims-resolve
 
 // An announcement links whatever its author pasted: another org's PR, a private repo, a typo.
 // Those are left out first; one that still does not resolve must not take the others with
-// it, since GitHub fails a whole batch on a single unknown PR. An unknown PR is not a lost
+// it, since graphql() throws on any error and so fails a whole batch on a single unknown
+// PR. An unknown PR is not a lost
 // source — the board stays whole, the warning names it — but GitHub failing is: the claimed
 // PRs are then missing for a while, and the webhook must not take that as their departure.
 const NOT_FOUND = /Could not resolve to a (PullRequest|Repository)/;
