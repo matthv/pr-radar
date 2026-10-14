@@ -149,6 +149,7 @@ query($ids: [ID!]!) {
       title
       body
       headRefName
+      author { __typename login }
       repository { nameWithOwner }
       files(first: 20) { nodes { path } }
     }
@@ -164,6 +165,7 @@ async function fetchDigestInputs(ids) {
     title: pr.title,
     body: pr.body || '',
     headRefName: pr.headRefName ?? null,
+    authorIsBot: isBot(pr.author),
     repo: pr.repository.nameWithOwner,
     files: pr.files.nodes.map(file => file.path),
   }));
@@ -709,6 +711,7 @@ function baseShape(pr, me) {
     deletions: pr.deletions,
     changedFiles: pr.changedFiles,
     author: pr.author?.login ?? '?',
+    authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,

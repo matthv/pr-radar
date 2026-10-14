@@ -63,6 +63,16 @@ test('demo: ticket pills have a workspace to link to', () => {
   assert.match(demo.LINEAR_URL, /^https:\/\/linear\.app\//);
 });
 
+test('demo: the PRs of one ticket point at each other, the others at nothing', () => {
+  const board = demo.payload(false);
+  const twins = Object.fromEntries([...board.mine, ...board.reviews].map(pr => [pr.number, pr.twins.map(t => t.number).sort()]));
+  assert.deepEqual([twins[10012], twins[8561]], [[8561], [10012]], 'PRD-812, across two repos');
+  assert.deepEqual([twins[1942], twins[1943], twins[8549]], [[1943, 8549], [1942, 8549], [1942, 1943]], 'PRD-845, three PRs');
+  assert.deepEqual(twins[830], [], 'a PR of its own');
+  const urls = [...board.mine, ...board.reviews].map(pr => pr.slackUrl).filter(Boolean);
+  assert.equal(new Set(urls).size, urls.length, 'one announcement per PR, as the real board reads them');
+});
+
 test('demo: my PRs offer their Claude session, the reviews do not', () => {
   const { mine, reviews } = demo.payload(false);
   assert.ok(mine.every(pr => pr.claudeSession === true));

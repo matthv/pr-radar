@@ -502,6 +502,35 @@ ticket says what it is about. Down with Slack, the two ways out of a card sit to
 The key stays written next to the mark, since it mostly comes from the branch and appears
 nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 
+## Linked PRs
+
+One change often comes as two or three PRs, a back and a front. A card whose PR has such
+twins on the board wears a `🔗 +1 linked PR` pill; its tooltip names them, and a click
+makes them all blink where they are, the way a card that just arrived does, for about
+fifteen seconds. No scroll, so the board stays where you were reading; a folded group or
+kanban column holding one opens, and a counter isolating one column lets go. When none can
+be shown (a project filter, a hidden snooze, the orbits), the first one opens on GitHub.
+
+Twins are the PRs of one piece of work, close to the way the standup notes group them
+(`ticket.js`):
+
+- **the same ticket**, the one the Linear link shows. An advisory, a hash, a cipher or an
+  encoding named in a title (`CVE-2024-1111`, `CWE-79`, `SHA-256`, `UTF-16`) is not a
+  ticket, nor the tail of a longer id (`SNYK-JS-LODASH-1040724`), nor a bot's branch
+  (`renovate/react-18`) or description;
+- **the same title** once its conventional prefix (`feat(…):`, `fix:`…) is gone, case
+  aside, so a ticketless half still finds the other. Not when the two name different
+  tickets, even through a third PR with no ticket, nor for a title under three words
+  (`fix: typo`) or a bot's PR (bumps and releases are named alike in every repo);
+- **one Slack announcement** linking both, the "Server / front" posts whose titles differ
+  and name no ticket. Up to three of the board's PRs: a message linking more of them is a
+  list, not one change. Its PRs off the board (merged long ago, out of the age window) are
+  not counted.
+
+Both sides count, and merged PRs too: "the back is already merged" is worth knowing while
+reviewing the front. Only PRs on the board are linked; it asks GitHub nothing more, and it
+works with the Slack link off.
+
 ## The Claude session
 
 macOS only. With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a

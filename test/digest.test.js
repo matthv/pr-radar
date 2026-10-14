@@ -60,6 +60,11 @@ test('ticketKey reads the ticket from the title, then the branch, then the body'
   assert.equal(ticketKey(pr(1, 'feat: x')), null);
 });
 
+test("workKey: a board card's own ticket wins, even when it is null", () => {
+  assert.equal(workKey({ title: 'feat: x', ticket: 'PRD-55' }), 'ticket:PRD-55', 'read from a branch the card no longer has');
+  assert.equal(workKey({ title: 'feat: x [PRD-12]', ticket: null }), 'title:x [prd-12]', 'present but null: the title is not read again');
+});
+
 test('workKey: the same title across repos is the same piece of work, prefix aside', () => {
   const front = pr(9977, 'feat(inbox): associate a workflow to an inbox without automation');
   const back = pr(8522, 'feat(server): associate a workflow to an inbox without automation', { repo: 'ForestAdmin/forestadmin-server' });
