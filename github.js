@@ -256,6 +256,44 @@ async function resolvePullRequestIds(refs) {
   );
 }
 
+const ANNOUNCED_FIELDS = `id number title url state isDraft
+  author { __typename login avatarUrl }
+  repository { nameWithOwner }
+  reviews(last: 50) { nodes { author { __typename login } } }
+  comments(last: 50) { nodes { author { __typename login } } }
+  reviewThreads(last: 50) { nodes { comments(first: 5) { nodes { author { __typename login } } } } }
+  reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } } }`;
+
+// The PRs announced on Slack, read by repo and number: no search, one request per batch.
+// Their refs come from messages, so only a well-formed one is put in a query; one GitHub
+// cannot find fails its batch, which is then asked one by one.
+async function fetchAnnounced(refs) {
+  const safe = refs.filter(({ repo, number }) => {
+    const [owner, name] = repo.split('/');
+    return SAFE_REPO.test(owner ?? '') && SAFE_REPO.test(name ?? '') && Number.isInteger(number) && number > 0;
+  });
+  const queryFor = batch => `query { ${batch
+    .map(({ repo, number }, index) => {
+      const [owner, name] = repo.split('/');
+      return `p${index}: repository(owner: "${owner}", name: "${name}") { pullRequest(number: ${number}) { ${ANNOUNCED_FIELDS} } }`;
+    })
+    .join(' ')} }`;
+  const ask = async batch => {
+    try {
+      const data = await graphql(queryFor(batch), {});
+      return batch.map((ref, index) => [ref, data[`p${index}`]?.pullRequest ?? null]);
+    } catch (error) {
+      if (!NOT_FOUND.test(error.message)) throw error;
+      if (batch.length === 1) return [[batch[0], null]];
+      return (await Promise.all(batch.map(ref => ask([ref])))).flat();
+    }
+  };
+  const batches = [];
+  for (let i = 0; i < safe.length; i += ID_BATCH_SIZE) batches.push(safe.slice(i, i + ID_BATCH_SIZE));
+  const answers = (await mapWithConcurrency(batches, PR_CONCURRENCY, ask)).flat();
+  return new Map(answers.map(([{ repo, number }, node]) => [`${repo.toLowerCase()}#${number}`, node]));
+}
+
 // GitHub's secondary rate limit triggers on bursts of concurrent requests, regardless
 // of the quota — which is why it fires while /rate_limit still reads 30/30. Its own
 // guidance is to send requests one after another, so REST calls are serialised and a
@@ -1308,6 +1346,7 @@ async function fetchDashboard(options) {
 // lived here, not in the network calls.
 module.exports = {
   fetchDashboard,
+  fetchAnnounced,
   assembleNodes,
   statusFingerprint,
   fetchStatusFingerprints,
