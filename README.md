@@ -726,7 +726,8 @@ A read through Claude takes a dozen seconds, so it is only made when it can find
 something:
 
 - **A PR new to the board, with no link yet, is due at once.** Nothing new on the board
-  means no call at all.
+  means no call at all, apart from the read every two hours of the
+  [Unreviewed announcements](#unreviewed-announcements) banner.
 - **A miss is retried twice**, 30 minutes and then 2 hours later — a PR is often opened
   before it is announced. After a third miss, that PR is no longer a reason to read.
 - **A failed read is not a miss.** A read that did not work (no connector, an answer
@@ -821,22 +822,25 @@ one line each with the repo, the title, the author, for how long, and to whom it
 if it was.
 
 - **Which ones**: announced in `PR_RADAR_SLACK_CHANNEL` (the ones the Slack link already
-  knows), open, not a draft, not yours nor a bot's, not on your board already, and that no
-  one but their author has reviewed, commented or remarked on (bots aside), for at least
+  knows) within `PR_RADAR_MAX_AGE_DAYS`, in your org or `PR_RADAR_EXTRA_REPOS`, open, not a
+  draft, not yours nor a bot's, not on your board already, and that no one but their
+  author has reviewed, commented or remarked on (bots aside), for at least
   `PR_RADAR_ORPHAN_DAYS` working days (`2` by default) after the announcement. A weekend
   never counts. A PR asked of someone who has not answered stays listed, with their name.
 - **🙋 Take it** opens the announcement: put your reaction on it and the PR comes onto your
-  board, the way [Claiming a PR from Slack](#claiming-a-pr-from-slack) does. Without the
-  claim emoji set, the button only shows the announcement. **🙈 Dismiss** takes a PR off the
-  banner, in this browser only.
+  board, the way [Claiming a PR from Slack](#claiming-a-pr-from-slack) does. Without claims
+  on (the emoji set, on the Claude path), the button only shows the announcement.
+  **🙈 Dismiss** takes a PR off the banner for good, in this browser only.
 - **On by default**, wherever the Slack link is set; `PR_RADAR_ORPHAN_DAYS=0` turns it off.
 - **The cost**: one GitHub request per 25 announced PRs, every 30 minutes while a page is
-  open. A PR seen closed, merged or gone is never asked about again, so after the first
-  read only the few still open are. Through Claude, the channel is otherwise read only for a
-  PR on your board missing its link: it is also read every two hours for this banner (one
-  Haiku call, the messages since the last read), plenty for an announcement that only
-  counts after days. With a Slack token it is read on every search already. A failed read keeps the last
-  list, says so in the warning banner, and tries again in 10 minutes.
+  open, or at once on *Refresh*. A PR seen closed or merged is never asked about again, so
+  after the first read only the few still open are. One GitHub cannot find (deleted, or in
+  a repo your token cannot see) is asked again and named in the console. Through Claude,
+  the channel is otherwise read only for a PR on your board missing its link: it is also
+  read every two hours for this banner (one Haiku call, the messages since the last read),
+  plenty for an announcement that only counts after days. With a Slack token it is read on
+  every search already. A failed GitHub read keeps the last list, says so in the warning
+  banner, and tries again in 10 minutes.
 - **Only announced PRs**: one never posted in the channel is not seen.
 
 ## Standup notes

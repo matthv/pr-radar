@@ -1095,7 +1095,6 @@
   .orphans.folded .orphans-list { display: none; }
   .orphans-list { list-style: none; margin: 10px 0 2px; padding: 0; display: grid; gap: 8px; }
   .orphans-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-  /* A nudge, not the board: the titles stay soft and only answer the hover. */
   .orphans-list .title { color: var(--text-soft); font-weight: 450; text-decoration: none; min-width: 0; }
   .orphans-list .title:hover { color: var(--text); text-decoration: underline; }
   .orphans-list .who { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font-size: 12px; }
@@ -1103,7 +1102,6 @@
   .orphans-list .wait { color: var(--amber); font-size: 12px; font-weight: 560; }
   .orphans-list .asked { color: var(--text-faint); font-size: 12px; }
   .orphans-list .acts { margin-left: auto; display: flex; gap: 6px; }
-  /* One move offered, one way out: Take tinted like the "to do" pills, Dismiss outlined. */
   .orphans-list .acts a, .orphans-list .acts button {
     display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px;
     font: inherit; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;
@@ -3186,7 +3184,7 @@ function currentUpdateStatus(update) {
   return { kind: pending.blockers?.length ? 'blocked' : 'no-restart', result: pending };
 }
 
-// Dismissed per announcement, for this browser: someone else may still take it.
+// Dismissed per PR, for this browser: someone else may still take it.
 const orphansDismissed = (() => {
   try {
     return JSON.parse(store.get('orphansDismissed', '{}')) ?? {};
@@ -3194,6 +3192,19 @@ const orphansDismissed = (() => {
     return {};
   }
 })();
+let orphansFolded = (() => {
+  try {
+    return store.get('orphansFolded', 'false') === 'true';
+  } catch {
+    return false;
+  }
+})();
+// Blocked storage only costs the choice on the next load.
+const keepOrphansChoice = (key, value) => {
+  try {
+    store.set(key, value);
+  } catch {}
+};
 const orphanKey = pr => `${pr.repo}#${pr.number}`;
 
 function renderOrphans(orphans) {
@@ -3203,7 +3214,6 @@ function renderOrphans(orphans) {
     box.hidden = true;
     return;
   }
-  const folded = store.get('orphansFolded', 'false') === 'true';
   const take = pr => (pr.slackUrl
     ? `<a class="take" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
       + ` title="${escapeHtml(orphans.claimEmoji ? t('orphansTakeHint', { emoji: orphans.claimEmoji }) : t('orphansSee'))}">`
@@ -3215,10 +3225,10 @@ function renderOrphans(orphans) {
     + `<span class="wait">${escapeHtml(t('orphansSince', { span: tn('orphansDays', pr.waitingDays) }))}</span>`
     + (pr.requested.length ? `<span class="asked">${escapeHtml(t('orphansAsked', { who: pr.requested.join(', ') }))}</span>` : '')
     + `<span class="acts">${take(pr)}`
-    + `<button type="button" class="skip" data-orphan-dismiss="${escapeHtml(orphanKey(pr))}" data-announced="${escapeHtml(pr.announcedAt)}"`
+    + `<button type="button" class="skip" data-orphan-dismiss="${escapeHtml(orphanKey(pr))}"`
     + ` title="${escapeHtml(t('orphansDismissHint'))}">${escapeHtml(t('orphansDismiss'))}</button></span></li>`;
-  box.classList.toggle('folded', folded);
-  box.innerHTML = `<button type="button" class="orphans-head" data-orphans-fold aria-expanded="${!folded}" title="${escapeHtml(t('orphansFold'))}">`
+  box.classList.toggle('folded', orphansFolded);
+  box.innerHTML = `<button type="button" class="orphans-head" data-orphans-fold aria-expanded="${!orphansFolded}" title="${escapeHtml(t('orphansFold'))}">`
     + `<span aria-hidden="true">🧭</span><span class="gdot"></span>`
     + `<b>${escapeHtml(tn('orphansTitle', prs.length, { span: tn('orphansDays', orphans.days) }))}</b>`
     + `<span class="chev" aria-hidden="true">▾</span></button>`
@@ -3516,16 +3526,15 @@ document.addEventListener('click', event => {
   }
 
   if (event.target.closest('[data-orphans-fold]')) {
-    store.set('orphansFolded', store.get('orphansFolded', 'false') !== 'true');
+    orphansFolded = !orphansFolded;
+    keepOrphansChoice('orphansFolded', orphansFolded);
     renderOrphans(state.data?.orphans);
     return;
   }
   const dismissOrphan = event.target.closest('[data-orphan-dismiss]');
   if (dismissOrphan) {
-    orphansDismissed[dismissOrphan.dataset.orphanDismiss] = dismissOrphan.dataset.announced;
-    try {
-      store.set('orphansDismissed', JSON.stringify(orphansDismissed));
-    } catch {}
+    orphansDismissed[dismissOrphan.dataset.orphanDismiss] = true;
+    keepOrphansChoice('orphansDismissed', JSON.stringify(orphansDismissed));
     renderOrphans(state.data?.orphans);
     return;
   }

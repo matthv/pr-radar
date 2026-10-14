@@ -314,9 +314,8 @@ async function announced() {
 // older message edited to add a link is not seen again: its ts does not move.
 //
 // The API path reads on every refresh — it is cheap. The Claude path reads only when a
-// PR is due.
-// `refresh` reads the new messages even with no PR on the board waiting for its link: the
-// announcements of PRs nobody holds are what the unreviewed banner looks for.
+// PR is due, or on `refresh`: the unreviewed banner looks for announcements of PRs that are
+// on no one's board, so none of them is ever due.
 async function lookup(prs, { maxAgeDays, via, now = Date.now(), refresh = false }) {
   await loadState();
   const onBoard = new Set(prs.map(pr => keyOf(pr.repo, pr.number)));

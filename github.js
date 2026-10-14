@@ -264,13 +264,18 @@ const ANNOUNCED_FIELDS = `id number title url state isDraft
   reviewThreads(last: 50) { nodes { comments(first: 5) { nodes { author { __typename login } } } } }
   reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } } }`;
 
+async function graphqlPartial(query) {
+  return JSON.parse(await ghGraphql(JSON.stringify({ query, variables: {} })));
+}
+
 // The PRs announced on Slack, read by repo and number: no search, one request per batch.
-// Their refs come from messages, so only a well-formed one is put in a query; one GitHub
-// cannot find fails its batch, which is then asked one by one.
-async function fetchAnnounced(refs) {
+// Their refs come from messages, so only a well-formed one is put in a query. GitHub answers
+// a batch with one PR it cannot resolve (deleted, or a repo the token cannot see) with the
+// others' data next to the error: that one is null, any other error fails the read.
+async function fetchAnnounced(refs, run = graphqlPartial) {
   const safe = refs.filter(({ repo, number }) => {
-    const [owner, name] = repo.split('/');
-    return SAFE_REPO.test(owner ?? '') && SAFE_REPO.test(name ?? '') && Number.isInteger(number) && number > 0;
+    const [owner, name, ...rest] = repo.split('/');
+    return !rest.length && SAFE_REPO.test(owner ?? '') && SAFE_REPO.test(name ?? '') && Number.isInteger(number) && number > 0;
   });
   const queryFor = batch => `query { ${batch
     .map(({ repo, number }, index) => {
@@ -279,14 +284,11 @@ async function fetchAnnounced(refs) {
     })
     .join(' ')} }`;
   const ask = async batch => {
-    try {
-      const data = await graphql(queryFor(batch), {});
-      return batch.map((ref, index) => [ref, data[`p${index}`]?.pullRequest ?? null]);
-    } catch (error) {
-      if (!NOT_FOUND.test(error.message)) throw error;
-      if (batch.length === 1) return [[batch[0], null]];
-      return (await Promise.all(batch.map(ref => ask([ref])))).flat();
-    }
+    const { data, errors = [] } = await run(queryFor(batch));
+    const failed = errors.filter(error => !NOT_FOUND.test(error.message));
+    if (failed.length) throw new Error(failed.map(error => error.message).join(' | '));
+    if (!data) throw new Error('Réponse GitHub sans données.');
+    return batch.map((ref, index) => [ref, data[`p${index}`]?.pullRequest ?? null]);
   };
   const batches = [];
   for (let i = 0; i < safe.length; i += ID_BATCH_SIZE) batches.push(safe.slice(i, i + ID_BATCH_SIZE));

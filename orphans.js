@@ -21,7 +21,6 @@ function businessDaysSince(from, now) {
   return count;
 }
 
-// Someone other than its author and the bots looked: a review, a comment, a remark in a thread.
 function someoneLooked(node) {
   const author = node.author?.login;
   const people = [
@@ -56,9 +55,9 @@ function pickOrphans(entries, { me, now, days, onBoard = new Set() }) {
     .sort((a, b) => a.announcedAt.localeCompare(b.announcedAt));
 }
 
-// Read on its own clock, like the claims: every half hour while a page is open. A PR seen
-// closed, merged or gone is never asked about again, so after the first read only the few
-// still open are.
+// A PR GitHub answered closed or merged is never asked about again, so after the first read
+// only the few still open are. One it cannot find is asked again: a token that lost access to
+// its repo answers the same as a deleted PR, and must not hide it for good.
 function createOrphanWatch({ fetchAnnounced, announced, inScope, days, maxAgeDays }) {
   let entries = [];
   let checkedAt = null;
@@ -73,25 +72,24 @@ function createOrphanWatch({ fetchAnnounced, announced, inScope, days, maxAgeDay
       .filter(ref => inScope(ref) && now - ref.announcedAt <= maxAgeDays * DAY_MS)
       .filter(ref => !settled.has(keyOf(ref.repo, ref.number)));
     const nodes = await fetchAnnounced(refs);
-    entries = refs.map(ref => ({ ...ref, node: nodes.get(keyOf(ref.repo, ref.number)) ?? null }));
-    for (const { repo, number, node } of entries) {
-      if (!node || node.state !== 'OPEN') settled.add(keyOf(repo, number));
+    const answered = refs.map(ref => ({ ...ref, node: nodes.get(keyOf(ref.repo, ref.number)) ?? null }));
+    for (const { repo, number, node } of answered) {
+      if (node && node.state !== 'OPEN') settled.add(keyOf(repo, number));
     }
-    entries = entries.filter(entry => entry.node?.state === 'OPEN');
+    entries = answered.filter(entry => entry.node?.state === 'OPEN');
     checkedAt = now;
     failure = null;
-    return refs.length;
+    return { asked: refs.length, missing: answered.filter(entry => !entry.node).map(({ repo, number }) => `${repo}#${number}`) };
   }
 
   function read({ now = Date.now(), force = false } = {}) {
-    if (reading) return reading;
-    // Refresh reads at once, though never twice within seconds; a failure waits less long.
+    if (reading) return reading.then(() => ({ read: false }));
     const due = force ? now - lastReadAt >= FORCE_GAP_MS : now >= nextAt;
     if (!due) return Promise.resolve({ read: false });
     lastReadAt = now;
     nextAt = now + EVERY_MS;
     reading = readNow(now)
-      .then(asked => ({ read: true, asked }))
+      .then(result => ({ read: true, ...result }))
       .catch(error => {
         failure = { message: error.message };
         nextAt = now + RETRY_MS;

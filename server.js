@@ -123,6 +123,7 @@ let claimWarning = null;
 let claimReading = null;
 let claimReadAt = 0;
 let orphanWatch = null;
+let orphansMissing = '';
 let channelReadAt = 0;
 let slackWarning = null;
 let slackReading = null;
@@ -176,9 +177,9 @@ async function readSlack(prs, { refresh = false } = {}) {
   }
 }
 
-function readSlackInBackground(prs) {
-  if (slackReading) return;
-  slackReading = readSlack(prs)
+function readSlackInBackground(prs, { refresh = false } = {}) {
+  if (slackReading) return slackReading;
+  slackReading = readSlack(prs, { refresh })
     .then(async () => {
       if (!cache.payload) return;
       const warnings = cache.payload.warnings.filter(w => w.source !== 'slack');
@@ -187,6 +188,7 @@ function readSlackInBackground(prs) {
     .finally(() => {
       slackReading = null;
     });
+  return slackReading;
 }
 
 // The reactions are read behind the board, like the Claude channel read: a search through
@@ -247,7 +249,7 @@ async function layered(board, discoveredAt) {
   });
 }
 
-// A PR already on the board is shown there: the banner only lists the ones nobody holds.
+// A PR already on my board is shown there: the banner only lists the ones not on it.
 function withOrphans(payload) {
   if (!orphanWatch) return payload;
   const onBoard = new Set([...payload.mine, ...payload.reviews].map(pr => pr.id));
@@ -262,27 +264,40 @@ function withOrphans(payload) {
 // Through Claude the channel is otherwise read only for a PR on the board missing its link,
 // and the banner is about PRs that are not on it. An announcement only counts after days,
 // so a read every two hours is plenty: one Haiku call, of the messages since the last one.
+// It shares the board's single read slot, and a failed one is tried again on the next check.
 const CHANNEL_REFRESH_MS = 2 * 60 * 60_000;
 async function announcedFresh() {
   if (slackMode === 'claude' && cache.payload && Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
     if (slackReading) await slackReading.catch(() => {});
     if (Date.now() - channelReadAt >= CHANNEL_REFRESH_MS) {
-      channelReadAt = Date.now();
-      await readSlack([...cache.payload.mine, ...cache.payload.reviews], { refresh: true });
+      await readSlackInBackground([...cache.payload.mine, ...cache.payload.reviews], { refresh: true }).catch(() => {});
     }
   }
   return slack.announced();
 }
 
-// Like the claims: behind the board, on its own clock, and only while a page is open.
 function readOrphansInBackground(asked) {
   if (!orphanWatch || Date.now() - live.pageAt > LEASE_MS) return;
-  orphanWatch.read({ force: asked }).then(({ read, asked: count, failed }) => {
-    if (!read) return;
-    if (cache.payload) cache.payload = withOrphans(cache.payload);
-    if (failed) logger.fail('orphans', `announced PRs read failed (${orphanWatch.warning()?.message}), trying again in 10 min`);
-    else logger.info('orphans', `${count} announced PR(s) checked, ${cache.payload?.orphans?.prs.length ?? 0} waiting for a review`);
-  });
+  orphanWatch
+    .read({ force: asked })
+    .then(({ read, asked: count, missing = [], failed }) => {
+      if (!read) return;
+      if (cache.payload) cache.payload = withOrphans(cache.payload);
+      if (failed) {
+        logger.fail('orphans', `announced PRs read failed (${orphanWatch.warning()?.message}), trying again in 10 min`);
+        return;
+      }
+      logger.info('orphans', `${count} announced PR(s) checked, ${cache.payload?.orphans?.prs.length ?? 0} waiting for a review`);
+      // Once per change: a deleted PR is asked about again at every read until it ages out.
+      const missingNow = missing.join(' ');
+      if (missingNow === orphansMissing) return;
+      orphansMissing = missingNow;
+      if (missing.length) {
+        const shown = missing.slice(0, 5).join(', ') + (missing.length > 5 ? ', …' : '');
+        logger.fail('orphans', `${missing.length} announced PR(s) not found, deleted or out of the token's reach: ${shown}`);
+      }
+    })
+    .catch(error => logger.fail('orphans', error.message));
 }
 
 function reusableNodes() {

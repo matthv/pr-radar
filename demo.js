@@ -320,7 +320,7 @@ function demoSeen(prs) {
   ]);
 }
 
-// At ten in the morning, so many working days back: the banner's wait reads as written.
+// At ten in the morning, so the wait shown is exactly that many working days.
 function workingDaysAgo(days) {
   const at = new Date(STARTED_AT);
   at.setHours(10, 0, 0, 0);
@@ -331,7 +331,6 @@ function workingDaysAgo(days) {
   return at.getTime();
 }
 
-// Two announcements nobody has looked at: one plain, one asked of someone who has not answered.
 function orphans() {
   const announced = [
     { repo: 'ForestAdmin/forestadmin', number: 10061, title: 'feat(export): stream large CSV exports instead of building them in memory', author: 'PMerlet', days: 4, requested: ['Scra3'] },
