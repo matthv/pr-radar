@@ -506,17 +506,27 @@ nowhere else on the card. The mark is Linear's indigo, white in dark mode.
 
 One change often comes as two or three PRs, a back and a front. A card whose PR has such
 twins on the board wears a `🔗 +1 linked PR` pill; its tooltip names them, and a click
-makes them all blink where they are, the way a card that just arrived does, for a few
-seconds. No scroll, so the board stays where you were reading; a folded group or kanban
-column holding one opens. When none can be shown (a project filter, a hidden snooze, the
-orbits), the first one opens on GitHub.
+makes them all blink where they are, the way a card that just arrived does, for about
+fifteen seconds. No scroll, so the board stays where you were reading; a folded group or
+kanban column holding one opens, and a counter isolating one column lets go. When none can
+be shown (a project filter, a hidden snooze, the orbits), the first one opens on GitHub.
 
-Twins are the PRs of one piece of work, the way the standup notes already group them
-(`workKey` in `ticket.js`): the same ticket, or the same title once its `feat(…):` prefix
-is gone. Plus one signal of the board's own: one Slack announcement linking several PRs,
-the "Server / front" posts whose titles differ and name no ticket. Both sides count, and
-merged PRs too: "the back is already merged" is worth knowing while reviewing the front.
-Only PRs on the board are linked; it asks GitHub nothing more.
+Twins are the PRs of one piece of work, close to the way the standup notes group them
+(`ticket.js`):
+
+- **the same ticket**, the one the Linear link shows. A CVE, a hash or an encoding named in
+  a title (`CVE-2024-1111`, `SHA-256`, `UTF-16`) is not a ticket, nor a bot's branch
+  (`renovate/node-20`);
+- **the same title** once its conventional prefix (`feat(…):`, `fix:`…) is gone, case
+  aside, so a ticketless half still finds the other. Not when the two name different
+  tickets, nor for a title under three words (`fix: typo`) or a bot's PR (bumps and
+  releases are named alike in every repo);
+- **one Slack announcement** linking both, the "Server / front" posts whose titles differ
+  and name no ticket. Up to three PRs: a message listing more is a list, not one change.
+
+Both sides count, and merged PRs too: "the back is already merged" is worth knowing while
+reviewing the front. Only PRs on the board are linked; it asks GitHub nothing more, and it
+works with the Slack link off.
 
 ## The Claude session
 

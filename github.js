@@ -709,6 +709,7 @@ function baseShape(pr, me) {
     deletions: pr.deletions,
     changedFiles: pr.changedFiles,
     author: pr.author?.login ?? '?',
+    authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,

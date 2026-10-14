@@ -6,7 +6,7 @@
 
 const { baseShape, decorateMine, decorateReview, byActionThenFreshness, mergedSince } = require('./github');
 const { snapshotOf } = require('./public/since');
-const { withTwins } = require('./ticket');
+const { boardTwins } = require('./ticket');
 
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
@@ -335,7 +335,7 @@ function payload(force) {
   // Your own PRs are the ones written in a Claude session; a review seldom is.
   const withLinks = pr => ({ ...withSlack(pr), claudeSession: pr.side === 'mine' });
 
-  const cards = withTwins([...mine, ...reviews].map(withLinks));
+  const board = boardTwins({ mine: mine.map(withLinks), reviews: reviews.map(withLinks) });
 
   return {
     me: ME,
@@ -355,8 +355,8 @@ function payload(force) {
     },
     demoSeen: demoSeen([...mine, ...reviews]),
     demoStartedAt: STARTED_AT,
-    mine: cards.slice(0, mine.length),
-    reviews: cards.slice(mine.length),
+    mine: board.mine,
+    reviews: board.reviews,
     counts: {
       hiddenStale: 7,
       seenTotal: mine.length + reviews.length + 7,

@@ -88,8 +88,9 @@ function blockFor(pr) {
     .join('\n');
 }
 
+// A standup is told by piece of work, not by pull request: the back and the front of one
+// change are one thing to say (Alban's feedback, forestadmin#9977 + forestadmin-server#8522).
 // The grouping is decided here, from what can be checked (workKey) — the model only words it.
-
 // First-appearance order, so the oldest-activity-first order of the input survives.
 function clusterForDigest(prs) {
   const clusters = new Map();
