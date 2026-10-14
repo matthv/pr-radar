@@ -149,10 +149,10 @@ function scanClaudeSessions() {
   );
 }
 
-async function withSlackLinks(payload) {
-  const links = await slack.linksFor([...payload.mine, ...payload.reviews]);
-  const withSlack = pr => ({ ...pr, slackUrl: links.get(pr.id) ?? null });
-  return { ...payload, mine: payload.mine.map(withSlack), reviews: payload.reviews.map(withSlack) };
+// Twins come with the board, Slack link on or off: the ticket and the title still find them.
+async function withLinksAndTwins(payload) {
+  const links = slackMode === 'off' ? null : await slack.linksFor([...payload.mine, ...payload.reviews]);
+  return boardTwins(payload, links);
 }
 
 // Slack is asked after GitHub, only about the PRs on the board, and its failure is a
@@ -177,7 +177,7 @@ function readSlackInBackground(prs) {
     .then(async () => {
       if (!cache.payload) return;
       const warnings = cache.payload.warnings.filter(w => w.source !== 'slack');
-      cache.payload = { ...boardTwins(await withSlackLinks(cache.payload)), warnings: slackWarning ? [...warnings, slackWarning] : warnings };
+      cache.payload = { ...(await withLinksAndTwins(cache.payload)), warnings: slackWarning ? [...warnings, slackWarning] : warnings };
     })
     .finally(() => {
       slackReading = null;
@@ -227,9 +227,7 @@ function readClaimsInBackground(asked) {
 // search or from a few reloaded PRs.
 async function layered(board, discoveredAt) {
   const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
-  // Twins after the Slack links, one announcement being one of their signals; with Slack off
-  // too, where the ticket and the title still find them.
-  const payload = boardTwins(slackMode === 'off' ? withSessions : await withSlackLinks(withSessions));
+  const payload = await withLinksAndTwins(withSessions);
   return {
     ...payload,
     warnings: [...payload.warnings, ...(slackWarning ? [slackWarning] : []), ...(claimWarning ? [claimWarning] : [])],

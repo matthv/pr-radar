@@ -514,15 +514,18 @@ be shown (a project filter, a hidden snooze, the orbits), the first one opens on
 Twins are the PRs of one piece of work, close to the way the standup notes group them
 (`ticket.js`):
 
-- **the same ticket**, the one the Linear link shows. A CVE, a hash or an encoding named in
-  a title (`CVE-2024-1111`, `SHA-256`, `UTF-16`) is not a ticket, nor a bot's branch
-  (`renovate/node-20`);
+- **the same ticket**, the one the Linear link shows. An advisory, a hash, a cipher or an
+  encoding named in a title (`CVE-2024-1111`, `CWE-79`, `SHA-256`, `UTF-16`) is not a
+  ticket, nor the tail of a longer id (`SNYK-JS-LODASH-1040724`), nor a bot's branch
+  (`renovate/react-18`) or description;
 - **the same title** once its conventional prefix (`feat(…):`, `fix:`…) is gone, case
   aside, so a ticketless half still finds the other. Not when the two name different
-  tickets, nor for a title under three words (`fix: typo`) or a bot's PR (bumps and
-  releases are named alike in every repo);
+  tickets, even through a third PR with no ticket, nor for a title under three words
+  (`fix: typo`) or a bot's PR (bumps and releases are named alike in every repo);
 - **one Slack announcement** linking both, the "Server / front" posts whose titles differ
-  and name no ticket. Up to three PRs: a message listing more is a list, not one change.
+  and name no ticket. Up to three of the board's PRs: a message linking more of them is a
+  list, not one change. Its PRs off the board (merged long ago, out of the age window) are
+  not counted.
 
 Both sides count, and merged PRs too: "the back is already merged" is worth knowing while
 reviewing the front. Only PRs on the board are linked; it asks GitHub nothing more, and it

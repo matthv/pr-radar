@@ -1205,6 +1205,12 @@ const claimContext = (id, extra = {}) => ({
   mergedReviewedIds: new Set(), extraIds: new Set([id]), claimedSet: new Set([id]), ...extra,
 });
 
+test('board: a bot-authored card says so, for the linked PRs to leave its title alone', () => {
+  const id = 'PR_bot';
+  const board = shapeBoard(new Map([[id, node({ id, author: bot('dependabot') })]]), claimContext(id));
+  assert.equal([...board.mine, ...board.reviews][0].authorIsBot, true);
+});
+
 test('board: a PR claimed on Slack is a review I owe, and says why it is there', () => {
   const id = 'PR_C';
   const board = shapeBoard(new Map([[id, node({ id, author: user('nbouliol') })]]), claimContext(id));

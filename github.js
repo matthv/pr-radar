@@ -149,6 +149,7 @@ query($ids: [ID!]!) {
       title
       body
       headRefName
+      author { __typename login }
       repository { nameWithOwner }
       files(first: 20) { nodes { path } }
     }
@@ -164,6 +165,7 @@ async function fetchDigestInputs(ids) {
     title: pr.title,
     body: pr.body || '',
     headRefName: pr.headRefName ?? null,
+    authorIsBot: isBot(pr.author),
     repo: pr.repository.nameWithOwner,
     files: pr.files.nodes.map(file => file.path),
   }));

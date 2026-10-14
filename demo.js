@@ -330,7 +330,8 @@ function payload(force) {
   // Not every PR gets announced: a draft, a review requested a minute ago, a few others.
   const unannounced = new Set([1955, 8561]);
   const announced = pr => !pr.isDraft && !unannounced.has(pr.number);
-  // One announcement per PR: a shared link would make every announced card a twin of the others.
+  // One link per PR: a link is shared only by the PRs of one announcement, and a shared one
+  // here would read as a single announcement.
   const withSlack = pr => ({ ...pr, slackUrl: announced(pr) ? `https://app.slack.com/client#${pr.repo}-${pr.number}` : null });
   // Your own PRs are the ones written in a Claude session; a review seldom is.
   const withLinks = pr => ({ ...withSlack(pr), claudeSession: pr.side === 'mine' });
