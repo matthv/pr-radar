@@ -426,6 +426,24 @@ test('my PR: an unanswered remark is mine to address, my own reply is not', () =
   assert.equal(b.bucket, 'waiting');
 });
 
+test('my PR: an unresolved qlty remark is not an open thread', () => {
+  const pr = node({ reviewThreads: { nodes: [thread({ comments: [[bot('qltysh'), ago(2)]] })] } });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 0);
+  assert.ok(!decorated.reasons.some(r => r.kind === 'threads'));
+});
+
+test('my PR: a reviewer asking for the fix under a qlty remark is still an open thread', () => {
+  const pr = node({
+    reviewThreads: { nodes: [thread({ comments: [[bot('qltysh'), ago(3)], ['reviewer', ago(2)]] })] },
+  });
+  const decorated = decorateMine(baseShape(pr, ME));
+
+  assert.equal(decorated.toFix.length, 1);
+  assert.ok(decorated.reasons.some(r => r.kind === 'threads'));
+});
+
 test('my PR: a resolved thread asks nothing', () => {
   const pr = node({
     reviewThreads: { nodes: [thread({ comments: [['reviewer', ago(2)]], isResolved: true })] },

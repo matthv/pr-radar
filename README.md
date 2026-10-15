@@ -17,7 +17,7 @@ follows reality without any manual step.
 
 | Group | My PRs | PRs I review |
 | --- | --- | --- |
-| `On my plate` | unaddressed comments, changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies or new commits since your feedback once none of your threads still waits on the author |
+| `On my plate` | unaddressed comments (lint remarks from qlty don't count unless a human replied under them; review bots like Macroscope do), changes requested, red CI, conflicts | a review you owe — requested, or the PR assigned to you — and not done, your review requested again, replies or new commits since your feedback once none of your threads still waits on the author |
 | `Ready to merge` | approved, nothing left open — the one move left is yours | — (the author merges) |
 | `Waiting` | you replied, or asked a reviewer who requested changes to review again — the ball is with the reviewers | your open threads / your changes-requested await a fix, some of them already answered or pushed on included |
 | `Nothing to report` | drafts, shown as `Drafts` | everything else |
