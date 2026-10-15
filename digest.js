@@ -53,7 +53,9 @@ const CLAUDE_ARGS = [
 // its size limit.
 function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir()) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, MCP_CONNECTION_NONBLOCKING: 'false' };
+    // `-p` only waits for servers it already knows are pending, and the claude.ai connector
+    // list is still being fetched when the first turn starts: without this, Slack is missed.
+    const env = { ...process.env, MCP_CONNECTION_NONBLOCKING: '0' };
     const child = spawn('claude', args, { cwd, env });
     let out = '';
     let err = '';
