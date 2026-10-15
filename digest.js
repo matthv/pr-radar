@@ -53,7 +53,8 @@ const CLAUDE_ARGS = [
 // its size limit.
 function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir()) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', args, { cwd });
+    const env = { ...process.env, MCP_CONNECTION_NONBLOCKING: 'false' };
+    const child = spawn('claude', args, { cwd, env });
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
