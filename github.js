@@ -795,7 +795,7 @@ function latestReviewPerAuthor(reviews) {
 }
 
 function decorateMine(pr) {
-  const unresolved = pr.threads.filter(t => !t.isResolved);
+  const unresolved = pr.threads.filter(t => !t.isResolved && !/^qlty/.test(t.author));
   const toFix = unresolved.filter(t => !t.lastByMe);
   const waitingOnThem = unresolved.filter(t => t.lastByMe);
   // Asking the reviewer again hands them the PR back. GitHub drops a request once its
