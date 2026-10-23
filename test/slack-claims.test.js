@@ -84,6 +84,16 @@ test('claims: a claim that would go is asked twice', async () => {
   assert.equal(answers.length, 0, 'an addition is not asked twice');
 });
 
+test('claims: every change keeps the raw answers that made it, nothing else does', () => {
+  const kept = fs.readFileSync(path.join(path.dirname(STATE), '.slack-claims-debug.log'), 'utf8');
+  const entries = kept.split(/^=== /m).filter(Boolean);
+  assert.equal(entries.length, 3, 'the first read, the removal and the addition; not the unconfirmed removal');
+  assert.match(entries[1], /added: - · removed: o\/r#7/);
+  assert.match(entries[1], /--- answer 1\n.*\n--- answer 2\n/, 'a removal keeps both answers');
+  assert.match(entries[2], /added: o\/r#9 · removed: -\n--- answer 1\n\{"messages"/);
+  assert.match(prompts.at(-1), /"filters": "<the filters you passed to the tool/);
+});
+
 test('claims: a claim goes only when both reads miss it, and a failed confirmation keeps it', async () => {
   answers.push({ messages: [announce('1791371567.461059', 3, 9, 11)], more: false });
   await read(now + 4 * DAY + 10 * MIN);

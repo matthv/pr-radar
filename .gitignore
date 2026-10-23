@@ -4,4 +4,5 @@ node_modules/
 .digest-cache.json
 .daily-notes.log
 .slack-links.json
+.slack-claims-debug.log
 .idea/
