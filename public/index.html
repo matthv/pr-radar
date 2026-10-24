@@ -1171,6 +1171,7 @@
     --hw-bolt-core: #ffffff;
     --hw-bolt-glow: #9fb4ff;
   }
+  #season { width: 32px; padding: 0; justify-content: center; }
   #season.off { filter: grayscale(1); opacity: .5; }
   :root[data-season="halloween"] header { border-bottom-color: color-mix(in srgb, var(--hw-orange) 35%, var(--border)); }
   :root[data-season="halloween"] .logo,
@@ -1179,13 +1180,14 @@
   :root[data-season="halloween"] #sweepGrad stop { stop-color: var(--hw-orange); }
   :root[data-season="halloween"] #sweepGrad stop:last-child { stop-color: var(--hw-purple); }
   :root[data-season="halloween"] .brand > span::after { content: "🎃"; display: inline-block; margin-left: 7px; transform-origin: 50% 90%; }
-  :root[data-season="halloween"] .empty::before { content: "👻"; display: block; font-size: 24px; margin-bottom: 6px; }
+  :root[data-season="halloween"] .empty:not(.kb-cell)::before { content: "👻"; display: block; font-size: 24px; margin-bottom: 6px; }
   :root[data-season="halloween"] .card:hover {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--hw-orange) 35%, transparent),
                 0 10px 26px -12px color-mix(in srgb, var(--hw-orange) 60%, transparent);
   }
   #seasonDeco, #seasonBack { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-  #seasonDeco { z-index: 11; }
+  /* Under the header and the pickers' panels, so it never paints over a menu. */
+  #seasonDeco { z-index: 9; }
   /* Below the page's own content: the cards and the header cover it, so the ghosts only
      show in the gaps between them. */
   #seasonBack { z-index: -1; }
@@ -1205,7 +1207,7 @@
   .hw-storm.strike, .hw-flash.strike { animation: hw-strike 1.1s linear; }
   @media (prefers-reduced-motion: no-preference) {
     :root[data-season="halloween"] .brand > span::after { animation: hw-wobble 3.4s ease-in-out infinite; }
-    :root[data-season="halloween"] .empty::before { animation: hw-float 3s ease-in-out infinite; }
+    :root[data-season="halloween"] .empty:not(.kb-cell)::before { animation: hw-float 3s ease-in-out infinite; }
     .hw-spider { animation: hw-walk 17s ease-in-out infinite 4s; }
     .hw-spider .leg { animation: hw-step .6s ease-in-out infinite alternate; }
     .hw-spider .leg.b { animation-delay: -.6s; }
@@ -2097,9 +2099,14 @@ const season = (() => {
   const now = new Date();
   const day = [now.getMonth() + 1, now.getDate()];
   const compare = (a, b) => a[0] - b[0] || a[1] - b[1];
-  return SEASONS.find(entry => compare(day, entry.from) >= 0 && compare(day, entry.to) <= 0) ?? null;
+  const within = ({ from, to }) => (compare(from, to) <= 0
+    ? compare(day, from) >= 0 && compare(day, to) <= 0
+    : compare(day, from) >= 0 || compare(day, to) <= 0);
+  return SEASONS.find(within) ?? null;
 })();
-const seasonOff = () => store.get('seasonOff', '') === season?.name;
+// Turned off for this year's season only: next year it comes back on.
+const seasonKey = season && `${season.name}-${new Date().getFullYear()}`;
+const seasonOff = () => Boolean(season) && store.get('seasonOff', '') === seasonKey;
 
 function spiderWeb() {
   const size = 150;
@@ -2196,9 +2203,15 @@ function scheduleStrike(delay) {
   clearTimeout(stormTimer);
   if (!document.documentElement.dataset.season || calm.matches) return;
   stormTimer = setTimeout(() => {
+    if (calm.matches) return;
     strike();
     scheduleStrike(9_000 + Math.random() * 12_000);
   }, delay);
+}
+calm.addEventListener('change', () => scheduleStrike(4_000));
+
+function seasonTitle() {
+  if (season) el('season').title = t(seasonOff() ? 'seasonOff' : 'seasonOn');
 }
 
 function applySeason() {
@@ -2208,7 +2221,7 @@ function applySeason() {
   el('season').hidden = !season;
   el('season').classList.toggle('off', !on);
   el('season').setAttribute('aria-pressed', String(on));
-  if (season) el('season').title = t(on ? 'seasonOn' : 'seasonOff');
+  seasonTitle();
   el('seasonDeco').innerHTML = on
     ? `${spiderWeb()}${SPIDER}<div class="hw-flash"></div>`
     : '';
@@ -2216,9 +2229,10 @@ function applySeason() {
   scheduleStrike(4_000);
 }
 el('season').addEventListener('click', () => {
-  store.set('seasonOff', seasonOff() ? '' : season.name);
+  store.set('seasonOff', seasonOff() ? '' : seasonKey);
   applySeason();
 });
+applySeason();
 
 function applyLang(next) {
   lang = next;
@@ -2230,7 +2244,7 @@ function applyLang(next) {
   }
   el('lang').title = t('langTitle');
   el('theme').title = t('themeTitle');
-  applySeason();
+  seasonTitle();
   el('settings').title = t('settingsTitle');
   if (state.settingsOpen) renderSettings();
   el('gitdeck').title = t('gitdeckTitle');

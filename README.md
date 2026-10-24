@@ -1237,11 +1237,11 @@ its own within its dates (`SEASONS` in `public/index.html`) and sleeps the rest 
   they say (see [Reading the colours](#reading-the-colours)); a season only adds to the
   header, the empty states and the background.
 - **Turn it off** with its button in the header, next to the theme one. The choice is kept in
-  this browser, for that season only.
+  this browser, for this year's season only.
 - **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
 - **To try one out of its dates**, add `?season=<name>` to the page's address.
-- **A new season** is one entry in `SEASONS` and one block of CSS under
-  `:root[data-season="<name>"]`, so it also goes in one cut.
+- **A new season** is one entry in `SEASONS` (its window may run over the new year) and one
+  block of CSS under `:root[data-season="<name>"]`, so it also goes in one cut.
 
 ## Implementation notes
 
