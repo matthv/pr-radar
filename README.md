@@ -1228,6 +1228,21 @@ you can tell them apart at a glance while scrolling.
 Pills carry the state; a reason line only appears for what no pill already says
 (the name of the reviewer who requested changes, new commits to re-check).
 
+## Seasons
+
+A few days a year, the board dresses up for the occasion. Nothing to set: a season wakes on
+its own within its dates (`SEASONS` in `public/index.html`) and sleeps the rest of the year.
+
+- **The board's own colours never change.** Indigo, amber, green and red keep saying what
+  they say (see [Reading the colours](#reading-the-colours)); a season only adds to the
+  header, the empty states and the background.
+- **Turn it off** with its button in the header, next to the theme one. The choice is kept in
+  this browser, for that season only.
+- **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
+- **To try one out of its dates**, add `?season=<name>` to the page's address.
+- **A new season** is one entry in `SEASONS` and one block of CSS under
+  `:root[data-season="<name>"]`, so it also goes in one cut.
+
 ## Implementation notes
 
 - `assets/` holds the mark as source: `pr-radar-tile.svg` is the favicon, inlined as a data
