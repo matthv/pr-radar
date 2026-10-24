@@ -2147,16 +2147,19 @@ const SPIDER = (() => {
 const GHOST_PATH = 'M20 2C10 2 3 10 3 21v25l5-5 5 5 5-5 5 5 5-5 5 5 4-5V21C37 10 30 2 20 2Z';
 const ghost = ({ left, top, w, d, delay, dx }) => `<svg class="hw-ghost" viewBox="0 0 40 48" style="left:${left};top:${top};--w:${w}px;--d:${d}s;--delay:${delay}s;--dx:${dx}px">`
   + `<path d="${GHOST_PATH}" fill="currentColor"/><ellipse cx="14" cy="20" rx="2.6" ry="3.6" fill="var(--bg)"/><ellipse cx="26" cy="20" rx="2.6" ry="3.6" fill="var(--bg)"/></svg>`;
-// Mostly along the edges, peeking out from behind the columns.
+// Along the edges, in the gap between the columns, and inside them where a column runs
+// short: they peek out wherever no card covers them.
 const GHOSTS = [
   { left: '-12px', top: '24%', w: 46, d: 13, delay: 0, dx: 10 },
-  { left: '0.4%', top: '58%', w: 34, d: 10, delay: -4, dx: 8 },
+  { left: '34%', top: '50%', w: 34, d: 10, delay: -4, dx: 8 },
   { left: '-8px', top: '86%', w: 52, d: 15, delay: -8, dx: 12 },
   { left: 'calc(100% - 34px)', top: '34%', w: 44, d: 12, delay: -2, dx: -10 },
-  { left: 'calc(100% - 26px)', top: '70%', w: 30, d: 9, delay: -6, dx: -8 },
+  { left: '48.8%', top: '84%', w: 30, d: 9, delay: -6, dx: -8 },
   { left: '49.2%', top: '44%', w: 30, d: 11, delay: -3, dx: 6 },
   { left: '24%', top: '27%', w: 26, d: 10, delay: -7, dx: 14 },
   { left: '70%', top: '26%', w: 32, d: 14, delay: -11, dx: -12 },
+  { left: '64%', top: '56%', w: 48, d: 16, delay: -13, dx: 18 },
+  { left: '21%', top: '72%', w: 40, d: 13, delay: -1, dx: -14 },
 ];
 
 // Each bolt is drawn anew: a jagged channel from the top of the window, split again and
