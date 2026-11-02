@@ -92,7 +92,7 @@ query($ids: [ID!]!) {
       recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(last: 100) { totalCount nodes { id author { __typename login } state submittedAt url body } }
+      reviews(last: 100) { totalCount nodes { id author { __typename login } state submittedAt url body commit { oid } } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
