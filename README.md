@@ -692,7 +692,8 @@ A plugin exports a name and one function:
 module.exports = {
   name: 'my-plugin',
   // node: the PR as GitHub answered the board's query (PR_QUERY in github.js: its last 30
-  //       comments with their bodies, its labels, its head commit's oid…)
+  //       comments with their bodies, its labels and when they were last added, its head
+  //       commit's oid…)
   // pr:   the PR as the board shaped it (repo, number, isDraft, merged, labels, side, bucket…)
   decorate(node, pr) {
     return {

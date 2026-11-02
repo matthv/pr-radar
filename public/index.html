@@ -973,17 +973,19 @@
   .claude-link:hover { background: var(--hairline); }
   .claude-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
   .claude-link.busy { opacity: .45; cursor: progress; }
-  /* A plugin's label button: it starts something on GitHub, so it says its label in words. */
+  /* A plugin's label button: it starts something on GitHub, so it says its label in words.
+     Always visible, like Slack's: a plugin only offers it when there is something to start,
+     so its presence is news. Indigo is "your move"; outlined, not filled, so it does not
+     read as one of the state pills beside it. */
   .label-btn {
-    flex: none; box-sizing: border-box; height: 26px; margin-top: 11px; padding: 0 7px;
-    font: inherit; font-size: 11.5px; color: var(--text-faint);
-    background: none; border: 1px dashed var(--hairline); border-radius: 7px;
-    cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
+    flex: none; box-sizing: border-box; height: 26px; margin-top: 11px; padding: 0 8px;
+    font: inherit; font-size: 11.5px; font-weight: 580; color: var(--indigo);
+    background: none; border: 1px solid color-mix(in srgb, var(--indigo) 35%, transparent); border-radius: 7px;
+    cursor: pointer; transition: background .15s, border-color .15s, opacity .15s;
   }
-  .card:hover .label-btn, .label-btn:focus-visible, .label-btn.busy { opacity: 1; }
-  .label-btn:hover { background: var(--hairline); color: var(--text-soft); }
+  .label-btn:hover { background: var(--indigo-soft); border-color: var(--indigo); }
   .label-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
-  .label-btn.busy { color: var(--text-soft); cursor: progress; }
+  .label-btn.busy { opacity: .45; cursor: progress; }
 
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a

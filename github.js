@@ -76,6 +76,9 @@ query($ids: [ID!]!) {
         latestRelease { tagName url publishedAt }
       }
       labels(first: 10) { nodes { name color } }
+      labelEvents: timelineItems(last: 10, itemTypes: [LABELED_EVENT]) {
+        nodes { ... on LabeledEvent { createdAt label { name } } }
+      }
       head: commits(last: 1) {
         nodes {
           commit {
