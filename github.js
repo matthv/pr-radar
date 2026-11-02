@@ -102,6 +102,7 @@ query($ids: [ID!]!) {
         nodes {
           id
           isResolved
+          resolvedBy { login }
           isOutdated
           path
           line
