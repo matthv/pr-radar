@@ -29,6 +29,7 @@ const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
+const plugins = require('./plugins');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -129,6 +130,7 @@ let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
 let webhookNotifier = null;
+let PLUGINS = [];
 
 function withClaudeSessions(payload) {
   const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
@@ -233,7 +235,8 @@ function readClaimsInBackground(asked) {
 
 // What every board served carries besides the GitHub data, whether it comes from a full
 // search or from a few reloaded PRs.
-async function layered(board, discoveredAt) {
+async function layered(shaped, discoveredAt) {
+  const board = plugins.decorateBoard(PLUGINS, shaped, store.nodes);
   const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
   const payload = await withLinksAndTwins(withSessions);
   return withOrphans({
@@ -505,6 +508,21 @@ async function digestFor(body) {
   return digest.standupNotes(shaped, body.lang === 'fr' ? 'fr' : 'en');
 }
 
+// gh hands back GitHub's error body on stdout and runGh returns it as if it had worked: only the
+// label list GitHub answers a successful add with counts.
+async function addLabel(pr, label) {
+  const out = await watch.runGh(['api', '-X', 'POST', `repos/${pr.repo}/issues/${pr.number}/labels`, '-f', `labels[]=${label}`]);
+  let answer;
+  try {
+    answer = JSON.parse(out);
+  } catch {
+    throw new Error(`GitHub answered something other than JSON: ${out.trim().slice(0, 80)}`);
+  }
+  if (!Array.isArray(answer) || !answer.some(added => added?.name === label)) {
+    throw new Error(answer?.message ?? 'GitHub did not add the label');
+  }
+}
+
 async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
@@ -522,6 +540,13 @@ async function serveStatic(res, urlPath) {
 
 if (!ORG) {
   console.error('PR_RADAR_ORG is missing: set it in .env (see .env.example).');
+  process.exit(1);
+}
+
+try {
+  PLUGINS = DEMO ? [] : plugins.load(process.env.PR_RADAR_PLUGINS);
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 
@@ -633,6 +658,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // A plugin's label button. Only a label a plugin offers on that PR, as the board last showed it,
+  // and only ever added: taking one off and putting it back would start its workflow again.
+  if (url.pathname === '/api/label' && req.method === 'POST') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 200, { ok: true });
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
+    const pr = cache.payload && [...cache.payload.mine, ...cache.payload.reviews].find(candidate => candidate.id === body.id);
+    if (!pr?.plugins?.labels.some(label => label.name === body.label)) {
+      return json(res, 409, { error: 'no plugin offers this label on this PR any more' });
+    }
+    try {
+      await addLabel(pr, body.label);
+    } catch (error) {
+      logger.fail('plugins', `${body.label} on ${pr.repo}#${pr.number}: ${error.message}`);
+      return json(res, 502, { error: error.message });
+    }
+    logger.info('plugins', `${body.label} added to ${pr.repo}#${pr.number}`);
+    // Answered once the card shows the label, so the button the page drew disappears with it.
+    await patchOrForget(new Set([pr.id])).catch(error => logger.fail('plugins', `reload after the label: ${error.message}`));
+    return json(res, 200, { ok: true });
+  }
+
   if (url.pathname === '/api/digest' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -722,6 +777,7 @@ server.listen(PORT, async () => {
       `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
+      `  🧩 plugins ${PLUGINS.length ? PLUGINS.map(plugin => plugin.name).join(', ') : 'none (no PR_RADAR_PLUGINS)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
   );

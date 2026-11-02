@@ -79,6 +79,7 @@ query($ids: [ID!]!) {
       head: commits(last: 1) {
         nodes {
           commit {
+            oid
             committedDate
             author { user { login } }
             statusCheckRollup { state }

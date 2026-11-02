@@ -680,6 +680,44 @@ ticket or a doc. Brackets and backslashes in the title are escaped so they canno
 the link early. Like the note button it shows on hover, and turns into a check for a
 moment once the copy lands.
 
+## Plugins
+
+A team can add to the cards without a change to this repo: a plugin is a CommonJS module kept
+anywhere on disk, listed in `PR_RADAR_PLUGINS` (comma-separated paths, `~` for your home folder).
+The radar loads them at start and refuses to start on one it cannot load.
+
+A plugin exports a name and one function:
+
+```js
+module.exports = {
+  name: 'my-plugin',
+  // node: the PR as GitHub answered the board's query (PR_QUERY in github.js: its last 30
+  //       comments with their bodies, its labels, its head commit's oid…)
+  // pr:   the PR as the board shaped it (repo, number, isDraft, merged, labels, side, bucket…)
+  decorate(node, pr) {
+    return {
+      // Read-only pills, after the board's own. kind: '' | 'todo' | 'pending' | 'good' | 'alert';
+      // url (https only) makes it a link; running makes it breathe like a running pipeline.
+      pills: [{ text: 'deployed', kind: 'good', title: 'on staging', url: 'https://…', running: false }],
+      // Buttons, beside Linear's, that add this GitHub label to the PR.
+      labels: [{ name: 'deploy-preview', text: 'preview', title: 'add the deploy-preview label' }],
+    };
+  },
+};
+```
+
+- **It runs on every board the server builds**, a full search or a few PRs reloaded, so it reads
+  what is already loaded and asks GitHub nothing itself. It reads its own settings from the
+  environment, `.env` included.
+- **A plugin that throws loses its pills on that PR, never the board.** The banner names it and
+  the first PR it failed on.
+- **A label button only ever adds the label.** The server adds only a label a plugin offers on
+  that PR, as the board last showed it, and never takes one off: removing it and putting it back
+  would start the workflow it triggers again. The plugin hides the button once the label is on.
+  The card reloads once GitHub has the label.
+- **What a plugin returns is checked before it reaches the page.** Its text is escaped, a kind
+  it invents becomes neutral, and a URL that is not `https://` is dropped.
+
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of
