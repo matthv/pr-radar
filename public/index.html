@@ -561,11 +561,11 @@
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
   .group-label.ready .gdot { background: linear-gradient(135deg, var(--indigo), var(--emerald)); }
   .group-label.ready { color: var(--indigo); }
-  .group-label.waiting .gdot,
+  .group-label.waiting .gdot, .group-label.bot .gdot,
   .group-label.merged .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
   .group-label.idle .gdot { background: var(--border); }
   .group-label.action { color: var(--indigo); }
-  .group-label.waiting, .group-label.merged { color: var(--amber); }
+  .group-label.waiting, .group-label.bot, .group-label.merged { color: var(--amber); }
   .group-label.merged.settled { color: var(--emerald); }
   .group-label.merged.settled .gdot { background: linear-gradient(135deg, var(--emerald), var(--emerald-2)); }
   .group-label.merged.settled .gcount { background: var(--emerald-soft); color: var(--emerald); }
@@ -574,7 +574,7 @@
     background: var(--hairline); color: var(--text-faint);
   }
   .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
-  .group-label.waiting .gcount,
+  .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
   #kanban {
@@ -693,10 +693,10 @@
      hue, a recipe of two that already mean exactly those things. */
   .card.ready::before { background: linear-gradient(180deg, var(--indigo), var(--emerald)); }
   .card.ready { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--emerald-soft) 14%, var(--surface) 42%); }
-  .card.waiting::before,
+  .card.waiting::before, .card.bot::before,
   .card.merged::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
-  .card.waiting,
+  .card.waiting, .card.bot,
   .card.merged { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
 
   /* The release outcome paints the whole card, not just a pill: after a merge it is the
@@ -874,7 +874,7 @@
   .since-at { color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .reason { font-size: 12.5px; font-weight: 500; display: flex; gap: 8px; }
   .card.action .reasons { color: var(--indigo); }
-  .card.waiting .reasons, .card.merged .reasons { color: var(--amber); }
+  .card.waiting .reasons, .card.bot .reasons, .card.merged .reasons { color: var(--amber); }
   /* A merged card takes the colour of its release, as its rail does: amber only while it runs.
      Declared after the line above, which would otherwise win at equal specificity. */
   .card.pipeline-done .reasons, .card.pipeline-none .reasons { color: var(--emerald); }
@@ -1711,6 +1711,7 @@ const I18N = {
     viewTitle: 'vue tableau / vue par auteur / kanban',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
+    kanbanBot: 'En attente d’un bot',
     kanbanIdle: 'Calme',
     kanbanNotApplicable: 'Sans objet de ce côté',
     kanbanFoldTitle: 'replier / déplier la colonne',
@@ -1752,6 +1753,7 @@ const I18N = {
     groupMineDrafts: 'Brouillons',
     groupReviewAction: 'À faire de mon côté',
     groupReviewWaiting: 'J’attends un fix de l’auteur',
+    groupReviewBot: 'En attente d’un bot',
     groupIdle: 'Rien à signaler',
     emptyMine: 'Aucune PR ouverte de ton côté.',
     emptyReviews: 'Aucune PR à reviewer.',
@@ -1929,6 +1931,7 @@ const I18N = {
     viewTitle: 'board view / by author / kanban',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
+    kanbanBot: 'Waiting on a bot',
     kanbanIdle: 'Quiet',
     kanbanNotApplicable: 'Not on this side',
     kanbanFoldTitle: 'fold / unfold the column',
@@ -1970,6 +1973,7 @@ const I18N = {
     groupMineDrafts: 'Drafts',
     groupReviewAction: 'On my plate',
     groupReviewWaiting: 'Waiting on the author',
+    groupReviewBot: 'Waiting on a bot',
     groupIdle: 'Nothing to report',
     emptyMine: 'No open PRs of yours.',
     emptyReviews: 'No PRs to review.',
@@ -2905,6 +2909,7 @@ function reviewPills(pr) {
   // the release had landed, so a card could only breathe amber with no word for why.
   const pills = pr.merged ? mergeOutcomePills(pr) : [];
   if (pr.claimed) pills.push(pill('', t('pillClaimed'), t('pillClaimedTitle')));
+  for (const reason of pr.reasons.filter(r => r.kind === 'claim')) pills.push(pill('todo', reason.text ? escapeHtml(reason.text) : t('pillToReview')));
   if (pr.reviewOwedByMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.reRequested) pills.push(pill('todo', t('pillReRequested')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
@@ -2983,6 +2988,7 @@ function groupLabels(column) {
         action: t('groupReviewAction'),
         merged: t('groupMineMerged'),
         waiting: t('groupReviewWaiting'),
+        bot: t('groupReviewBot'),
         idle: t('groupIdle'),
       };
 }
@@ -3023,6 +3029,7 @@ function kanbanHeadings() {
     action: t('kanbanAction'),
     ready: t('groupMineReady'),
     waiting: t('kanbanWaiting'),
+    bot: t('kanbanBot'),
     merged: t('groupMineMerged'),
     idle: t('kanbanIdle'),
   };
@@ -4116,6 +4123,7 @@ const ORBIT_COLOURS = {
   action: ['var(--indigo)', 'var(--indigo-soft)'],
   ready: ['var(--indigo)', 'var(--emerald-soft)'],
   waiting: ['var(--amber)', 'var(--amber-soft)'],
+  bot: ['var(--amber)', 'var(--amber-soft)'],
   merged: ['var(--emerald)', 'var(--emerald-soft)'],
   idle: ['var(--text-faint)', 'var(--surface)'],
 };
@@ -4290,6 +4298,7 @@ const NOTE_STATE = {
   action: ['todo', 'orbit_action'],
   ready: ['ready', 'orbit_ready'],
   waiting: ['pending', 'orbit_waiting'],
+  bot: ['pending', 'orbit_waiting'],
   merged: ['good', 'orbit_merged'],
   idle: ['', 'orbit_idle'],
 };

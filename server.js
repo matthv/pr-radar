@@ -235,8 +235,7 @@ function readClaimsInBackground(asked) {
 
 // What every board served carries besides the GitHub data, whether it comes from a full
 // search or from a few reloaded PRs.
-async function layered(shaped, discoveredAt) {
-  const board = plugins.decorateBoard(PLUGINS, shaped, store.nodes);
+async function layered(board, discoveredAt) {
   const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
   const payload = await withLinksAndTwins(withSessions);
   return withOrphans({
@@ -335,7 +334,7 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
   });
   const claimedRefs = claimMode === 'on' ? slack.claimedRefs() : [];
   inFlight = exclusive(() => Promise.all([
-    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs }, reuse ? reusableNodes() : new Map()),
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs, plugins: PLUGINS }, reuse ? reusableNodes() : new Map()),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
@@ -378,7 +377,7 @@ function patchPrs(ids) {
       store.nodes.set(id, node);
       store.loadedAt.set(id, Date.now());
     }
-    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
+    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings], PLUGINS);
     webhookNotifier?.notify(board);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });

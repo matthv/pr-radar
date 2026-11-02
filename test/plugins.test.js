@@ -3,10 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { load, normalise, decorateBoard } = require('../plugins');
+const { load, normalise, decoratePr, pluginWarnings } = require('../plugins');
 
-const board = prs => ({ mine: prs, reviews: [], warnings: [{ source: 'author', message: 'kept' }] });
-const pr = id => ({ id, repo: 'o/r', number: Number(id.slice(1)) });
+const pr = number => ({ id: `p${number}`, repo: 'o/r', number });
 
 test('load reads each comma-separated path and refuses a module with no decorate()', () => {
   const modules = { '/a.cjs': { name: 'a', decorate: () => ({}) }, '/b.cjs': { decorate: () => ({}) }, '/bad.cjs': {} };
@@ -33,30 +32,34 @@ test('normalise keeps a plugin from putting a stray class or a non-https link on
   assert.deepEqual(out.labels, [{ name: 'validate', text: 'validate', title: null }]);
 });
 
-test('decorateBoard hands each plugin the raw node and the shaped PR, and adds what they return', () => {
-  const nodes = new Map([['p1', { raw: 1 }]]);
+test('normalise keeps a claim only with who, when and a turn the board knows', () => {
+  const since = '2026-11-02T10:00:00Z';
+  assert.deepEqual(normalise({ review: { claimedBy: 'me', since, turn: 'bot' } }).review, { claimedBy: 'me', since, turn: 'bot', why: null });
+  assert.deepEqual(normalise({ review: { claimedBy: 'me', since, turn: 'me', why: 'retry it' } }).review.why, 'retry it');
+  assert.equal(normalise({ review: { claimedBy: 'me', since, turn: 'reviewer' } }).review, null, 'a turn the board has no group for');
+  assert.equal(normalise({ review: { claimedBy: 'me', since: 'yesterday', turn: 'me' } }).review, null);
+  assert.equal(normalise({ review: { since, turn: 'me' } }).review, null);
+  assert.equal(normalise({}).review, null);
+});
+
+test('decoratePr hands each plugin the raw node and the shaped PR, adds what they return, first claim wins', () => {
+  const since = '2026-11-02T10:00:00Z';
   const seen = [];
-  const plugin = { name: 'p', decorate: (node, shaped) => (seen.push([node, shaped.id]), { pills: [{ text: 'x' }], labels: [{ name: 'l' }] }) };
-  const out = decorateBoard([plugin], board([pr('p1')]), nodes);
+  const first = { name: 'a', decorate: (node, shaped) => (seen.push([node, shaped.id]), { pills: [{ text: 'x' }], labels: [{ name: 'l' }], review: { claimedBy: 'me', since, turn: 'bot' } }) };
+  const second = { name: 'b', decorate: () => ({ pills: [{ text: 'y' }], review: { claimedBy: 'other', since, turn: 'me' } }) };
+  const out = decoratePr([first, second], { raw: 1 }, pr(1), new Map());
   assert.deepEqual(seen, [[{ raw: 1 }, 'p1']]);
-  assert.equal(out.mine[0].plugins.pills[0].text, 'x');
-  assert.equal(out.mine[0].plugins.labels[0].name, 'l');
+  assert.deepEqual(out.pills.map(p => p.text), ['x', 'y']);
+  assert.deepEqual(out.labels.map(l => l.name), ['l']);
+  assert.equal(out.review.claimedBy, 'me');
 });
 
 test('a plugin that throws costs its own pills, not the board, and says so once', () => {
   const broken = { name: 'broken', decorate: () => { throw new Error('boom'); } };
   const fine = { name: 'fine', decorate: () => ({ pills: [{ text: 'y' }] }) };
-  const out = decorateBoard([broken, fine], board([pr('p1'), pr('p2')]), new Map());
-  assert.deepEqual(out.mine.map(card => card.plugins.pills.map(p => p.text)), [['y'], ['y']]);
-  assert.deepEqual(out.warnings, [
-    { source: 'author', message: 'kept' },
-    { source: 'plugin', message: 'broken failed on 2 PR(s), first o/r#1: boom' },
-  ]);
-  // Decorated again (a reload), the warning is replaced, not stacked.
-  assert.equal(decorateBoard([broken], out, new Map()).warnings.filter(w => w.source === 'plugin').length, 1);
-});
-
-test('no plugin leaves the board as it was', () => {
-  const original = board([pr('p1')]);
-  assert.equal(decorateBoard([], original, new Map()), original);
+  const failures = new Map();
+  const cards = [pr(1), pr(2)].map(card => decoratePr([broken, fine], {}, card, failures));
+  assert.deepEqual(cards.map(card => card.pills.map(p => p.text)), [['y'], ['y']]);
+  assert.deepEqual(pluginWarnings(failures), [{ source: 'plugin', message: 'broken failed on 2 PR(s), first o/r#1: boom' }]);
+  assert.deepEqual(decoratePr([], {}, pr(1), new Map()), { pills: [], labels: [], review: null });
 });
