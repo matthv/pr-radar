@@ -462,6 +462,26 @@ function analyzeThread(thread, me) {
   };
 }
 
+const JOURNAL_STATE_RE = /^<!-- claudine:journal (\{.*?\}) -->$/ms;
+
+function validatorJournal(body) {
+  const text = String(body ?? '');
+  const match = text.trimStart().startsWith('### Forest Validator') && text.match(JOURNAL_STATE_RE);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+// A medium or high merge-risk verdict lists actions for the author; my own journal is my participation.
+function quietJournal(comment, me) {
+  if (comment.author?.login === me) return false;
+  const journal = validatorJournal(comment.body);
+  return Boolean(journal) && (!journal.verdict || journal.verdict.level === 'low');
+}
+
 // GitHub's `updatedAt` moves for a label, a recomputed mergeable or a CI re-run: a PR
 // with no commit for 200 days still claims to be fresh. Activity is therefore dated by
 // what a human actually did.
@@ -470,7 +490,7 @@ function lastActivity(pr) {
     pr.createdAt,
     pr.head.nodes[0]?.commit?.committedDate,
     ...pr.reviews.nodes.filter(r => r?.author?.__typename !== 'Bot').map(r => r?.submittedAt),
-    ...pr.comments.nodes.filter(c => c?.author?.__typename !== 'Bot').map(c => c?.createdAt),
+    ...pr.comments.nodes.filter(c => c?.author?.__typename !== 'Bot' && !validatorJournal(c?.body)).map(c => c?.createdAt),
     ...pr.reviewThreads.nodes.flatMap(t =>
       t.comments.nodes.filter(c => c?.author?.__typename !== 'Bot').map(c => c.createdAt),
     ),
@@ -539,10 +559,6 @@ function settledVerdict(body) {
   return verdicts.length > 0 && verdicts.every(verdict => SETTLED_VERDICTS.has(verdict));
 }
 
-// The Forest Validator's step log, posted from a reviewer's own account: it asks nothing.
-// Observed on agent-ruby#424.
-const isValidatorJournal = body => String(body ?? '').includes('<!-- claudine:journal ');
-
 function discussionThread(pr, me) {
   const posted = [
     ...pr.reviews.nodes
@@ -565,7 +581,7 @@ function discussionThread(pr, me) {
         url: review.url,
       })),
     ...pr.comments.nodes
-      .filter(comment => comment?.author && comment.author.__typename !== 'Bot' && !isValidatorJournal(comment.body))
+      .filter(comment => comment?.author && comment.author.__typename !== 'Bot' && !quietJournal(comment, me))
       .map(comment => ({
         channel: 'conversation',
         login: comment.author.login,
