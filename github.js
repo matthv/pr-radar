@@ -539,6 +539,10 @@ function settledVerdict(body) {
   return verdicts.length > 0 && verdicts.every(verdict => SETTLED_VERDICTS.has(verdict));
 }
 
+// The Forest Validator's step log, posted from a reviewer's own account: it asks nothing.
+// Observed on agent-ruby#424.
+const isValidatorJournal = body => String(body ?? '').includes('<!-- claudine:journal ');
+
 function discussionThread(pr, me) {
   const posted = [
     ...pr.reviews.nodes
@@ -561,7 +565,7 @@ function discussionThread(pr, me) {
         url: review.url,
       })),
     ...pr.comments.nodes
-      .filter(comment => comment?.author && comment.author.__typename !== 'Bot')
+      .filter(comment => comment?.author && comment.author.__typename !== 'Bot' && !isValidatorJournal(comment.body))
       .map(comment => ({
         channel: 'conversation',
         login: comment.author.login,

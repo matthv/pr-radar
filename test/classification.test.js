@@ -1187,6 +1187,23 @@ test('my PR: a /verify-fixes comment settles the conversation only when every ve
   assert.equal(prose.toFix.length, 1, 'a comment with no marker is a remark, as before');
 });
 
+// Observed on agent-ruby#424: my reply sat in the inline thread, and the Validator's step log
+// posted from the reviewer's account kept the card in "My Move".
+test('my PR: the Forest Validator journal comment is not a remark to answer', () => {
+  const journal = {
+    ...issueComment(['hercemer42', ago(0.2)]),
+    body: '### Forest Validator · Review: findings posted\n\n<!-- claudine:journal {"rows":[],"verdict":null} -->',
+  };
+  const answered = thread({ comments: [['hercemer42', ago(0.2)], [ME, ago(0.1)]] });
+
+  const pr = mineWith({ reviewDecision: 'REVIEW_REQUIRED', comments: { nodes: [journal] }, reviewThreads: { nodes: [answered] } });
+  assert.equal(pr.toFix.length, 0);
+  assert.equal(pr.bucket, 'waiting');
+
+  const prose = mineWith({ comments: { nodes: [issueComment(['hercemer42', ago(0.2)])] } });
+  assert.equal(prose.toFix.length, 1, 'a plain comment from the same reviewer is still a remark');
+});
+
 // Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
 // and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
 test('my PR: a release published after its failed pipeline settles it', () => {
