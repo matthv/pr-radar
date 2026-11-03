@@ -1187,6 +1187,49 @@ test('my PR: a /verify-fixes comment settles the conversation only when every ve
   assert.equal(prose.toFix.length, 1, 'a comment with no marker is a remark, as before');
 });
 
+// Observed on agent-ruby#424.
+const journalBody = verdict => [
+  '### Forest Validator · Review: findings posted',
+  '| When (UTC) | Commit | Step | Result |',
+  `<!-- claudine:journal ${JSON.stringify({ rows: [], verdict })} -->`,
+].join('\n\n');
+const journalBy = (login, verdict = null) => ({ ...issueComment([login, ago(0.2)]), body: journalBody(verdict) });
+
+test('my PR: a Validator journal with no actionable verdict is not a remark to answer', () => {
+  const answered = thread({ comments: [['hercemer42', ago(0.2)], [ME, ago(0.1)]] });
+  const pr = mineWith({ reviewDecision: 'REVIEW_REQUIRED', comments: { nodes: [journalBy('hercemer42')] }, reviewThreads: { nodes: [answered] } });
+  assert.equal(pr.toFix.length, 0);
+  assert.equal(pr.bucket, 'waiting');
+
+  const low = mineWith({ comments: { nodes: [journalBy('hercemer42', { sha: 'a', level: 'low' })] } });
+  assert.equal(low.toFix.length, 0);
+});
+
+test('my PR: a Validator journal rating the merge risk medium or high still asks me to act', () => {
+  for (const level of ['medium', 'high']) {
+    const pr = mineWith({ comments: { nodes: [journalBy('hercemer42', { sha: 'a', level })] } });
+    assert.equal(pr.toFix.length, 1, level);
+  }
+});
+
+test('my PR: a comment quoting a Validator journal stays a remark', () => {
+  const quoted = { ...issueComment(['hercemer42', ago(0.2)]), body: `Why did it fail? Please fix X.\n\n${journalBody(null).replace(/^/gm, '> ')}` };
+  assert.equal(mineWith({ comments: { nodes: [quoted] } }).toFix.length, 1);
+  assert.equal(mineWith({ comments: { nodes: [issueComment(['hercemer42', ago(0.2)])] } }).toFix.length, 1);
+});
+
+test('reviewing: my own Validator journal still counts as having reviewed', () => {
+  const pr = node({ comments: { nodes: [journalBy(ME)] } });
+  const decorated = decorateReview(baseShape(pr, ME), ME, true);
+  assert.equal(decorated.iHaveReviewed, true);
+  assert.ok(!decorated.reasons.some(r => r.kind === 'to-review'));
+});
+
+test('lastActivity ignores a Validator journal, reposted at every step', () => {
+  const pr = node({ createdAt: ago(30), comments: { nodes: [journalBy('hercemer42')] } });
+  assert.ok((Date.now() - new Date(lastActivity(pr))) / DAY > 5);
+});
+
 // Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
 // and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
 test('my PR: a release published after its failed pipeline settles it', () => {
