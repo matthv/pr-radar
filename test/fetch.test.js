@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { assembleNodes, statusFingerprint, recentlyTouchedPullRequests } = require('../github');
+const { assembleNodes, statusFingerprint, recentlyTouchedPullRequests, loadEarlierPages } = require('../github');
 
 test('fetch: a search keeps the PRs it was handed, adds the loaded ones, drops the rest', () => {
   const reusable = new Map([['A', { id: 'A', v: 'held' }], ['B', { id: 'B', v: 'held' }], ['GONE', { id: 'GONE' }]]);
@@ -53,4 +53,29 @@ test('fetch: the event feed is read again only when its first page changed', asy
   const again = await recentlyTouchedPullRequests('ForestAdmin', 'me', exec);
   assert.deepEqual(again, first);
   assert.equal(calls.length, 4, 'then a single free 304');
+});
+
+// Observed on agent-ruby#387: 101 threads, the oldest one past the 100 a page holds.
+const page = (ids, before) => ({ pageInfo: { hasPreviousPage: Boolean(before), startCursor: before }, nodes: ids.map(id => ({ id })) });
+
+test('fetch: threads and reviews past the first page are loaded, oldest first', async () => {
+  const node = { id: 'PR_1', reviewThreads: { totalCount: 5, ...page(['t4', 't5'], 'c2') }, reviews: { totalCount: 1, ...page(['r1']) } };
+  const earlier = { c2: page(['t2', 't3'], 'c1'), c1: page(['t1']) };
+  const asked = [];
+  await loadEarlierPages(new Map([['PR_1', node]]), async (query, { id, before }) => {
+    asked.push(before);
+    assert.match(query, /reviewThreads\(last: 100, before: \$before\)/);
+    return { node: { reviewThreads: earlier[before] } };
+  });
+  assert.deepEqual(node.reviewThreads.nodes.map(t => t.id), ['t1', 't2', 't3', 't4', 't5']);
+  assert.deepEqual(asked, ['c2', 'c1'], 'reviews fit in one page and cost nothing');
+});
+
+test('fetch: an earlier page that fails keeps what was already loaded', async () => {
+  const node = { id: 'PR_1', reviewThreads: { totalCount: 3, ...page(['t3'], 'c2') }, reviews: { totalCount: 0, ...page([]) } };
+  await loadEarlierPages(new Map([['PR_1', node]]), async () => {
+    throw new Error('boom');
+  });
+  assert.deepEqual(node.reviewThreads.nodes.map(t => t.id), ['t3']);
+  assert.equal(node.reviewThreads.pageInfo.hasPreviousPage, true);
 });
