@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { focusSession } = require('./plugins');
+const { firstTicket, pathTicket } = require('./ticket');
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
@@ -22,28 +23,58 @@ let scanning = null;
 // (rewritten shorter) only meets links already known.
 const knownLinks = new Map();
 
+// What a person typed, not a tool's result coming back as a user turn, nor the caveat Claude
+// Code writes before a local command.
+function promptText(record) {
+  if (record.type !== 'user' || record.isMeta) return null;
+  const content = record.message?.content;
+  if (typeof content === 'string') return content;
+  return Array.isArray(content) ? content.find(block => block?.type === 'text')?.text ?? null : null;
+}
+
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it. The link is read from there rather than from a branch: a session
 // started in a folder above the repositories records none.
+// Only the lines that can hold what is kept get parsed: a tool's schema names `Skill` too,
+// but never followed by an input.
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
     const wantsCwd = !entry.cwd && line.includes('"cwd":');
-    if (!wantsCwd && !line.includes('"type":"pr-link"')) continue;
+    const wantsPrompt = !entry.prompted && line.includes('"type":"user"');
+    if (!wantsCwd && !wantsPrompt && !line.includes('"type":"pr-link"') && !line.includes('"name":"Skill","input":')
+      && !line.includes('"type":"ai-title"')) continue;
     let record;
     try {
       record = JSON.parse(line);
     } catch {
       continue;
     }
-    if (wantsCwd && typeof record.cwd === 'string') entry.cwd = record.cwd;
+    if (wantsCwd && typeof record.cwd === 'string') {
+      entry.cwd = record.cwd;
+      entry.entrypoint = record.entrypoint ?? null;
+    }
+    const prompt = wantsPrompt ? promptText(record) : null;
+    if (prompt !== null) {
+      entry.prompted = true;
+      entry.promptTicket = firstTicket(prompt);
+    }
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
+    if (record.type === 'ai-title' && typeof record.aiTitle === 'string') entry.title = record.aiTitle;
+    if (record.type === 'assistant' && Array.isArray(record.message?.content)) {
+      for (const block of record.message.content) {
+        if (block?.type === 'tool_use' && block.name === 'Skill' && typeof block.input?.skill === 'string') entry.lastSkill = block.input.skill;
+      }
+    }
   }
 }
 
 async function readNewLines(file, stat) {
   let entry = transcripts.get(file);
   if (!entry || stat.size < entry.offset) {
-    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set() };
+    entry = {
+      offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(),
+      entrypoint: null, prompted: false, promptTicket: null, title: null, lastSkill: null,
+    };
     transcripts.set(file, entry);
   }
   entry.mtimeMs = stat.mtimeMs;
@@ -225,10 +256,9 @@ async function readRecord(file) {
   }
 }
 
-// A `/clear` gives the running process a new session id and moves the old one to
-// `formerNames`: that window no longer shows the PR's conversation, so only the current id
-// counts. Most recently active first, since a session can be resumed in several places.
-async function runningPids(sessionId, dir = RUNNING_DIR) {
+// The interactive copies running now, most recently active first: a session can be resumed
+// in several places.
+async function liveRecords(dir) {
   let names;
   try {
     names = await fs.readdir(dir);
@@ -239,10 +269,58 @@ async function runningPids(sessionId, dir = RUNNING_DIR) {
   const running = [];
   for (const name of names.filter(entry => entry.endsWith('.json'))) {
     const record = await readRecord(path.join(dir, name));
-    if (!record || record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
+    if (!record || (record.kind ?? 'interactive') !== 'interactive') continue;
     if (record.pid > 0 && isAlive(record.pid)) running.push(record);
   }
-  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(record => record.pid);
+  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+// A `/clear` gives the running process a new session id and moves the old one to
+// `formerNames`: that window no longer shows the PR's conversation, so only the current id
+// counts.
+async function runningPids(sessionId, dir = RUNNING_DIR) {
+  return (await liveRecords(dir)).filter(record => record.sessionId === sessionId).map(record => record.pid);
+}
+
+// The sessions the board last listed, by id: the only ones the route resumes by id.
+let listed = new Map();
+
+// First match wins: the worktree's folder, then the latest PR it linked that names a ticket,
+// then the first prompt.
+function describe(entry, record, prTickets) {
+  const cwd = entry?.cwd ?? record.cwd;
+  const prUrls = [...(entry?.prUrls ?? [])];
+  return {
+    sessionId: entry?.sessionId ?? record.sessionId,
+    cwd,
+    name: record?.name ?? entry?.title ?? null,
+    title: entry?.title ?? null,
+    status: record?.status ?? null,
+    updatedAt: Math.max(entry?.mtimeMs ?? 0, record?.updatedAt ?? 0),
+    lastSkill: entry?.lastSkill ?? null,
+    prUrls,
+    ticket: pathTicket(cwd) ?? prUrls.map(url => prTickets.get(url)).findLast(Boolean) ?? entry?.promptTicket ?? null,
+  };
+}
+
+// Every session of the last scan, plus the ones running that have not written yet, for the
+// By PRD view. A headless `claude -p` run never waits on anyone, so it is left out. The
+// registry only adds a status: one that cannot be read leaves every session without one,
+// never off the list.
+async function sessions({ prTickets = new Map(), dir = RUNNING_DIR } = {}) {
+  const running = new Map();
+  for (const record of await liveRecords(dir).catch(() => [])) if (!running.has(record.sessionId)) running.set(record.sessionId, record);
+  const list = [];
+  for (const entry of transcripts.values()) {
+    const record = running.get(entry.sessionId);
+    running.delete(entry.sessionId);
+    if (!entry.cwd || !SESSION_ID.test(entry.sessionId) || entry.entrypoint === 'sdk-cli') continue;
+    list.push(describe(entry, record, prTickets));
+  }
+  for (const record of running.values()) if (typeof record.cwd === 'string') list.push(describe(null, record, prTickets));
+  list.sort((a, b) => b.updatedAt - a.updatedAt);
+  listed = new Map(list.map(session => [session.sessionId, session]));
+  return list;
 }
 
 function parseProcesses(psOutput) {
@@ -395,16 +473,24 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   const refused = refusal({ contentType: headers['content-type'], remoteAddress, host: headers.host });
   if (refused) return [403, refused];
   let id;
+  let sessionId;
   try {
-    ({ id } = await readBody());
+    ({ id, sessionId } = await readBody());
   } catch {
     return [400, 'invalid JSON body'];
   }
-  if (!board) return [503, 'the board has not loaded yet'];
-  const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
-  if (!pr) return [404, 'this PR is not on the board'];
-  const session = sessionFor(pr.url);
-  if (!session) return [404, 'no Claude session linked to this PR'];
+  let session;
+  // A session row of the By PRD view names its session; a card names its PR.
+  if (sessionId !== undefined) {
+    session = listed.get(sessionId);
+    if (!session) return [404, 'this Claude session is not on the board'];
+  } else {
+    if (!board) return [503, 'the board has not loaded yet'];
+    const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
+    if (!pr) return [404, 'this PR is not on the board'];
+    session = sessionFor(pr.url);
+    if (!session) return [404, 'no Claude session linked to this PR'];
+  }
   try {
     if (!(await focusRunning(session.sessionId, { exec, dir: runningDir, plugins }))) await openInTerminal(session, terminal, exec);
     return [200, null];
@@ -416,6 +502,7 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
 module.exports = {
   scan,
   sessionFor,
+  sessions,
   resumeCommand,
   openInTerminal,
   focusRunning,

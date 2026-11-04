@@ -109,7 +109,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_MAX_AGE_DAYS` | `60` | Past that, a PR is ignored |
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Full search interval — see [How fresh the board is](#how-fresh-the-board-is) |
 | `PR_RADAR_CHECK_SECONDS` | `60` | Free change checks between two full searches; `0` goes back to a full refresh every `PR_RADAR_REFRESH_SECONDS` and nothing else |
-| `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
+| `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session). The sessions themselves are read either way, for [the By PRD view](#the-by-prd-view) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_WEBHOOK_URL` | — | POSTs the status changes to that URL, one call per status with every PR that reached it — see [The webhook](#the-webhook). Empty, no call |
@@ -151,7 +151,7 @@ keeps the board fresh with requests GitHub answers for free when nothing changed
   the next full search forward, but no sooner than 90 s after the last one, so a burst of
   them cannot loop the searches.
 - **Your own moves show at once**: a PR made or opened in a Claude session, read from the
-  same transcripts as [The Claude session](#the-claude-session), when that feature is on.
+  same transcripts as [The Claude session](#the-claude-session).
   So does a return to the tab after a minute away, likely from GitHub itself.
 - **The checks only run while a page is looking.**
   - Each poll of the page renews a ten-minute lease, and a hidden tab spaces the checks
@@ -534,8 +534,13 @@ works with the Slack link off.
 
 ## The Claude session
 
+**The transcripts are always read; only the button needs turning on.** Reading `~/.claude`
+sends nothing anywhere, and [the By PRD view](#the-by-prd-view) is built on it, so it needs no
+setting. The button types into a terminal, which is why it waits for you to ask.
+
 macOS only. With `PR_RADAR_CLAUDE_SESSIONS=true`, a card whose PR was created or opened in a
-Claude Code session gets a button beside the Linear one. When that session is already running,
+Claude Code session gets a button beside the Linear one, and so does each session of the By
+PRD view. When that session is already running,
 a click brings it forward; otherwise it opens a new `PR_RADAR_TERMINAL` window and types
 `cd <session dir> && claude --resume <id>` into your shell. Elsewhere than macOS, or with an
 unknown `PR_RADAR_TERMINAL`, the startup line says it is off and no button shows.
@@ -564,12 +569,43 @@ pid is still a `claude`:
 | a plain Ghostty tab | only brings Ghostty forward: its AppleScript dictionary names no tty |
 | anything else | says it is open elsewhere, rather than opening a second copy |
 
-The endpoint only resumes a session linked to a PR already on the board, and only for a
-request from this machine, addressed to `localhost`, with a JSON body: the network, a DNS
+The endpoint only resumes a session linked to a PR already on the board, or one the By PRD
+view last listed, and only for a request from this machine, addressed to `localhost`, with a JSON body: the network, a DNS
 rebinding and a page from another site are each turned away. A session whose folder is gone,
 a removed worktree, says so instead of opening a terminal that fails. A terminal macOS has
 not let PR Radar control (error -1743) points to System Settings › Privacy & Security ›
 Automation.
+
+## The By PRD view
+
+**One group per ticket, with the Claude sessions working on it.** Each ticket a PRD names
+comes as several PRs, one per repo, and as several Claude sessions running beside each other.
+The last icon of the view switch (board · by author · kanban · by PRD) regroups the board that
+way, so the session waiting for you stands out without reading every card.
+
+- **A group is one ticket key**, the one the Linear link shows, with the link next to it and
+  the first PR's title, its `feat(…):` prefix and the key dropped, as its subject. Under it,
+  the board's own cards for that ticket, from both columns, then one row per session.
+- **A session finds its ticket in its folder first.** A worktree is named after its repo and
+  the ticket (`forestadmin-prd-1693-phase-1`, `claudine-prd-1270-…`), so the key is read from
+  the folder's last segment. Otherwise, the most recent PR the session linked that names one;
+  otherwise, the first ticket key in its first prompt. The first match wins, so a session
+  touching two tickets sits under one of them only.
+- **A row says what the session is doing.** Its name, the one its terminal tab shows when it
+  runs, else the title Claude gave it; that title; its status from Claude Code's registry,
+  **busy**, **idle** in the "your move" colour since an idle session is waiting for an answer,
+  or *not running*; the last skill it ran, read from its `Skill` calls; how long ago it moved.
+  A group holding an idle session, or a card asking for action, wears the same colour.
+- **The same transcripts as the card's button**, read the same way: once, then only what was
+  appended. Only sessions active within `PR_RADAR_MAX_AGE_DAYS` are listed, plus any running
+  one that has not written yet. A headless `claude -p` run never waits on anyone and is left
+  out. The registry is read again on every poll of the page, so a status follows within the
+  page's own refresh.
+- **What names no ticket goes last**, under *No ticket*, PRs and sessions together. A ticket
+  with nothing but a session still gets its group: work starts before its first PR.
+- **Groups fold** like the board's, kept with them in `pr-radar:collapsed`. The project picker,
+  the snoozes and the hidden drafts apply to the cards; the sessions have no repo and always
+  show. The counters in the summary band do not isolate anything here.
 
 ## Snoozing a card
 
@@ -1252,7 +1288,7 @@ state line, which is the real last activity and doubles as the sort key.
 
 ## The kanban view
 
-The last icon of the view switch (board · by author · kanban) lays the same groups out as
+The third icon of the view switch (board · by author · kanban · by PRD) lays the same groups out as
 columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
 group the board would have put it in.
 

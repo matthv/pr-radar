@@ -577,6 +577,26 @@
   .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
+  /* By PRD: one ticket per group, its cards side by side, its sessions under them. */
+  #prd { padding: 4px 28px 70px; }
+  .prd-head { display: flex; align-items: center; gap: 8px; margin: 24px 0 10px; }
+  .prd-head .group-label { margin: 0; width: auto; flex: 1 1 auto; min-width: 0; }
+  .prd-head .linear-link, .prd-session .claude-link { margin-top: 0; }
+  .prd-head:has(.group-label.collapsed) + .group-cards { display: none; }
+  .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; }
+  .prd-subject {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--text-soft);
+  }
+  .prd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); column-gap: 14px; }
+  .prd-session {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 10px; margin-bottom: 6px; font-size: 12.5px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  }
+  .prd-session-name { font-weight: 600; }
+  .prd-session-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-soft); }
+
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
     flex: 1 1 auto; min-height: 0;
@@ -1280,6 +1300,7 @@
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
+      <span data-view="prd" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="3" rx="1"/><rect x="4" y="7" width="10.5" height="2.6" rx="1"/><rect x="4" y="11.4" width="10.5" height="2.6" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <button type="button" id="season" hidden>🎃</button>
@@ -1341,6 +1362,7 @@
 </div>
 <div id="orbits" hidden></div>
 <div id="kanban" hidden></div>
+<div id="prd" hidden></div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -1356,6 +1378,7 @@
 <script src="/order.js"></script>
 <script src="/kanban.js"></script>
 <script src="/since.js"></script>
+<script src="/prd.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
@@ -1389,12 +1412,21 @@ const state = {
 };
 
 const el = id => document.getElementById(id);
+// Storage refused (a private window, blocked site data): the defaults, and nothing kept.
 const store = {
   get(key, fallback) {
-    const raw = localStorage.getItem('pr-radar:' + key);
-    return raw === null ? fallback : raw;
+    try {
+      const raw = localStorage.getItem('pr-radar:' + key);
+      return raw === null ? fallback : raw;
+    } catch {
+      return fallback;
+    }
   },
-  set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
+  set(key, value) {
+    try {
+      localStorage.setItem('pr-radar:' + key, String(value));
+    } catch { /* not kept */ }
+  },
 };
 
 const collapsedGroups = new Set((() => {
@@ -1406,7 +1438,9 @@ const collapsedGroups = new Set((() => {
 })());
 
 function saveCollapsed() {
-  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  try {
+    localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  } catch { /* not kept */ }
 }
 
 function toggleGroup(label) {
@@ -1708,7 +1742,15 @@ const I18N = {
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
-    viewTitle: 'vue tableau / vue par auteur / kanban',
+    viewTitle: 'vue tableau / vue par auteur / kanban / par PRD',
+    prdNoTicket: 'Sans ticket',
+    prdEmpty: 'Aucune PR et aucune session Claude.',
+    sessionStatus_busy: 'au travail',
+    sessionStatus_idle: 'en attente',
+    sessionIdleTitle: 'ouverte, elle attend une réponse',
+    sessionClosed: 'fermée',
+    sessionSkillTitle: 'dernier skill lancé dans cette session',
+    sessionResumeTitle: 'ramener cette session Claude au premier plan, ou la reprendre dans un terminal',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
     kanbanBot: 'En attente d’un bot',
@@ -1928,7 +1970,15 @@ const I18N = {
     reloadTitle: 'this page is running an older version of the tool',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
-    viewTitle: 'board view / by author / kanban',
+    viewTitle: 'board view / by author / kanban / by PRD',
+    prdNoTicket: 'No ticket',
+    prdEmpty: 'No PRs and no Claude sessions.',
+    sessionStatus_busy: 'busy',
+    sessionStatus_idle: 'idle',
+    sessionIdleTitle: 'running, waiting for an answer',
+    sessionClosed: 'not running',
+    sessionSkillTitle: 'the last skill this session ran',
+    sessionResumeTitle: 'bring this Claude session forward, or resume it in a terminal',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
     kanbanBot: 'Waiting on a bot',
@@ -2054,7 +2104,7 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
-const VIEWS = ['board', 'orbits', 'kanban'];
+const VIEWS = ['board', 'orbits', 'kanban', 'prd'];
 let view = VIEWS.includes(store.get('view', 'board')) ? store.get('view', 'board') : 'board';
 
 const t = (key, vars) =>
@@ -2083,10 +2133,11 @@ function applyView(next) {
   document.querySelector('main').hidden = next !== 'board';
   el('kanban').hidden = next !== 'kanban';
   el('orbits').hidden = next !== 'orbits';
-  if (switched && next === 'kanban') render();
+  el('prd').hidden = next !== 'prd';
+  if (switched && (next === 'kanban' || next === 'prd')) render();
 }
 
-const viewRoot = () => (view === 'kanban' ? el('kanban') : document.querySelector('main'));
+const viewRoot = () => ({ kanban: el('kanban'), prd: el('prd') }[view] ?? document.querySelector('main'));
 
 el('view').addEventListener('click', event => {
   const picked = event.target.closest('[data-view]')?.dataset.view;
@@ -3088,6 +3139,50 @@ function renderKanban(mine, reviews, focus) {
   for (const button of el('kanban').querySelectorAll('.note-btn.has-note')) button.title = cardNotes.get(button.dataset.note);
 }
 
+// What a running session is doing; one not running only says so. Idle is a session waiting
+// for you, so it wears "your move".
+function sessionStatusPill({ status }) {
+  if (!status) return pill('', escapeHtml(t('sessionClosed')));
+  const label = I18N[lang][`sessionStatus_${status}`] ?? status;
+  return pill({ busy: 'pending running', idle: 'todo' }[status] ?? '', escapeHtml(label), status === 'idle' ? t('sessionIdleTitle') : '');
+}
+
+function sessionRow(session) {
+  const name = session.name ?? session.sessionId.slice(0, 8);
+  return `<div class="prd-session">${sessionStatusPill(session)}`
+    + `<span class="prd-session-name" title="${escapeHtml(session.cwd ?? '')}">${escapeHtml(name)}</span>`
+    + (session.title && session.title !== name ? `<span class="prd-session-title">${escapeHtml(session.title)}</span>` : '')
+    + (session.lastSkill ? pill('', escapeHtml(session.lastSkill), t('sessionSkillTitle')) : '')
+    + `<span class="age">${escapeHtml(t('activeAgo', { v: ago(session.updatedAt) }))}</span>`
+    + (state.data.claudeResume
+      ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${escapeHtml(session.sessionId)}"`
+        + ` title="${escapeHtml(t('sessionResumeTitle'))}">${CLAUDE_ICON}</button>`
+      : '')
+    + '</div>';
+}
+
+// The board's own cards, regrouped: a card keeps its column's look, only its place changes.
+function renderPrd(mine, reviews, sessions) {
+  const groups = PRRadarPrd.group([...filterList(mine), ...filterList(reviews)], sessions);
+  if (!groups.length) {
+    el('prd').innerHTML = `<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
+    return;
+  }
+  el('prd').innerHTML = groups.map(entry => {
+    const key = `prd:${entry.ticket ?? ''}`;
+    const collapsed = collapsedGroups.has(key);
+    const yourMove = entry.prs.some(pr => pr.needsAction) || entry.sessions.some(session => session.status === 'idle');
+    return `<div class="prd-head"><button type="button" class="group-label ${yourMove ? 'action' : 'idle'}${collapsed ? ' collapsed' : ''}"`
+      + ` data-group="${escapeHtml(key)}" aria-expanded="${!collapsed}"><span class="gdot"></span>`
+      + `<span class="prd-key">${escapeHtml(entry.ticket ?? t('prdNoTicket'))}</span>`
+      + (entry.subject ? `<span class="prd-subject">${escapeHtml(entry.subject)}</span>` : '')
+      + `<span class="gcount">${entry.prs.length + entry.sessions.length}</span><span class="gchev"></span></button>`
+      + `${linearLink({ ticket: entry.ticket })}</div>`
+      + `<div class="group-cards"><div class="prd-cards">${entry.prs.map(pr => (pr.side === 'mine' ? mineCard(pr) : reviewCard(pr))).join('')}</div>`
+      + `${entry.sessions.map(sessionRow).join('')}</div>`;
+  }).join('');
+}
+
 function repoOptions() {
   const query = state.repoQuery.trim().toLowerCase();
   const shortName = repoName;
@@ -3407,6 +3502,7 @@ function render() {
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
   if (view === 'kanban') renderKanban(mine, reviews, focus);
+  if (view === 'prd') renderPrd(mine, reviews, data.sessions ?? []);
   renderOrbits([...shownMine, ...shownReviews]);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
@@ -3426,6 +3522,7 @@ function render() {
 function renderSkeleton() {
   el('mine').innerHTML = '<div class="card skeleton"></div>'.repeat(3);
   el('reviews').innerHTML = '<div class="card skeleton"></div>'.repeat(2);
+  el('prd').innerHTML = '<div class="card skeleton"></div>'.repeat(3);
   const lane = [3, 1, 2, 1].map(n => `<div class="kb-cell">${'<div class="card skeleton"></div>'.repeat(n)}</div>`).join('');
   el('kanban').innerHTML = `<div class="kb" style="grid-template-columns: repeat(4, minmax(var(--kb-col), 1fr))">${lane}${lane}</div>`;
   // Only the board had one: loading straight into the orbit view (it is remembered
@@ -3712,16 +3809,18 @@ async function addLabel(button) {
   load(false);
 }
 
+// A card names its PR, a session row of the By PRD view its session.
 async function resumeClaudeSession(button) {
-  const id = button.dataset.claude;
-  if (resuming.has(id)) return;
-  resuming.add(id);
+  const { claude: id, claudeSession: sessionId } = button.dataset;
+  const key = sessionId ?? id;
+  if (resuming.has(key)) return;
+  resuming.add(key);
   button.classList.add('busy');
   try {
     const response = await fetch('/api/claude-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify(sessionId ? { sessionId } : { id }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -3730,8 +3829,9 @@ async function resumeClaudeSession(button) {
   } catch (error) {
     alert(t('claudeError', { message: error.message }));
   } finally {
-    resuming.delete(id);
-    document.querySelectorAll(`.claude-link[data-claude="${id}"]`).forEach(link => link.classList.remove('busy'));
+    resuming.delete(key);
+    document.querySelectorAll(sessionId ? `.claude-link[data-claude-session="${sessionId}"]` : `.claude-link[data-claude="${id}"]`)
+      .forEach(link => link.classList.remove('busy'));
   }
 }
 

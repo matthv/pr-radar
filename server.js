@@ -132,8 +132,10 @@ let claudeWarning = null;
 let webhookNotifier = null;
 let PLUGINS = [];
 
+// The transcripts are read either way, for the By PRD view; only the card's button waits on
+// PR_RADAR_CLAUDE_SESSIONS.
 function withClaudeSessions(payload) {
-  const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
+  const withSession = pr => ({ ...pr, claudeSession: CLAUDE_SESSIONS && Boolean(claudeSessions.sessionFor(pr.url)) });
   const warnings = (payload.warnings ?? []).filter(w => w.source !== 'claude');
   return {
     ...payload,
@@ -236,8 +238,7 @@ function readClaimsInBackground(asked) {
 // What every board served carries besides the GitHub data, whether it comes from a full
 // search or from a few reloaded PRs.
 async function layered(board, discoveredAt) {
-  const withSessions = CLAUDE_SESSIONS ? withClaudeSessions(board) : board;
-  const payload = await withLinksAndTwins(withSessions);
+  const payload = await withLinksAndTwins(withClaudeSessions(board));
   return withOrphans({
     ...payload,
     warnings: [...payload.warnings, ...(slackWarning ? [slackWarning] : []), ...(claimWarning ? [claimWarning] : [])],
@@ -249,6 +250,7 @@ async function layered(board, discoveredAt) {
     hideDrafts: HIDE_DRAFTS,
     customSound: Boolean(SOUND_FILE),
     digestAvailable,
+    claudeResume: CLAUDE_SESSIONS,
   });
 }
 
@@ -327,15 +329,15 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
   if (!force && cache.payload && (LIVE || Date.now() - cache.at < CACHE_TTL_MS)) return cache.payload;
   if (inFlight) return inFlight;
 
-  const scanned = CLAUDE_SESSIONS ? scanClaudeSessions() : null;
-  let scanDone = !scanned;
-  scanned?.then(() => {
+  const scanned = scanClaudeSessions();
+  let scanDone = false;
+  scanned.then(() => {
     scanDone = true;
   });
   const claimedRefs = claimMode === 'on' ? slack.claimedRefs() : [];
   inFlight = exclusive(() => Promise.all([
     fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs, plugins: PLUGINS }, reuse ? reusableNodes() : new Map()),
-    scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
+    Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
       const loadedNow = Date.now();
@@ -409,7 +411,7 @@ async function liveStep() {
     live.checkedAt = now;
     const ids = new Set();
     // My own move — a PR made or opened in a Claude session — is shown at once.
-    for (const url of CLAUDE_SESSIONS ? await scanClaudeSessions() : []) {
+    for (const url of await scanClaudeSessions()) {
       const pr = onBoard(url);
       if (pr) ids.add(pr.id);
       else if (inScopeUrl(url)) live.earlyDiscovery = true;
@@ -590,7 +592,10 @@ const server = http.createServer(async (req, res) => {
       if (asked) readClaimsInBackground(true);
       if (asked) readOrphansInBackground(true);
       const payload = await dashboard(asked || lapsed, { asked });
-      json(res, 200, { ...payload, update: DEMO ? demo.update : update.status() }, version);
+      // Read on every poll, not cached: a session's status changes far more often than the board.
+      const prTickets = new Map([...payload.mine, ...payload.reviews].map(pr => [pr.url, pr.ticket]));
+      const sessions = DEMO ? [] : await claudeSessions.sessions({ prTickets });
+      json(res, 200, { ...payload, sessions, update: DEMO ? demo.update : update.status() }, version);
     } catch (error) {
       json(res, 502, { error: error.message }, version);
     }
@@ -774,7 +779,7 @@ server.listen(PORT, async () => {
       `  🙋 claimed PRs ${CLAIM_MODES[claimMode]}\n` +
       `  🧭 unreviewed announcements ${ORPHAN_LINE}\n` +
       `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
-      `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
+      `  🤖 claude sessions read for By PRD · resume button ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  🧩 plugins ${PLUGINS.length ? PLUGINS.map(plugin => plugin.name).join(', ') : 'none (no PR_RADAR_PLUGINS)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
