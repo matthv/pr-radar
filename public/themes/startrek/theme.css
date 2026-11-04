@@ -63,7 +63,7 @@ header {
 .st-warp.rtl.engage { animation-name: st-engage-back; }
 /* A nebula in the bottom right corner: clouds of gas, blurred, drifting slowly. */
 .st-nebula {
-  position: absolute; right: -90px; bottom: -90px; width: 320px; height: 320px; filter: blur(12px);
+  position: absolute; right: -180px; bottom: -180px; width: 640px; height: 640px; filter: blur(24px);
   background: radial-gradient(38% 30% at 42% 46%, var(--st-nebula-a), transparent 70%),
               radial-gradient(34% 40% at 62% 58%, var(--st-nebula-b), transparent 72%),
               radial-gradient(26% 22% at 34% 66%, var(--st-nebula-c), transparent 70%),
