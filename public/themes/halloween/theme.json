@@ -1,0 +1,14 @@
+{
+  "label": "Halloween",
+  "icon": "🎃",
+  "season": {
+    "from": [
+      10,
+      26
+    ],
+    "to": [
+      10,
+      31
+    ]
+  }
+}

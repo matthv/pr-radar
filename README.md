@@ -112,6 +112,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
+| `PR_RADAR_THEME` | — | The theme worn outside the seasonal ones, a folder name in `public/themes/` — see [Themes](#themes) |
 | `PR_RADAR_WEBHOOK_URL` | — | POSTs the status changes to that URL, one call per status with every PR that reached it — see [The webhook](#the-webhook). Empty, no call |
 | `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
@@ -1228,20 +1229,26 @@ you can tell them apart at a glance while scrolling.
 Pills carry the state; a reason line only appears for what no pill already says
 (the name of the reviewer who requested changes, new commits to re-check).
 
-## Seasons
+## Themes
 
-A few days a year, the board dresses up for the occasion. Nothing to set: a season wakes on
-its own within its dates (`SEASONS` in `public/index.html`) and sleeps the rest of the year.
+The board can dress up: a seasonal theme a few days a year, and a theme of your own the rest of
+the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 
+| Theme | When | What it adds |
+|---|---|---|
+| `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
+
+- **Which one shows**: a seasonal theme within its dates, otherwise the one named in
+  `PR_RADAR_THEME`, otherwise none. A season always wins over `PR_RADAR_THEME`.
 - **The board's own colours never change.** Indigo, amber, green and red keep saying what
-  they say (see [Reading the colours](#reading-the-colours)); a season only adds to the
+  they say (see [Reading the colours](#reading-the-colours)); a theme only adds to the
   header, the empty states and the background.
 - **Turn it off** with its button in the header, next to the theme one. The choice is kept in
-  this browser, for this year's season only.
+  this browser: for this year only for a seasonal theme, until you turn it back on for yours.
 - **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
-- **To try one out of its dates**, add `?season=<name>` to the page's address.
-- **A new season** is one entry in `SEASONS` (its window may run over the new year) and one
-  block of CSS under `:root[data-season="<name>"]`, so it also goes in one cut.
+- **To try one**, add `?theme=<name>` to the page's address, whatever the date.
+- **Your own theme**: a folder in `public/themes/` and its name in `PR_RADAR_THEME`. How to write
+  one is in [`public/themes/README.md`](public/themes/README.md).
 
 ## Implementation notes
 
