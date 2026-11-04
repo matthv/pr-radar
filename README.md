@@ -1234,8 +1234,10 @@ Pills carry the state; a reason line only appears for what no pill already says
 The board can dress up: a seasonal theme a few days a year, and a theme of your own the rest of
 the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 
-| Theme | When | What it adds |
+| Theme | Season | What it adds |
 |---|---|---|
+| `starwars` 🌌 | May 4–6 | A lightsaber by the title, a starfield, the Death Star in a corner, a TIE fighter crossing now and then |
+| `startrek` 🖖 | September 8–10 | The Starfleet delta by the title, an LCARS bar under the header, a starfield, the Enterprise jumping to warp now and then |
 | `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
 
 - **Which one shows**: a seasonal theme within its dates, otherwise the one named in
@@ -1247,6 +1249,8 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
   this browser: for this year only for a seasonal theme, until you turn it back on for yours.
 - **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
 - **To try one**, add `?theme=<name>` to the page's address, whatever the date.
+- **Any theme can be the default one**: `PR_RADAR_THEME=starwars` wears Star Wars all year,
+  and Halloween still takes over from October 26 to 31.
 - **Your own theme**: a folder in `public/themes/` and its name in `PR_RADAR_THEME`. How to write
   one is in [`public/themes/README.md`](public/themes/README.md).
 
