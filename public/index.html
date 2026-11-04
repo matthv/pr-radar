@@ -1720,6 +1720,7 @@ const I18N = {
     groupMineAction: 'À traiter de mon côté',
     groupMineMerged: 'Fusionnées récemment',
     releaseTag: 'dernière release depuis le merge — ouvrir la release sur GitHub',
+    releaseTagExact: 'version qui inclut cette PR — ouvrir la release sur GitHub',
     ticketTitle: 'ouvrir {key} dans Linear',
     pipelineFailedTitle: 'ouvrir le run en échec sur GitHub',
     dismiss: 'retirer cette carte du tableau',
@@ -1935,6 +1936,7 @@ const I18N = {
     groupMineAction: 'On my plate',
     groupMineMerged: 'Recently merged',
     releaseTag: 'latest release since the merge — open the release on GitHub',
+    releaseTagExact: 'the version that includes this PR — open the release on GitHub',
     ticketTitle: 'open {key} in Linear',
     pipelineFailedTitle: 'open the failed run on GitHub',
     dismiss: 'drop this card from the board',
@@ -2833,7 +2835,7 @@ function mergeOutcomePills(pr) {
     pills.push(
       pr.release
         ? `<a class="pill good" href="${escapeHtml(pr.release.url)}" target="_blank" rel="noopener"`
-          + ` title="${escapeHtml(t('releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
+          + ` title="${escapeHtml(t(pr.release.exact ? 'releaseTagExact' : 'releaseTag'))}">${escapeHtml(pr.release.tag)}</a>`
         : pill('good', t('pipelineDone')),
     );
   } else if (pr.pipelineOutcome === 'running') {
