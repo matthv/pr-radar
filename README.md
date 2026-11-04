@@ -601,8 +601,11 @@ way, so the session waiting for you stands out without reading every card.
   one that has not written yet. A headless `claude -p` run never waits on anyone and is left
   out. The registry is read again on every poll of the page, so a status follows within the
   page's own refresh.
-- **What names no ticket goes last**, under *No ticket*, PRs and sessions together. A ticket
-  with nothing but a session still gets its group: work starts before its first PR.
+- **A session shows when it is running, or when its ticket has a PR on the board.** A finished
+  session about nothing on the board is history: sixty days of them buried the groups that
+  matter. A ticket with nothing but a running session still gets its group, since work starts
+  before its first PR.
+- **What names no ticket goes last**, under *No ticket*: its PRs and its running sessions.
 - **Groups fold** like the board's, kept with them in `pr-radar:collapsed`. The project picker,
   the snoozes and the hidden drafts apply to the cards; the sessions have no repo and always
   show. The counters in the summary band do not isolate anything here.
