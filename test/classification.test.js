@@ -887,6 +887,37 @@ test('a release published since is not credited to a merge stacked on a feature 
   assert.equal(decorated.mergeTarget, 'feature/prd-1083');
 });
 
+// Four merges of forestadmin each wore the repo's newest tag, though each shipped in its
+// own version: semantic-release's comment on the PR says which one, as on #10169.
+test('a merged PR wears the version its release comment names, not the repo\'s newest', () => {
+  const merged = comments => decorateMine(baseShape(node({
+    merged: true,
+    mergedAt: ago(2),
+    baseRefName: 'main',
+    mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+    repository: {
+      nameWithOwner: 'o/r',
+      defaultBranchRef: { name: 'main' },
+      latestRelease: { tagName: 'v2.1297.0', url: 'latest', publishedAt: ago(0.1) },
+    },
+    comments: { nodes: comments },
+  }), ME));
+
+  const announced = merged([{
+    author: bot('forest-bot'),
+    createdAt: ago(1.9),
+    url: 'c',
+    body: ':tada: This PR is included in version 2.1295.1 :tada:\n\nThe release is available on [GitHub release](https://github.com/ForestAdmin/forestadmin/releases/tag/v2.1295.1)\n\nYour **[semantic-release](https://github.com/semantic-release/semantic-release)** bot :package::rocket:',
+  }]).release;
+  assert.equal(announced.tag, 'v2.1295.1');
+  assert.equal(announced.url, 'https://github.com/ForestAdmin/forestadmin/releases/tag/v2.1295.1');
+  assert.equal(announced.exact, true);
+
+  const guessed = merged([]).release;
+  assert.equal(guessed.tag, 'v2.1297.0', 'no comment: the latest release since the merge, as before');
+  assert.equal(guessed.exact, false);
+});
+
 test('a merge I took over is mine to watch, by the board\'s own notion of ownership', () => {
   const takenOver = baseShape(node({
     author: user('someone'),

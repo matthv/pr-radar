@@ -711,19 +711,35 @@ function pipelineSummary(mergeCommit) {
   return { outcome: 'none', failure: null };
 }
 
-// The newest release of the repo, when it landed after this merge. It is a correlation,
-// not a fact GitHub states: two merges minutes apart could both point at the same tag,
-// which is why the label says "latest release since the merge" rather than "this one's".
-// A release is cut from the default branch, so a merge into a stacked feature branch
-// cannot be in it yet, whatever the repo published afterwards — observed on
+// semantic-release's success comment names the version that actually carries the PR, so
+// cards of the same repo stop all wearing its newest tag. Matched on its wording, not its
+// author: the bot account differs between repos (forest-bot, github-actions, ...).
+const INCLUDED_IN_RELEASE = /This PR is included in version \S+[\s\S]*?\((https:\/\/github\.com\/[^)\s]+\/releases\/tag\/([^)\s]+))\)/;
+
+function releaseFromBotComment(pr) {
+  for (const comment of pr.comments?.nodes ?? []) {
+    const match = INCLUDED_IN_RELEASE.exec(comment.body ?? '');
+    if (match) return { tag: decodeURIComponent(match[2]), url: match[1], publishedAt: comment.createdAt, exact: true };
+  }
+  return null;
+}
+
+// Without that comment, the newest release of the repo, when it landed after this merge.
+// It is a correlation, not a fact GitHub states: two merges minutes apart could both point
+// at the same tag, which is why the label says "latest release since the merge" rather
+// than "this one's". A release is cut from the default branch, so a merge into a stacked
+// feature branch cannot be in it yet, whatever the repo published afterwards — observed on
 // forest-rails#803, whose checks passed and which would otherwise have worn v9.21.0
 // while sitting on a side branch main had not received.
 function releaseAfterMerge(pr) {
+  if (!pr.merged) return null;
+  const announced = releaseFromBotComment(pr);
+  if (announced) return announced;
   const latest = pr.repository.latestRelease;
-  if (!pr.merged || !latest?.publishedAt) return null;
+  if (!latest?.publishedAt) return null;
   if (pr.baseRefName && pr.baseRefName !== pr.repository.defaultBranchRef?.name) return null;
   if (new Date(latest.publishedAt) < new Date(pr.mergedAt)) return null;
-  return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt };
+  return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt, exact: false };
 }
 
 // A failed merge pipeline is not the last word once a release has gone out since: a later
