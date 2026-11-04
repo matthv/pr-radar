@@ -3,16 +3,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { load, normalise, decoratePr, pluginWarnings } = require('../plugins');
+const { load, normalise, decoratePr, pluginWarnings, focusSession } = require('../plugins');
 
 const pr = number => ({ id: `p${number}`, repo: 'o/r', number });
 
-test('load reads each comma-separated path and refuses a module with no decorate()', () => {
-  const modules = { '/a.cjs': { name: 'a', decorate: () => ({}) }, '/b.cjs': { decorate: () => ({}) }, '/bad.cjs': {} };
+test('load reads each comma-separated path and refuses a module with neither decorate() nor focus()', () => {
+  const modules = { '/a.cjs': { name: 'a', decorate: () => ({}) }, '/b.cjs': { decorate: () => ({}) }, '/f.cjs': { focus: () => true }, '/bad.cjs': {} };
   const req = file => modules[file];
   assert.deepEqual(load(' /a.cjs, ,/b.cjs ', req).map(plugin => plugin.name), ['a', 'b.cjs']);
   assert.deepEqual(load('', req), []);
-  assert.throws(() => load('/bad.cjs', req), /exports no decorate/);
+  assert.deepEqual(load('/f.cjs', req).map(plugin => [plugin.name, plugin.decorate]), [['f.cjs', null]]);
+  assert.throws(() => load('/bad.cjs', req), /exports neither decorate\(\) nor focus\(\)/);
   assert.throws(() => load('/missing.cjs', () => { throw new Error('nope'); }), /cannot load \/missing.cjs: nope/);
 });
 
@@ -62,4 +63,23 @@ test('a plugin that throws costs its own pills, not the board, and says so once'
   assert.deepEqual(cards.map(card => card.pills.map(p => p.text)), [['y'], ['y']]);
   assert.deepEqual(pluginWarnings(failures), [{ source: 'plugin', message: 'broken failed on 2 PR(s), first o/r#1: boom' }]);
   assert.deepEqual(decoratePr([], {}, pr(1), new Map()), { pills: [], labels: [], review: null });
+});
+
+test('decoratePr passes over a plugin that only focuses sessions', () => {
+  const focusOnly = { name: 'f', decorate: null, focus: () => true };
+  assert.deepEqual(decoratePr([focusOnly], {}, pr(1), new Map()), { pills: [], labels: [], review: null });
+});
+
+test('focusSession takes the first plugin that brought the session forward, and names the ones that threw', async () => {
+  const session = { sessionId: 's', pid: 5, tty: 'ttys001', ancestors: ['-zsh', '/Applications/Some.app/Contents/MacOS/Some'] };
+  const seen = [];
+  const broken = { name: 'broken', focus: () => { throw new Error('no port'); } };
+  const declines = { name: 'declines', focus: async got => (seen.push(got), false) };
+  const focuses = { name: 'focuses', focus: async () => true };
+  const never = { name: 'never', focus: () => assert.fail('the first answer wins') };
+
+  assert.deepEqual(await focusSession([broken, declines, focuses, never], session), { focused: true, failures: ['broken: no port'] });
+  assert.deepEqual(seen, [session]);
+  assert.deepEqual(await focusSession([broken, declines], session), { focused: false, failures: ['broken: no port'] });
+  assert.deepEqual(await focusSession([{ name: 'd', decorate: () => ({}), focus: null }], session), { focused: false, failures: [] });
 });

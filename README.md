@@ -731,6 +731,29 @@ module.exports = {
   it invents becomes neutral, a URL that is not `https://` is dropped, and a claim missing who,
   when or a known turn is ignored.
 
+### Bringing a session forward from an app the radar does not know
+
+A plugin can also, or only, export `focus(session)`. When a card's [Claude session](#the-claude-session)
+is running somewhere the radar cannot reach itself, neither herdr, Terminal, iTerm nor Ghostty,
+the click asks each plugin in turn:
+
+```js
+module.exports = {
+  name: 'my-terminal',
+  // session: { sessionId, pid, tty, ancestors }, ancestors being the commands above the
+  // session, nearest first. Answer true once it is in front; false or a throw passes it on.
+  async focus(session) {
+    if (!session.ancestors.some(command => /\/MyTerminal\.app\//.test(command))) return false;
+    // …ask the app to show the tab holding session.sessionId…
+    return true;
+  },
+};
+```
+
+The first `true` wins. A plugin that throws is passed over, and its message joins the error the
+click shows when none could. It runs only for a session already running: one that is not opens
+in `PR_RADAR_TERMINAL` as before.
+
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of

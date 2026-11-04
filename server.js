@@ -623,7 +623,7 @@ const server = http.createServer(async (req, res) => {
     if (DEMO) return json(res, 200, { ok: true });
     const [status, error] = await claudeSessions.resume(
       { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
-      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload },
+      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload, plugins: PLUGINS },
     );
     return json(res, status, error ? { error } : { ok: true });
   }

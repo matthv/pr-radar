@@ -10,6 +10,9 @@ const path = require('node:path');
 //   { pills: [{ text, kind, title, url, running }], labels: [{ name, text, title }], review }
 // A pill is a label to read; a label is a button that puts that GitHub label on the PR. `review`
 // claims someone else's PR for review and says whose turn it is: { claimedBy, since, turn, why }.
+// A plugin may also, or instead, export `focus(session)`, asked to bring forward a running Claude
+// session that lives where the radar's own terminals cannot reach: it gets { sessionId, pid, tty,
+// ancestors } (the commands above the session, nearest first) and answers true once it did.
 const KINDS = new Set(['', 'todo', 'pending', 'good', 'alert']);
 const TURNS = new Set(['me', 'author', 'bot']);
 
@@ -26,8 +29,10 @@ function load(value, req = require) {
       } catch (error) {
         throw new Error(`PR_RADAR_PLUGINS: cannot load ${entry}: ${error.message}`);
       }
-      if (typeof plugin?.decorate !== 'function') throw new Error(`PR_RADAR_PLUGINS: ${entry} exports no decorate()`);
-      return { name: String(plugin.name ?? path.basename(file)), decorate: plugin.decorate };
+      const decorate = typeof plugin?.decorate === 'function' ? plugin.decorate : null;
+      const focus = typeof plugin?.focus === 'function' ? plugin.focus : null;
+      if (!decorate && !focus) throw new Error(`PR_RADAR_PLUGINS: ${entry} exports neither decorate() nor focus()`);
+      return { name: String(plugin.name ?? path.basename(file)), decorate, focus };
     });
 }
 
@@ -65,6 +70,7 @@ function normalise(out) {
 function decoratePr(plugins, node, pr, failures) {
   const added = { pills: [], labels: [], review: null };
   for (const plugin of plugins) {
+    if (!plugin.decorate) continue;
     try {
       const out = normalise(plugin.decorate(node, pr));
       added.pills.push(...out.pills);
@@ -84,4 +90,19 @@ const pluginWarnings = failures => [...failures.entries()].map(([name, { count, 
   message: `${name} failed on ${count} PR(s), first ${first}`,
 }));
 
-module.exports = { load, normalise, decoratePr, pluginWarnings };
+// The first plugin that brings the session forward wins. One that throws is passed over, so a
+// broken plugin never hides another's, and its message comes back for the error the click shows.
+async function focusSession(plugins, session) {
+  const failures = [];
+  for (const plugin of plugins) {
+    if (!plugin.focus) continue;
+    try {
+      if (await plugin.focus(session)) return { focused: true, failures };
+    } catch (error) {
+      failures.push(`${plugin.name}: ${error.message}`);
+    }
+  }
+  return { focused: false, failures };
+}
+
+module.exports = { load, normalise, decoratePr, pluginWarnings, focusSession };

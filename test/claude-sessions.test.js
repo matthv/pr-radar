@@ -253,6 +253,27 @@ test('a running session no terminal can bring forward is an error, not a second 
   await assert.rejects(focusRunning(OLDER, inVsCode), /already open/);
 });
 
+const IN_APP = `  2 1 ??  /Applications/Arbor.app/Contents/MacOS/Arbor
+  5 2 ttys030  -zsh`;
+
+test('a session in an app the radar does not know is offered to the plugins, ancestors nearest first', async () => {
+  const { dir, exec } = await fakeMachine(IN_APP);
+  const asked = [];
+  const plugin = { name: 'arbor', focus: async session => (asked.push(session), session.ancestors.some(command => /Arbor\.app/.test(command))) };
+
+  assert.equal(await focusRunning(OLDER, { exec, dir, plugins: [plugin] }), true);
+  assert.deepEqual(asked, [{ sessionId: OLDER, pid: process.pid, tty: 'ttys030', ancestors: ['-zsh', '/Applications/Arbor.app/Contents/MacOS/Arbor'] }]);
+});
+
+test('a plugin that declines or fails still leaves the session open elsewhere, its failure named', async () => {
+  const machine = await fakeMachine(IN_APP);
+  await assert.rejects(focusRunning(OLDER, { ...machine, plugins: [{ name: 'no', focus: async () => false }] }), /cannot bring forward$/);
+  await assert.rejects(
+    focusRunning(OLDER, { ...machine, plugins: [{ name: 'arbor', focus: async () => { throw new Error('app not running'); } }] }),
+    /cannot bring forward \(arbor: app not running\)/,
+  );
+});
+
 test('a registry pid now held by something other than claude counts as not running', async () => {
   const { dir } = await fakeMachine(IN_HERDR);
   const exec = async () => `${process.pid} 1 ??  /usr/sbin/cupsd\n`;
