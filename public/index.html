@@ -561,11 +561,11 @@
   .group-label.action .gdot { background: linear-gradient(135deg, var(--indigo), var(--indigo-2)); }
   .group-label.ready .gdot { background: linear-gradient(135deg, var(--indigo), var(--emerald)); }
   .group-label.ready { color: var(--indigo); }
-  .group-label.waiting .gdot,
+  .group-label.waiting .gdot, .group-label.bot .gdot,
   .group-label.merged .gdot { background: linear-gradient(135deg, var(--amber), var(--amber-2)); }
   .group-label.idle .gdot { background: var(--border); }
   .group-label.action { color: var(--indigo); }
-  .group-label.waiting, .group-label.merged { color: var(--amber); }
+  .group-label.waiting, .group-label.bot, .group-label.merged { color: var(--amber); }
   .group-label.merged.settled { color: var(--emerald); }
   .group-label.merged.settled .gdot { background: linear-gradient(135deg, var(--emerald), var(--emerald-2)); }
   .group-label.merged.settled .gcount { background: var(--emerald-soft); color: var(--emerald); }
@@ -574,7 +574,7 @@
     background: var(--hairline); color: var(--text-faint);
   }
   .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
-  .group-label.waiting .gcount,
+  .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
   #kanban {
@@ -661,7 +661,7 @@
   #kanban .card-foot { flex-wrap: wrap; gap: 0 6px; }
   #kanban .card-actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
   #kanban .expander, #kanban .snooze, #kanban .note-btn, #kanban .copy-btn,
-  #kanban .slack-link, #kanban .linear-link, #kanban .claude-link { margin-top: 7px; }
+  #kanban .slack-link, #kanban .linear-link, #kanban .claude-link, #kanban .label-btn { margin-top: 7px; }
   .expander.in-meta { display: none; }
   #kanban .card-foot > .expander, #kanban .note-text { display: none; }
   #kanban .expander.in-meta {
@@ -693,10 +693,10 @@
      hue, a recipe of two that already mean exactly those things. */
   .card.ready::before { background: linear-gradient(180deg, var(--indigo), var(--emerald)); }
   .card.ready { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--emerald-soft) 14%, var(--surface) 42%); }
-  .card.waiting::before,
+  .card.waiting::before, .card.bot::before,
   .card.merged::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .card.action { background: linear-gradient(100deg, var(--indigo-soft) -10%, var(--surface) 42%); }
-  .card.waiting,
+  .card.waiting, .card.bot,
   .card.merged { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
 
   /* The release outcome paints the whole card, not just a pill: after a merge it is the
@@ -874,7 +874,7 @@
   .since-at { color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .reason { font-size: 12.5px; font-weight: 500; display: flex; gap: 8px; }
   .card.action .reasons { color: var(--indigo); }
-  .card.waiting .reasons, .card.merged .reasons { color: var(--amber); }
+  .card.waiting .reasons, .card.bot .reasons, .card.merged .reasons { color: var(--amber); }
   /* A merged card takes the colour of its release, as its rail does: amber only while it runs.
      Declared after the line above, which would otherwise win at equal specificity. */
   .card.pipeline-done .reasons, .card.pipeline-none .reasons { color: var(--emerald); }
@@ -973,6 +973,19 @@
   .claude-link:hover { background: var(--hairline); }
   .claude-link:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
   .claude-link.busy { opacity: .45; cursor: progress; }
+  /* A plugin's label button: it starts something on GitHub, so it says its label in words.
+     Always visible, like Slack's: a plugin only offers it when there is something to start,
+     so its presence is news. Indigo is "your move"; outlined, not filled, so it does not
+     read as one of the state pills beside it. */
+  .label-btn {
+    flex: none; box-sizing: border-box; height: 26px; margin-top: 11px; padding: 0 8px;
+    font: inherit; font-size: 11.5px; font-weight: 580; color: var(--indigo);
+    background: none; border: 1px solid color-mix(in srgb, var(--indigo) 35%, transparent); border-radius: 7px;
+    cursor: pointer; transition: background .15s, border-color .15s, opacity .15s;
+  }
+  .label-btn:hover { background: var(--indigo-soft); border-color: var(--indigo); }
+  .label-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .label-btn.busy { opacity: .45; cursor: progress; }
 
   /* A set of PRs that one click reveals: the same species as the counters, so it takes
      the same tile rather than a third pattern. Neutral, because a snooze is not a
@@ -1376,12 +1389,21 @@ const state = {
 };
 
 const el = id => document.getElementById(id);
+// Storage refused (a private window, blocked site data): the defaults, and nothing kept.
 const store = {
   get(key, fallback) {
-    const raw = localStorage.getItem('pr-radar:' + key);
-    return raw === null ? fallback : raw;
+    try {
+      const raw = localStorage.getItem('pr-radar:' + key);
+      return raw === null ? fallback : raw;
+    } catch {
+      return fallback;
+    }
   },
-  set(key, value) { localStorage.setItem('pr-radar:' + key, String(value)); },
+  set(key, value) {
+    try {
+      localStorage.setItem('pr-radar:' + key, String(value));
+    } catch { /* not kept */ }
+  },
 };
 
 const collapsedGroups = new Set((() => {
@@ -1393,7 +1415,9 @@ const collapsedGroups = new Set((() => {
 })());
 
 function saveCollapsed() {
-  localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  try {
+    localStorage.setItem('pr-radar:collapsed', JSON.stringify([...collapsedGroups]));
+  } catch { /* not kept */ }
 }
 
 function toggleGroup(label) {
@@ -1684,6 +1708,9 @@ const I18N = {
     claudeTitle: 'reprendre la session Claude de cette PR dans un terminal',
     claudeError: 'Impossible de reprendre la session Claude : {message}',
     claudeScanFailed: 'Sessions Claude : {message}, certains boutons peuvent manquer.',
+    labelTitle: 'ajouter le label {label} à cette PR sur GitHub',
+    labelError: 'Impossible d’ajouter le label {label} : {message}',
+    pluginFailed: 'Plugin : {message}.',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
     langTitle: 'Langue de l’interface',
@@ -1695,6 +1722,7 @@ const I18N = {
     viewTitle: 'vue tableau / vue par auteur / kanban',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
+    kanbanBot: 'En attente d’un bot',
     kanbanIdle: 'Calme',
     kanbanNotApplicable: 'Sans objet de ce côté',
     kanbanFoldTitle: 'replier / déplier la colonne',
@@ -1737,6 +1765,7 @@ const I18N = {
     groupMineDrafts: 'Brouillons',
     groupReviewAction: 'À faire de mon côté',
     groupReviewWaiting: 'J’attends un fix de l’auteur',
+    groupReviewBot: 'En attente d’un bot',
     groupIdle: 'Rien à signaler',
     emptyMine: 'Aucune PR ouverte de ton côté.',
     emptyReviews: 'Aucune PR à reviewer.',
@@ -1900,6 +1929,9 @@ const I18N = {
     claudeTitle: 'resume this PR\'s Claude session in a terminal',
     claudeError: 'Could not resume the Claude session: {message}',
     claudeScanFailed: 'Claude sessions: {message}, some buttons may be missing.',
+    labelTitle: 'add the {label} label to this PR on GitHub',
+    labelError: 'Could not add the {label} label: {message}',
+    pluginFailed: 'Plugin: {message}.',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
     langTitle: 'Interface language',
@@ -1911,6 +1943,7 @@ const I18N = {
     viewTitle: 'board view / by author / kanban',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
+    kanbanBot: 'Waiting on a bot',
     kanbanIdle: 'Quiet',
     kanbanNotApplicable: 'Not on this side',
     kanbanFoldTitle: 'fold / unfold the column',
@@ -1953,6 +1986,7 @@ const I18N = {
     groupMineDrafts: 'Drafts',
     groupReviewAction: 'On my plate',
     groupReviewWaiting: 'Waiting on the author',
+    groupReviewBot: 'Waiting on a bot',
     groupIdle: 'Nothing to report',
     emptyMine: 'No open PRs of yours.',
     emptyReviews: 'No PRs to review.',
@@ -2660,6 +2694,27 @@ function linearLink(pr) {
     + `${LINEAR_ICON}<span>${escapeHtml(pr.ticket)}</span></a>`;
 }
 
+// What the plugins in PR_RADAR_PLUGINS add to a card. The server already vetted the kind and the
+// URL; the text is the plugin's, so it is escaped like anything else.
+function pluginPills(pr) {
+  return (pr.plugins?.pills ?? []).map(({ text, kind, title, url, running }) => {
+    const cls = `pill${kind ? ` ${kind}` : ''}${running ? ' running' : ''}`;
+    const tip = title ? ` title="${escapeHtml(title)}"` : '';
+    return url
+      ? `<a class="${cls}" href="${escapeHtml(url)}" target="_blank" rel="noopener"${tip}>${escapeHtml(text)}</a>`
+      : `<span class="${cls}"${tip}>${escapeHtml(text)}</span>`;
+  });
+}
+
+// By PR and label rather than on the button: a refresh redraws the card mid-request.
+const labelling = new Set();
+
+function labelButtons(pr) {
+  return (pr.plugins?.labels ?? []).map(({ name, text, title }) => `<button type="button"`
+    + ` class="label-btn${labelling.has(`${pr.id} ${name}`) ? ' busy' : ''}" data-plugin-label="${escapeHtml(name)}"`
+    + ` data-pr="${escapeHtml(pr.id)}" title="${escapeHtml(title ?? t('labelTitle', { label: name }))}">${escapeHtml(text)}</button>`).join('');
+}
+
 function twinsPill(pr) {
   if (!pr.twins?.length) return '';
   const list = pr.twins.map(twin => `${twin.repo.split('/')[1]}#${twin.number}`).join(', ');
@@ -2732,6 +2787,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
           <button type="button" class="copy-btn" title="${escapeHtml(t('copyLinkTitle'))}" data-copy-link="${pr.id}">${COPY_ICON}</button>
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
+          ${labelButtons(pr)}
           ${linearLink(pr)}
           ${pr.claudeSession
             ? `<button type="button" class="claude-link${resuming.has(pr.id) ? ' busy' : ''}" data-claude="${pr.id}" title="${escapeHtml(t('claudeTitle'))}">${CLAUDE_ICON}</button>`
@@ -2852,7 +2908,7 @@ function minePills(pr) {
   if (!pr.merged && pr.toFix.length) pills.push(pill('todo', t('pillToFix', { n: pr.toFix.length })));
   if (!pr.merged && pr.reviewDecision === 'APPROVED') pills.push(pill('good', t('pillApproved')));
   if (!pr.merged && pr.waiting.length) pills.push(pill('pending', t('pillWaitingReply', { n: pr.waiting.length })));
-  return pills;
+  return [...pills, ...pluginPills(pr)];
 }
 
 function mineCard(pr) {
@@ -2866,6 +2922,7 @@ function reviewPills(pr) {
   // the release had landed, so a card could only breathe amber with no word for why.
   const pills = pr.merged ? mergeOutcomePills(pr) : [];
   if (pr.claimed) pills.push(pill('', t('pillClaimed'), t('pillClaimedTitle')));
+  for (const reason of pr.reasons.filter(r => r.kind === 'claim')) pills.push(pill('todo', reason.text ? escapeHtml(reason.text) : t('pillToReview')));
   if (pr.reviewOwedByMe && !pr.iHaveReviewed) pills.push(pill('todo', t('pillToReview')));
   if (pr.reRequested) pills.push(pill('todo', t('pillReRequested')));
   if (pr.answered.length) pills.push(pill('todo', tn('pillAnswers', pr.answered.length)));
@@ -2882,7 +2939,7 @@ function reviewPills(pr) {
       tn('pillBotTitle', bot.count, { login: bot.login }),
     ));
   }
-  return pills;
+  return [...pills, ...pluginPills(pr)];
 }
 
 function reviewCard(pr) {
@@ -2944,6 +3001,7 @@ function groupLabels(column) {
         action: t('groupReviewAction'),
         merged: t('groupMineMerged'),
         waiting: t('groupReviewWaiting'),
+        bot: t('groupReviewBot'),
         idle: t('groupIdle'),
       };
 }
@@ -2984,6 +3042,7 @@ function kanbanHeadings() {
     action: t('kanbanAction'),
     ready: t('groupMineReady'),
     waiting: t('kanbanWaiting'),
+    bot: t('kanbanBot'),
     merged: t('groupMineMerged'),
     idle: t('kanbanIdle'),
   };
@@ -3288,7 +3347,8 @@ function render() {
   const claimWarning = warnings.find(w => w.source === 'slack-claims');
   const claimsMissing = warnings.find(w => w.source === 'claims-missing');
   const orphansWarning = warnings.find(w => w.source === 'orphans');
-  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims', 'claims-missing', 'orphans'].includes(w.source)).map(w => w.source))];
+  const pluginWarnings = warnings.filter(w => w.source === 'plugin');
+  const sources = [...new Set(warnings.filter(w => !['slack', 'claude', 'slack-claims', 'claims-missing', 'orphans', 'plugin'].includes(w.source)).map(w => w.source))];
   const lines = [];
   if (sources.length) lines.push(tn('warning', sources.length, { sources: sources.join(', ') }));
   if (slackWarning) {
@@ -3306,6 +3366,7 @@ function render() {
     lines.push(claimLine());
   }
   if (orphansWarning) lines.push(t('orphansFailed', { message: orphansWarning.message }));
+  for (const warning of pluginWarnings) lines.push(t('pluginFailed', { message: warning.message }));
   el('warning').hidden = lines.length === 0;
   el('warning').textContent = lines.join(' ');
   renderOrphans(data.orphans);
@@ -3636,6 +3697,34 @@ async function load(force, { check = false } = {}) {
 // without its busy state, and a second click would open a second terminal.
 const resuming = new Set();
 
+// Only adds: the server refuses a label no plugin offered on this PR, and never takes one off.
+async function addLabel(button) {
+  const { pluginLabel: label, pr: id } = button.dataset;
+  const key = `${id} ${label}`;
+  if (labelling.has(key)) return;
+  labelling.add(key);
+  button.classList.add('busy');
+  try {
+    const response = await fetch('/api/label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, label }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    alert(t('labelError', { label, message: error.message }));
+  } finally {
+    labelling.delete(key);
+    document.querySelectorAll('.label-btn.busy').forEach(other => {
+      if (!labelling.has(`${other.dataset.pr} ${other.dataset.pluginLabel}`)) other.classList.remove('busy');
+    });
+  }
+  load(false);
+}
+
 async function resumeClaudeSession(button) {
   const id = button.dataset.claude;
   if (resuming.has(id)) return;
@@ -3721,6 +3810,12 @@ document.addEventListener('click', event => {
   const groupLabel = event.target.closest('.group-label[data-group]');
   if (groupLabel) {
     toggleGroup(groupLabel);
+    return;
+  }
+
+  const labelButton = event.target.closest('[data-plugin-label]');
+  if (labelButton) {
+    addLabel(labelButton);
     return;
   }
 
@@ -4041,6 +4136,7 @@ const ORBIT_COLOURS = {
   action: ['var(--indigo)', 'var(--indigo-soft)'],
   ready: ['var(--indigo)', 'var(--emerald-soft)'],
   waiting: ['var(--amber)', 'var(--amber-soft)'],
+  bot: ['var(--amber)', 'var(--amber-soft)'],
   merged: ['var(--emerald)', 'var(--emerald-soft)'],
   idle: ['var(--text-faint)', 'var(--surface)'],
 };
@@ -4215,6 +4311,7 @@ const NOTE_STATE = {
   action: ['todo', 'orbit_action'],
   ready: ['ready', 'orbit_ready'],
   waiting: ['pending', 'orbit_waiting'],
+  bot: ['pending', 'orbit_waiting'],
   merged: ['good', 'orbit_merged'],
   idle: ['', 'orbit_idle'],
 };

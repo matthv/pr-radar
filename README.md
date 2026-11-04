@@ -680,6 +680,83 @@ ticket or a doc. Brackets and backslashes in the title are escaped so they canno
 the link early. Like the note button it shows on hover, and turns into a check for a
 moment once the copy lands.
 
+## Plugins
+
+A team can add to the cards without a change to this repo: a plugin is a CommonJS module kept
+anywhere on disk, listed in `PR_RADAR_PLUGINS` (comma-separated paths, `~` for your home folder).
+The radar loads them at start and refuses to start on one it cannot load.
+
+A plugin exports a name and one function:
+
+```js
+module.exports = {
+  name: 'my-plugin',
+  // node: the PR as GitHub answered the board's query (PR_QUERY in github.js: its last 30
+  //       comments with their bodies, its labels and who added them when, its reviews and the
+  //       commit each was on, its threads and who resolved them, its head commit's oid…)
+  // pr:   the PR as the board shaped it, before sorting (repo, number, author, isDraft,
+  //       merged, labels, threads…: no side or group yet, the plugin can decide those)
+  decorate(node, pr) {
+    return {
+      // Read-only pills, after the board's own. kind: '' | 'todo' | 'pending' | 'good' | 'alert';
+      // url (https only) makes it a link; running makes it breathe like a running pipeline.
+      pills: [{ text: 'deployed', kind: 'good', title: 'on staging', url: 'https://…', running: false }],
+      // Buttons, beside Linear's, that add this GitHub label to the PR.
+      labels: [{ name: 'deploy-preview', text: 'preview', title: 'add the deploy-preview label' }],
+      // Optional: someone claimed this PR's review (claimedBy, a GitHub login, at `since`), and
+      // whose turn it is. turn: 'me' (the claimer's; `why` says what to do, "to review" when
+      // left out) | 'author' | 'bot'.
+      review: { claimedBy: 'octocat', since: '2026-11-02T10:00:00Z', turn: 'bot', why: null },
+    };
+  },
+};
+```
+
+- **It runs on every board the server builds**, a full search or a few PRs reloaded, before the
+  board sorts the cards, so it reads what is already loaded and asks GitHub nothing itself. It reads its own settings from the
+  environment, `.env` included.
+- **A plugin that throws loses its pills on that PR, never the board.** The banner names it and
+  the first PR it failed on.
+- **A label button only ever adds the label.** The server adds only a label a plugin offers on
+  that PR, as the board last showed it, and never takes one off: removing it and putting it back
+  would start the workflow it triggers again. The plugin hides the button once the label is on.
+  The card reloads once GitHub has the label.
+- **A claim holds the card on someone else's PR until your first review after it.** When the
+  claim is yours (`claimedBy` is you), the plugin's turn picks the group: yours is **On my plate**
+  with `why` as its pill, the author's is **Waiting on the author**, a bot's is **Waiting on a
+  bot**, a group of its own, after the author's. Once you review or comment after `since`, the
+  usual rules take over. Someone else's claim changes nothing on your board. The webhook calls the
+  bot's group `reviews.bot`.
+- **What a plugin returns is checked before it reaches the page.** Its text is escaped, a kind
+  it invents becomes neutral, a URL that is not `https://` is dropped, and a claim missing who,
+  when or a known turn is ignored.
+
+### Bringing a session forward from an app the radar does not know
+
+A plugin can also, or only, export `focus(session)`. When a card's [Claude session](#the-claude-session)
+is running somewhere the radar cannot reach itself, neither herdr, Terminal, iTerm nor Ghostty,
+the click asks each plugin in turn:
+
+```js
+module.exports = {
+  name: 'my-terminal',
+  // session: { sessionId, pid, tty, ancestors }, ancestors being the commands above the
+  // session, nearest first. Answer true once it is in front; false or a throw passes it on.
+  async focus(session) {
+    if (!session.ancestors.some(command => /\/MyTerminal\.app\//.test(command))) return false;
+    // …ask the app to show the tab holding session.sessionId…
+    return true;
+  },
+};
+```
+
+The first `true` wins. A plugin that throws is passed over, and its message joins the error the
+click shows when none could. It runs only for a session already running.
+
+**A session that is not running** is offered to `open(session)` the same way, with
+`{ sessionId, cwd }`, before the radar opens it in `PR_RADAR_TERMINAL`. A plugin opening it in the
+app its user runs Claude in answers true; one that declines or throws leaves it to the terminal.
+
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of
@@ -1050,7 +1127,7 @@ workflow, an n8n flow or anything else that takes JSON:
 
 - **The status** is the column and the group the card sits in, `side.bucket`:
   `mine.action`, `mine.ready`, `mine.waiting`, `mine.idle`, `mine.merged`,
-  `reviews.action`, `reviews.waiting`, `reviews.idle`, `reviews.merged`. The side is
+  `reviews.action`, `reviews.waiting`, `reviews.bot`, `reviews.idle`, `reviews.merged`. The side is
   part of it: a PR to fix and a review to do are not the same news.
 - **`project`** is the repo as `owner/name`, so a repo from `PR_RADAR_EXTRA_REPOS` is
   told apart from the org's own; **`pr_number`** is the number, as an integer.
