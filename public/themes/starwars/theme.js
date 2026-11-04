@@ -14,7 +14,7 @@
       seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
       return seed / 2_147_483_648;
     };
-    return Array.from({ length: 70 }, () => ({
+    return Array.from({ length: 88 }, () => ({
       left: (random() * 100).toFixed(1),
       top: (random() * 100).toFixed(1),
       size: (1 + random() * 1.6).toFixed(1),
