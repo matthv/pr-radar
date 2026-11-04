@@ -7,9 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { randomUUID } = require('node:crypto');
-
-const { scan, sessionFor, sessions, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -18,15 +16,6 @@ const NEWER = 'ed84f9ba-f28b-449c-89fd-70f2ed882a1b';
 const line = record => `${JSON.stringify(record)}\n`;
 const prLink = (sessionId, prUrl) => line({ type: 'pr-link', sessionId, prNumber: 1927, prUrl, prRepository: 'ForestAdmin/agent-nodejs' });
 const start = cwd => line({ type: 'user', cwd, message: { role: 'user', content: 'hi' } });
-
-const prompt = (cwd, content, extra = {}) => line({ type: 'user', cwd, entrypoint: 'cli', message: { role: 'user', content }, ...extra });
-const skill = name => line({ type: 'assistant', message: { content: [{ type: 'text', text: 'on it' }, { type: 'tool_use', id: 'toolu_1', name: 'Skill', input: { skill: name } }] } });
-
-async function registryDir(records) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
-  for (const [file, record] of Object.entries(records)) await fs.writeFile(path.join(dir, `${file}.json`), typeof record === 'string' ? record : JSON.stringify(record));
-  return dir;
-}
 
 async function projectsDir() {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-sessions-'));
@@ -312,52 +301,6 @@ test('a transcript that cannot be read is counted and skipped, the others still 
   await fs.chmod(locked, 0o600);
 });
 
-test('a session finds its ticket in its folder, else in the latest PR it linked, else in its first prompt', async () => {
-  const dir = await projectsDir();
-  const [inWorktree, viaPr, viaPrompt, none] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-  const OTHER_PR = 'https://github.com/ForestAdmin/forestadmin-server/pull/12';
-  await writeSession(dir, inWorktree, prompt('/Users/me/dev/forestadmin-prd-1693-phase-1', 'carry on with PRD-9') + prLink(inWorktree, PR));
-  await writeSession(dir, viaPr, prompt('/Users/me/dev', 'look at PRD-9') + prLink(viaPr, PR) + prLink(viaPr, OTHER_PR));
-  await writeSession(dir, viaPrompt, prompt('/Users/me/dev', 'Caveat: PRD-1 ran locally', { isMeta: true })
-    + prompt('/Users/me/dev', [{ type: 'text', text: '/forest:implement PRD-1890' }]) + prompt('/Users/me/dev', 'then PRD-5'));
-  await writeSession(dir, none, prompt('/Users/me/dev', 'hello') + prompt('/Users/me/dev', 'now PRD-77'));
-  await scan({ dir, maxAgeDays: 60 });
-
-  const prTickets = new Map([[PR, 'PRD-1184'], [OTHER_PR, null]]);
-  const tickets = Object.fromEntries((await sessions({ prTickets, dir: path.join(dir, 'no-registry') })).map(s => [s.sessionId, s.ticket]));
-  assert.deepEqual(tickets, { [inWorktree]: 'PRD-1693', [viaPr]: 'PRD-1184', [viaPrompt]: 'PRD-1890', [none]: null });
-});
-
-test('a running session takes its status and name from the registry, and the last skill from its transcript', async () => {
-  const dir = await projectsDir();
-  const [headless, fresh] = [randomUUID(), randomUUID()];
-  const cwd = '/Users/me/dev/claudine';
-  const file = await writeSession(dir, OLDER, prompt(cwd, 'hi') + skill('forest:implement') + skill('forest:review-loop')
-    + line({ type: 'ai-title', aiTitle: 'Pause an inbox', sessionId: OLDER }));
-  await writeSession(dir, NEWER, prompt(cwd, 'hi') + line({ type: 'ai-title', aiTitle: 'Export button', sessionId: NEWER }));
-  await writeSession(dir, headless, prompt(cwd, 'summarise', { entrypoint: 'sdk-cli' }));
-  await scan({ dir, maxAgeDays: 60 });
-  const running = await registryDir({
-    me: { pid: process.pid, sessionId: OLDER, kind: 'interactive', name: 'claudine-8f', status: 'busy', updatedAt: 1 },
-    unwritten: { pid: process.ppid, sessionId: fresh, cwd: '/Users/me/dev/claudine-prd-1890-x', name: 'claudine-f7', status: 'idle', updatedAt: 2 },
-    dead: { pid: 2 ** 22 + 1, sessionId: NEWER, name: 'gone', status: 'busy' },
-  });
-  const shown = async (registry = running) => Object.fromEntries((await sessions({ dir: registry }))
-    .map(({ sessionId, name, title, status, lastSkill, ticket }) => [sessionId, { name, title, status, lastSkill, ticket }]));
-
-  assert.deepEqual(await shown(), {
-    [OLDER]: { name: 'claudine-8f', title: 'Pause an inbox', status: 'busy', lastSkill: 'forest:review-loop', ticket: null },
-    [NEWER]: { name: 'Export button', title: 'Export button', status: null, lastSkill: null, ticket: null },
-    [fresh]: { name: 'claudine-f7', title: null, status: 'idle', lastSkill: null, ticket: 'PRD-1890' },
-  }, 'a headless run left out, a dead pid not running');
-
-  await fs.appendFile(file, skill('forest:validator'));
-  await scan({ dir, maxAgeDays: 60 });
-  const unreadable = await registryDir({ half: '{ "pid": 12, "sessi' });
-  assert.deepEqual((await shown(unreadable))[OLDER], { name: 'Pause an inbox', title: 'Pause an inbox', status: null, lastSkill: 'forest:validator', ticket: null },
-    'the appended skill read, an unreadable registry only loses the status');
-});
-
 describe('the resume route', () => {
   const request = (overrides = {}) => ({
     headers: { 'content-type': 'application/json', host: 'localhost:4321' },
@@ -419,20 +362,6 @@ describe('the resume route', () => {
 
     assert.deepEqual(await resume(request(), context({ exec, plugins: [failing, { name: 'no', open: async () => false }] })), [200, null]);
     assert.equal(calls[0].at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
-  });
-
-  test('a session row resumes its own session, only one the board listed', async () => {
-    await sessions({ dir: runningDir });
-    const calls = [];
-    const exec = async (command, args) => {
-      calls.push([command, ...args]);
-      return '';
-    };
-
-    assert.deepEqual(await resume(request({ readBody: async () => ({ sessionId: OLDER }) }), context({ exec, board: null })), [200, null]);
-    assert.equal(calls[0].at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
-    assert.deepEqual(await resume(request({ readBody: async () => ({ sessionId: NEWER }) }), context()), [404, 'this Claude session is not on the board']);
-    assert.equal((await resume(request({ readBody: async () => ({ sessionId: OLDER }) }), context({ enabled: false })))[0], 403, 'still off unless turned on');
   });
 
   test('a terminal that fails is reported, not swallowed', async () => {

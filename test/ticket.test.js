@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { ticketKey, pathTicket, withTwins, boardTwins } = require('../ticket');
+const { ticketKey, withTwins, boardTwins } = require('../ticket');
 
 const card = (number, title, extra = {}) => ({
   id: `id${number}`, repo: 'o/r', number, title, side: 'review', url: `u${number}`, ticket: null, slackUrl: null, ...extra,
@@ -101,14 +101,4 @@ test('boardTwins: the Slack links set first, then counted as a signal', () => {
 test('twins: a twin carries what the page needs to name it and go there', () => {
   const [first] = withTwins([card(1, 'x', { ticket: 'PRD-3' }), card(2, 'y', { ticket: 'PRD-3', side: 'mine' })]);
   assert.deepEqual(first.twins, [{ id: 'id2', repo: 'o/r', number: 2, title: 'y', side: 'mine', url: 'u2' }]);
-});
-
-test('pathTicket: the key in the folder a session runs in, past the repo name', () => {
-  assert.equal(pathTicket('/Users/me/dev/forestadmin-prd-1693-phase-1'), 'PRD-1693');
-  assert.equal(pathTicket('/Users/me/dev/claudine-prd-1270-implement-plans'), 'PRD-1270');
-  assert.equal(pathTicket('/Users/me/.claude/worktrees/prd-12'), 'PRD-12');
-  assert.equal(pathTicket('/Users/me/dev/claudine/'), null);
-  assert.equal(pathTicket('/Users/me/dev/prd-1693/packages/api'), null, 'only the last segment');
-  assert.equal(pathTicket('/Users/me/dev/agent-node-20-upgrade'), null, 'a runtime, not a ticket');
-  assert.equal(pathTicket(null), null);
 });

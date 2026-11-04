@@ -5,9 +5,6 @@
 // Not the tail of a longer id: SNYK-JS-LODASH-1040724 holds no LODASH-1040724 ticket.
 const TICKET_RE = /(?<![\w-])([A-Z]{2,}-\d{2,})\b/g;
 const BRANCH_TICKET_RE = /(?:^|\/)([a-z]{2,}-\d{2,})(?=[-_/]|$)/gi;
-// The branch's key, past a dash too: a worktree is named after its repo first
-// (forestadmin-prd-1693-phase-1), so the key never starts the folder's name.
-const PATH_TICKET_RE = /(?:^|[-_])([a-z]{2,}-\d{2,})(?=[-_]|$)/gi;
 // Shaped like a ticket, never one: an advisory, a hash, a cipher, an encoding, a standard or
 // a runtime (CVE-2024-1111, CWE-79, SHA-256, AES-256, UTF-16, ISO-8601, node-20).
 const NOT_TICKETS = new Set([
@@ -26,14 +23,6 @@ function firstTicket(text) {
 function branchTicket(branch) {
   if (!branch || BOT_BRANCH_RE.test(branch)) return null;
   for (const [, key] of branch.matchAll(BRANCH_TICKET_RE)) if (isTicket(key)) return key.toUpperCase();
-  return null;
-}
-
-// The folder a Claude session runs in, its last segment only: the folders above it name the
-// machine, never the work.
-function pathTicket(cwd) {
-  const folder = String(cwd ?? '').split('/').filter(Boolean).at(-1) ?? '';
-  for (const [, key] of folder.matchAll(PATH_TICKET_RE)) if (isTicket(key)) return key.toUpperCase();
   return null;
 }
 
@@ -111,4 +100,4 @@ function boardTwins(payload, slackLinks = null) {
   return { ...payload, mine: cards.slice(0, payload.mine.length), reviews: cards.slice(payload.mine.length) };
 }
 
-module.exports = { ticketKey, firstTicket, pathTicket, workKey, withTwins, boardTwins };
+module.exports = { ticketKey, workKey, withTwins, boardTwins };
