@@ -1239,6 +1239,82 @@
     0%, 100% { opacity: 0; }
     4% { opacity: 1; } 11% { opacity: .1; } 17% { opacity: .95; } 45% { opacity: .55; }
   }
+  :root[data-season="starwars"] {
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #fff4b8 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #d3e7ff 0%, transparent 70%);
+    --sw-gold: #a67c00;
+    --sw-blade: #1f8bff;
+    --sw-core: #e8f4ff;
+    --sw-hilt: #6b7280;
+    --sw-sith: #dc2626;
+    --sw-star: rgba(40, 52, 85, .3);
+    --sw-ship: #3f4657;
+    --sw-laser: #16a34a;
+    --sw-deathstar: rgba(55, 65, 90, .09);
+  }
+  :root[data-season="starwars"][data-theme="dark"] {
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #2b2600 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #0a2648 0%, transparent 70%);
+    --sw-gold: #ffe81f;
+    --sw-blade: #4fb3ff;
+    --sw-core: #ffffff;
+    --sw-hilt: #9ca3af;
+    --sw-sith: #ff4d4d;
+    --sw-star: rgba(255, 255, 255, .8);
+    --sw-ship: #b4bccc;
+    --sw-laser: #4ade80;
+    --sw-deathstar: rgba(205, 215, 240, .08);
+  }
+  :root[data-season="starwars"] header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--border)); }
+  :root[data-season="starwars"] .logo,
+  :root[data-season="starwars"] .brand em a:hover { color: var(--sw-gold); }
+  :root[data-season="starwars"] .logo .blip { fill: var(--sw-sith); }
+  :root[data-season="starwars"] #sweepGrad stop { stop-color: var(--sw-gold); }
+  :root[data-season="starwars"] #sweepGrad stop:last-child { stop-color: var(--sw-blade); }
+  /* A lightsaber: the hilt, then the blade, which ignites on load. */
+  :root[data-season="starwars"] .brand > span::after {
+    content: ""; display: inline-block; width: 32px; height: 4px; margin-left: 9px; vertical-align: middle; border-radius: 2px;
+    background: linear-gradient(var(--sw-hilt), var(--sw-hilt)) left / 9px 100% no-repeat,
+                linear-gradient(var(--sw-core), var(--sw-core)) 9px 0 / 23px 100% no-repeat;
+    filter: drop-shadow(0 0 2px var(--sw-blade)) drop-shadow(0 0 4px var(--sw-blade));
+  }
+  :root[data-season="starwars"] .empty:not(.kb-cell)::before { content: "🤖"; display: block; font-size: 24px; margin-bottom: 6px; }
+  :root[data-season="starwars"] .card:hover {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--sw-blade) 40%, transparent),
+                0 10px 26px -12px color-mix(in srgb, var(--sw-blade) 65%, transparent);
+  }
+  .sw-deathstar { position: absolute; right: -46px; bottom: -46px; width: 170px; height: 170px; color: var(--sw-deathstar); }
+  .sw-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--sw-star); }
+  .sw-flyby { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }
+  .sw-craft { position: relative; width: 34px; height: 26px; color: var(--sw-ship); }
+  .sw-flyby.rtl .sw-craft { transform: scaleX(-1); }
+  .sw-tie { width: 100%; height: 100%; }
+  .sw-bolt {
+    position: absolute; left: 30px; top: 12px; width: 16px; height: 2px; border-radius: 1px; opacity: 0;
+    background: var(--sw-laser); box-shadow: 0 0 4px var(--sw-laser), 0 0 8px var(--sw-laser);
+  }
+  .sw-bolt.b { top: 16px; }
+  .sw-flyby.fly { animation: sw-fly 5s linear; }
+  .sw-flyby.fly .sw-bolt { animation: sw-shot .6s linear 3 1s; }
+  .sw-flyby.fly .sw-bolt.b { animation-delay: 1.15s; }
+  @media (prefers-reduced-motion: no-preference) {
+    :root[data-season="starwars"] .brand > span::after { animation: sw-ignite .7s ease-out .4s both, sw-hum 2.6s ease-in-out 1.2s infinite; }
+    :root[data-season="starwars"] .empty:not(.kb-cell)::before { animation: hw-float 3s ease-in-out infinite; }
+    .sw-star.twinkle { animation: sw-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
+  }
+  @keyframes sw-ignite { from { background-size: 9px 100%, 0 100%; } to { background-size: 9px 100%, 23px 100%; } }
+  @keyframes sw-hum { 0%, 100% { opacity: 1; } 50% { opacity: .82; } }
+  @keyframes sw-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  @keyframes sw-fly {
+    0% { opacity: 1; transform: translate(-60px, 0); }
+    100% { opacity: 1; transform: translate(calc(100vw + 60px), var(--drop, 0)); }
+  }
+  .sw-flyby.rtl.fly { animation-name: sw-fly-back; }
+  @keyframes sw-fly-back {
+    0% { opacity: 1; transform: translate(calc(100vw + 60px), 0); }
+    100% { opacity: 1; transform: translate(-60px, var(--drop, 0)); }
+  }
+  @keyframes sw-shot { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(260px); } }
 </style>
 </head>
 <body>
@@ -1633,8 +1709,8 @@ const I18N = {
     updateDone: 'Mis à jour ({from} → {to}).',
     updateEnvVars: 'Nouveau dans .env.example : {names}.',
     themeTitle: 'Thème clair / sombre',
-    seasonOn: 'Halloween 🎃 — cliquer pour l’éteindre',
-    seasonOff: 'Halloween éteint — cliquer pour le rallumer',
+    seasonOn: '{name} {icon} — cliquer pour l’éteindre',
+    seasonOff: '{name} éteint — cliquer pour le rallumer',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1849,8 +1925,8 @@ const I18N = {
     updateDone: 'Updated ({from} → {to}).',
     updateEnvVars: 'New in .env.example: {names}.',
     themeTitle: 'Light / dark theme',
-    seasonOn: 'Halloween 🎃 — click to turn it off',
-    seasonOff: 'Halloween off — click to bring it back',
+    seasonOn: '{name} {icon} — click to turn it off',
+    seasonOff: '{name} off — click to bring it back',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2094,7 +2170,20 @@ el('theme').addEventListener('click', () => {
 });
 
 // `?season=halloween` wakes one out of its dates, to try it.
-const SEASONS = [{ name: 'halloween', from: [10, 26], to: [10, 31] }];
+const SEASONS = [
+  {
+    name: 'starwars', label: 'Star Wars', icon: '🌌', from: [5, 4], to: [5, 6],
+    deco: () => `${DEATH_STAR}<div class="sw-flyby"></div>`,
+    back: () => STARS.map(star).join(''),
+    ambient: flyby, every: [14_000, 30_000],
+  },
+  {
+    name: 'halloween', label: 'Halloween', icon: '🎃', from: [10, 26], to: [10, 31],
+    deco: () => `${spiderWeb()}${SPIDER}<div class="hw-flash"></div>`,
+    back: () => `${GHOSTS.map(ghost).join('')}<svg class="hw-storm"></svg>`,
+    ambient: strike, every: [9_000, 21_000],
+  },
+];
 const season = (() => {
   const asked = new URLSearchParams(location.search).get('season');
   if (asked) return SEASONS.find(entry => entry.name === asked) ?? null;
@@ -2202,21 +2291,65 @@ function strike() {
   }
 }
 
+const DEATH_STAR = '<svg class="sw-deathstar" viewBox="0 0 100 100">'
+  + '<circle cx="50" cy="50" r="48" fill="currentColor"/>'
+  + '<path d="M2,47h96v5H2z" fill="var(--bg)" opacity=".55"/>'
+  + '<circle cx="34" cy="31" r="11" fill="var(--bg)" opacity=".35"/><circle cx="34" cy="31" r="3" fill="var(--bg)" opacity=".6"/>'
+  + '<path d="M50,2v45M50,52v46M14,18l30,29M86,82l-30-30" stroke="var(--bg)" stroke-width=".6" opacity=".35" fill="none"/></svg>';
+
+// Seeded, so the sky stays the same from one load to the next.
+const STARS = (() => {
+  let seed = 2026_05_04;
+  const random = () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return seed / 2_147_483_648;
+  };
+  return Array.from({ length: 70 }, () => ({
+    left: (random() * 100).toFixed(1),
+    top: (random() * 100).toFixed(1),
+    size: (1 + random() * 1.6).toFixed(1),
+    twinkle: random() < 0.35,
+    d: (2.5 + random() * 4).toFixed(1),
+    delay: (-random() * 6).toFixed(1),
+  }));
+})();
+const star = ({ left, top, size, twinkle, d, delay }) => `<i class="sw-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
+
+const TIE_FIGHTER = '<svg class="sw-tie" viewBox="-16 -12 32 24">'
+  + '<path d="M-15,-11h3l1,3v16l-1,3h-3l1-3v-16zM15,-11h-3l-1,3v16l1,3h3l-1-3v-16z" fill="currentColor"/>'
+  + '<path d="M-11,0h22" stroke="currentColor" stroke-width="2.4"/>'
+  + '<circle r="5" fill="currentColor"/><circle r="2.6" fill="var(--bg)" opacity=".5"/></svg>';
+
+// A TIE fighter crosses the top of the window, one way or the other, firing ahead of it.
+function flyby() {
+  const lane = el('seasonDeco').querySelector('.sw-flyby');
+  if (!lane) return;
+  const rightward = Math.random() < 0.5;
+  lane.classList.toggle('rtl', !rightward);
+  lane.style.setProperty('--y', `${(8 + Math.random() * 30).toFixed(0)}vh`);
+  lane.style.setProperty('--drop', `${((Math.random() - 0.5) * 16).toFixed(0)}vh`);
+  lane.innerHTML = `<div class="sw-craft">${TIE_FIGHTER}<i class="sw-bolt"></i><i class="sw-bolt b"></i></div>`;
+  lane.classList.remove('fly');
+  void lane.getBoundingClientRect();
+  lane.classList.add('fly');
+}
+
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
-let stormTimer = null;
-function scheduleStrike(delay) {
-  clearTimeout(stormTimer);
+let ambientTimer = null;
+function scheduleAmbient(delay) {
+  clearTimeout(ambientTimer);
   if (!document.documentElement.dataset.season || calm.matches) return;
-  stormTimer = setTimeout(() => {
+  ambientTimer = setTimeout(() => {
     if (calm.matches) return;
-    strike();
-    scheduleStrike(9_000 + Math.random() * 12_000);
+    season.ambient();
+    const [min, max] = season.every;
+    scheduleAmbient(min + Math.random() * (max - min));
   }, delay);
 }
-calm.addEventListener('change', () => scheduleStrike(4_000));
+calm.addEventListener('change', () => scheduleAmbient(4_000));
 
 function seasonTitle() {
-  if (season) el('season').title = t(seasonOff() ? 'seasonOff' : 'seasonOn');
+  if (season) el('season').title = t(seasonOff() ? 'seasonOff' : 'seasonOn', { name: season.label, icon: season.icon });
 }
 
 function applySeason() {
@@ -2224,14 +2357,13 @@ function applySeason() {
   if (on) document.documentElement.dataset.season = season.name;
   else delete document.documentElement.dataset.season;
   el('season').hidden = !season;
+  if (season) el('season').textContent = season.icon;
   el('season').classList.toggle('off', !on);
   el('season').setAttribute('aria-pressed', String(on));
   seasonTitle();
-  el('seasonDeco').innerHTML = on
-    ? `${spiderWeb()}${SPIDER}<div class="hw-flash"></div>`
-    : '';
-  el('seasonBack').innerHTML = on ? `${GHOSTS.map(ghost).join('')}<svg class="hw-storm"></svg>` : '';
-  scheduleStrike(4_000);
+  el('seasonDeco').innerHTML = on ? season.deco() : '';
+  el('seasonBack').innerHTML = on ? season.back() : '';
+  scheduleAmbient(4_000);
 }
 el('season').addEventListener('click', () => {
   store.set('seasonOff', seasonOff() ? '' : seasonKey);
