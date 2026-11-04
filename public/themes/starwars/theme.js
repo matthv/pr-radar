@@ -20,24 +20,6 @@
     + '<g class="eye"><circle cx="20" cy="10" r="2.8" fill="var(--sw-r2-line)"/><circle cx="20.8" cy="9.3" r=".8" fill="#fff"/></g>'
     + '<circle class="lamp" cx="25" cy="7.5" r="1" fill="var(--sw-sith)"/></g></g></svg>';
 
-  // Seeded, so the sky stays the same from one load to the next.
-  const STARS = (() => {
-    let seed = 2026_05_04;
-    const random = () => {
-      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
-      return seed / 2_147_483_648;
-    };
-    return Array.from({ length: 88 }, () => ({
-      left: (random() * 100).toFixed(1),
-      top: (random() * 100).toFixed(1),
-      size: (1 + random() * 1.6).toFixed(1),
-      twinkle: random() < 0.35,
-      d: (2.5 + random() * 4).toFixed(1),
-      delay: (-random() * 6).toFixed(1),
-    }));
-  })();
-  const star = ({ left, top, size, twinkle, d, delay }) => `<i class="sw-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
-
   const TIE_FIGHTER = '<svg class="sw-tie" viewBox="-16 -12 32 24">'
     + '<path d="M-15,-11h3l1,3v16l-1,3h-3l1-3v-16zM15,-11h-3l-1,3v16l1,3h3l-1-3v-16z" fill="currentColor"/>'
     + '<path d="M-11,0h22" stroke="currentColor" stroke-width="2.4"/>'
@@ -58,7 +40,7 @@
 
   PRRadarTheme.register({
     front: () => `${DEATH_STAR}${R2D2}<div class="sw-flyby"></div>`,
-    back: () => STARS.map(star).join(''),
+    back: () => PRRadarTheme.stars({ seed: 20260504, count: 88, className: 'sw-star' }),
     ambient: flyby,
     every: [14_000, 30_000],
   });

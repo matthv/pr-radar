@@ -35,7 +35,6 @@ async function readTheme(dir, name) {
   };
 }
 
-// A broken theme is left out and named, never the others with it.
 async function listThemes(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   const themes = [];
@@ -50,4 +49,31 @@ async function listThemes(dir) {
   return { themes, problems };
 }
 
-module.exports = { listThemes };
+const dayKeys = ({ from, to }) => {
+  const keys = new Set();
+  const day = new Date(2024, from[0] - 1, from[1]);
+  for (let step = 0; step < 366; step += 1) {
+    keys.add(`${day.getMonth() + 1}-${day.getDate()}`);
+    if (day.getMonth() + 1 === to[0] && day.getDate() === to[1]) break;
+    day.setDate(day.getDate() + 1);
+  }
+  return keys;
+};
+
+function overlaps(themes) {
+  const seasonal = themes.filter(theme => theme.season).map(theme => ({ name: theme.name, days: dayKeys(theme.season) }));
+  return seasonal.flatMap((a, index) => seasonal.slice(index + 1)
+    .filter(b => [...a.days].some(day => b.days.has(day)))
+    .map(b => [a.name, b.name]));
+}
+
+async function themeFiles(dir) {
+  const folders = (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory());
+  const files = await Promise.all(folders.map(async ({ name }) =>
+    (await fs.readdir(path.join(dir, name)).catch(() => []))
+      .filter(file => /^theme\.(json|css|js)$/.test(file))
+      .map(file => path.join(name, file))));
+  return files.flat();
+}
+
+module.exports = { listThemes, overlaps, themeFiles };

@@ -1,24 +1,6 @@
 'use strict';
 
 (() => {
-  // Seeded, so the sky stays the same from one load to the next.
-  const STARS = (() => {
-    let seed = 1966_09_08;
-    const random = () => {
-      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
-      return seed / 2_147_483_648;
-    };
-    return Array.from({ length: 88 }, () => ({
-      left: (random() * 100).toFixed(1),
-      top: (random() * 100).toFixed(1),
-      size: (1 + random() * 1.6).toFixed(1),
-      twinkle: random() < 0.35,
-      d: (2.5 + random() * 4).toFixed(1),
-      delay: (-random() * 6).toFixed(1),
-    }));
-  })();
-  const star = ({ left, top, size, twinkle, d, delay }) => `<i class="st-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
-
   const CREW = '<svg class="st-crew" viewBox="0 0 24 52"><g stroke="var(--st-line)" stroke-width=".6">'
     + '<rect x="5" y="30" width="6.5" height="19" fill="var(--st-pants)"/><rect x="12.5" y="30" width="6.5" height="19" fill="var(--st-pants)"/>'
     + '<rect x="4.5" y="48" width="7" height="3" rx="1" fill="var(--st-pants)"/><rect x="12.5" y="48" width="7" height="3" rx="1" fill="var(--st-pants)"/>'
@@ -56,7 +38,7 @@
 
   PRRadarTheme.register({
     front: () => `<div class="st-nebula"></div><i class="st-nebula-core"></i>${TRANSPORTER}<div class="st-warp"></div>`,
-    back: () => STARS.map(star).join(''),
+    back: () => PRRadarTheme.stars({ seed: 19660908, count: 88, className: 'st-star' }),
     ambient: warp,
     every: [16_000, 32_000],
   });

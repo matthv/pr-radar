@@ -29,7 +29,7 @@ const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
-const { listThemes } = require('./themes');
+const { listThemes, overlaps, themeFiles } = require('./themes');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -95,9 +95,8 @@ const BOOT_ID = randomUUID().slice(0, 8);
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
 async function assetVersion() {
-  const themeFiles = (await listThemes(THEMES_DIR)).themes.flatMap(({ name, script }) =>
-    ['theme.json', 'theme.css', ...(script ? ['theme.js'] : [])].map(file => `themes/${name}/${file}`));
-  const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themeFiles].sort();
+  const themed = (await themeFiles(THEMES_DIR)).map(file => path.join('themes', file));
+  const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themed].sort();
   const stamps = await Promise.all(
     names.map(async name => `${name}:${(await fs.stat(path.join(PUBLIC_DIR, name))).mtimeMs}`),
   );
@@ -710,6 +709,9 @@ server.listen(PORT, async () => {
   }
   const { themes, problems } = await listThemes(THEMES_DIR);
   for (const problem of problems) logger.fail('theme', `left out, ${problem}`);
+  for (const [first, second] of overlaps(themes)) {
+    logger.fail('theme', `${first} and ${second} share days: ${first} wins, as it comes first by name`);
+  }
   const seasonal = themes.filter(theme => theme.season).map(theme => theme.name);
   const THEME_LINE = (THEME
     ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes, none`)

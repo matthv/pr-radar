@@ -10,8 +10,9 @@ public/themes/<name>/
 ```
 
 Which one is worn: a seasonal theme within its dates, otherwise the one named in
-`PR_RADAR_THEME`, otherwise none. `?theme=<name>` in the address shows any, whatever the date.
-The 🎨 line at start-up says which one is set, and names any folder left out and why.
+`PR_RADAR_THEME`, otherwise none. `?theme=<name>` in the address shows any, whatever the date;
+an unknown name falls back to that rule. The 🎨 line at start-up says which one is set, names
+any folder left out and why, and any two seasons sharing a day (the first by name wins).
 
 ## theme.json
 
@@ -27,6 +28,7 @@ The 🎨 line at start-up says which one is set, and names any folder left out a
 - `icon`: the header button, which turns the theme off and on again.
 - `season` (optional): `[month, day]`, both days included. A window may run over the new
   year (`[12, 20]` to `[1, 5]`). Without it, the theme is only worn through `PR_RADAR_THEME`.
+  Pick days no other season uses.
 
 ## theme.css
 
@@ -65,6 +67,9 @@ Registers what CSS alone cannot draw:
 - `ambient({ front, back })`: called a few seconds after load, then every `every` milliseconds
   (a random delay within the range). It gets the two layers to draw into. Never called when the
   system asks for reduced motion.
+- `PRRadarTheme.stars({ seed, count, className })`: a starfield as HTML, the same on every load
+  for a given seed. Each star is an `<i class="<className>">`, with `twinkle` on about a third,
+  and `--s`, `--d`, `--delay` for its size, twinkle duration and phase.
 
 Everything is optional. Nothing in a theme takes a click: both layers ignore the pointer.
 

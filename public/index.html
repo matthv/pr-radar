@@ -2007,10 +2007,10 @@ el('theme').addEventListener('click', () => {
   applyTheme(next);
 });
 
-// A theme registers its decorations from its own theme.js.
 const PRRadarTheme = (() => {
   let registered = null;
   return {
+    stars: PRRadarDecor.stars,
     register: definition => {
       registered = definition;
     },
@@ -2023,9 +2023,8 @@ const PRRadarTheme = (() => {
 })();
 
 let decor = null;
-// A seasonal theme turned off comes back next year; the default one stays off.
-const decorKey = () => (decor.season ? `${decor.name}-${new Date().getFullYear()}` : decor.name);
-const decorOff = () => Boolean(decor) && store.get('decorOff', '') === decorKey();
+const offThemes = () => PRRadarDecor.readOff(store.get('decorOff', '{}'), store.get('seasonOff', ''));
+const decorOff = () => Boolean(decor) && offThemes()[decor.name] === PRRadarDecor.offKey(decor, new Date());
 
 const loadScript = src => new Promise((resolve, reject) => {
   const script = document.createElement('script');
@@ -2042,9 +2041,10 @@ async function loadDecor() {
   } catch {
     return;
   }
+  const params = new URLSearchParams(location.search);
   const pick = PRRadarDecor.pickDecor(
     { themes: catalog.themes ?? [], fallback: catalog.default },
-    { asked: new URLSearchParams(location.search).get('theme') },
+    { asked: params.get('theme') ?? params.get('season') },
   );
   if (!pick) return;
   decor = { ...pick };
@@ -2062,7 +2062,8 @@ async function loadDecor() {
       definition = null;
     }
   }
-  decor = { ...pick, ...definition, style };
+  const { front, back, ambient, every } = definition ?? {};
+  decor = { ...pick, front, back, ambient, every, style };
   applyDecor();
 }
 
@@ -2098,7 +2099,13 @@ function applyDecor() {
   scheduleAmbient(on ? 4_000 : null);
 }
 el('decor').addEventListener('click', () => {
-  store.set('decorOff', decorOff() ? '' : decorKey());
+  const off = offThemes();
+  if (decorOff()) delete off[decor.name];
+  else off[decor.name] = PRRadarDecor.offKey(decor, new Date());
+  store.set('decorOff', JSON.stringify(off));
+  try {
+    localStorage.removeItem('pr-radar:seasonOff');
+  } catch {}
   applyDecor();
 });
 loadDecor();
