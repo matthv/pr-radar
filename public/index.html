@@ -1247,7 +1247,7 @@
     --sw-core: #e8f4ff;
     --sw-hilt: #6b7280;
     --sw-sith: #dc2626;
-    --sw-star: rgba(40, 52, 85, .3);
+    --season-star: rgba(40, 52, 85, .3);
     --sw-ship: #3f4657;
     --sw-laser: #16a34a;
     --sw-deathstar: rgba(55, 65, 90, .09);
@@ -1260,7 +1260,7 @@
     --sw-core: #ffffff;
     --sw-hilt: #9ca3af;
     --sw-sith: #ff4d4d;
-    --sw-star: rgba(255, 255, 255, .8);
+    --season-star: rgba(255, 255, 255, .8);
     --sw-ship: #b4bccc;
     --sw-laser: #4ade80;
     --sw-deathstar: rgba(205, 215, 240, .08);
@@ -1284,7 +1284,7 @@
                 0 10px 26px -12px color-mix(in srgb, var(--sw-blade) 65%, transparent);
   }
   .sw-deathstar { position: absolute; right: -46px; bottom: -46px; width: 170px; height: 170px; color: var(--sw-deathstar); }
-  .sw-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--sw-star); }
+  .season-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--season-star); }
   .sw-flyby { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }
   .sw-craft { position: relative; width: 34px; height: 26px; color: var(--sw-ship); }
   .sw-flyby.rtl .sw-craft { transform: scaleX(-1); }
@@ -1300,7 +1300,7 @@
   @media (prefers-reduced-motion: no-preference) {
     :root[data-season="starwars"] .brand > span::after { animation: sw-ignite .7s ease-out .4s both, sw-hum 2.6s ease-in-out 1.2s infinite; }
     :root[data-season="starwars"] .empty:not(.kb-cell)::before { animation: hw-float 3s ease-in-out infinite; }
-    .sw-star.twinkle { animation: sw-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
+    .season-star.twinkle { animation: sw-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
   }
   @keyframes sw-ignite { from { background-size: 9px 100%, 0 100%; } to { background-size: 9px 100%, 23px 100%; } }
   @keyframes sw-hum { 0%, 100% { opacity: 1; } 50% { opacity: .82; } }
@@ -1315,6 +1315,84 @@
     100% { opacity: 1; transform: translate(-60px, var(--drop, 0)); }
   }
   @keyframes sw-shot { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(260px); } }
+  :root[data-season="startrek"] {
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #ffe3c2 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #e3defa 0%, transparent 70%);
+    --st-orange: #d97400;
+    --st-lilac: #a066a0;
+    --st-blue: #6b6bdc;
+    --st-peach: #e2794a;
+    --st-gold: #b8860b;
+    --st-ship: #5b6170;
+    --st-bussard: #e04a2a;
+    --st-warp: #3b82f6;
+    --season-star: rgba(40, 52, 85, .3);
+  }
+  :root[data-season="startrek"][data-theme="dark"] {
+    --bg-accent: radial-gradient(1200px 320px at 12% -10%, #3a2200 0%, transparent 70%),
+                 radial-gradient(900px 280px at 88% -14%, #231b45 0%, transparent 70%);
+    --st-orange: #ff9c00;
+    --st-lilac: #cc99cc;
+    --st-blue: #9999ff;
+    --st-peach: #ff9966;
+    --st-gold: #f5c542;
+    --st-ship: #c3c9d6;
+    --st-bussard: #ff6a3d;
+    --st-warp: #7cc4ff;
+    --season-star: rgba(255, 255, 255, .8);
+  }
+  /* The LCARS bar under the header: its segments in the console's own colours. */
+  :root[data-season="startrek"] header {
+    border-bottom: 3px solid transparent;
+    border-image: linear-gradient(to right, var(--st-orange) 0 38%, var(--bg) 38% 38.6%, var(--st-lilac) 38.6% 54%,
+      var(--bg) 54% 54.6%, var(--st-blue) 54.6% 82%, var(--bg) 82% 82.6%, var(--st-peach) 82.6%) 1;
+  }
+  :root[data-season="startrek"] .logo,
+  :root[data-season="startrek"] .brand em a:hover { color: var(--st-orange); }
+  :root[data-season="startrek"] .logo .blip { fill: var(--st-lilac); }
+  :root[data-season="startrek"] #sweepGrad stop { stop-color: var(--st-orange); }
+  :root[data-season="startrek"] #sweepGrad stop:last-child { stop-color: var(--st-blue); }
+  /* The Starfleet delta. */
+  :root[data-season="startrek"] .brand > span::after {
+    content: ""; display: inline-block; width: 12px; height: 17px; margin-left: 8px; vertical-align: -2px;
+    background: linear-gradient(160deg, var(--st-gold), color-mix(in srgb, var(--st-gold) 60%, #000));
+    clip-path: polygon(50% 0, 100% 100%, 50% 76%, 0 100%);
+  }
+  :root[data-season="startrek"] .empty:not(.kb-cell)::before { content: "🛰️"; display: block; font-size: 24px; margin-bottom: 6px; }
+  :root[data-season="startrek"] .card:hover {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-orange) 40%, transparent),
+                0 10px 26px -12px color-mix(in srgb, var(--st-orange) 60%, transparent);
+  }
+  .st-warp { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }
+  /* Stretched from its bow, so the streak trails behind it. */
+  .st-warp { transform-origin: 100% 50%; }
+  .st-warp.rtl { transform-origin: 0 50%; }
+  .st-craft { width: 52px; height: 24px; color: var(--st-ship); }
+  .st-warp.rtl .st-craft { transform: scaleX(-1); }
+  .st-ship { width: 100%; height: 100%; overflow: visible; }
+  .st-warp.engage { animation: st-engage 7s linear; }
+  .st-warp.rtl.engage { animation-name: st-engage-back; }
+  @media (prefers-reduced-motion: no-preference) {
+    :root[data-season="startrek"] .brand > span::after { animation: st-shine 4s ease-in-out infinite; }
+    :root[data-season="startrek"] .empty:not(.kb-cell)::before { animation: hw-float 3s ease-in-out infinite; }
+  }
+  @keyframes st-shine { 0%, 80%, 100% { filter: brightness(1); } 88% { filter: brightness(1.6); } }
+  @keyframes st-engage {
+    0% { opacity: 0; transform: translateX(-70px); }
+    6% { opacity: 1; }
+    74% { opacity: 1; transform: translateX(38vw) scaleX(1); filter: none; }
+    80% { transform: translateX(44vw) scaleX(4); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+    86% { opacity: 1; transform: translateX(115vw) scaleX(7); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+    100% { opacity: 0; transform: translateX(115vw) scaleX(7); }
+  }
+  @keyframes st-engage-back {
+    0% { opacity: 0; transform: translateX(calc(100vw + 20px)); }
+    6% { opacity: 1; }
+    74% { opacity: 1; transform: translateX(58vw) scaleX(1); filter: none; }
+    80% { transform: translateX(52vw) scaleX(4); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+    86% { opacity: 1; transform: translateX(-20vw) scaleX(7); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+    100% { opacity: 0; transform: translateX(-20vw) scaleX(7); }
+  }
 </style>
 </head>
 <body>
@@ -2178,6 +2256,12 @@ const SEASONS = [
     ambient: flyby, every: [14_000, 30_000],
   },
   {
+    name: 'startrek', label: 'Star Trek', icon: '🖖', from: [9, 8], to: [9, 10],
+    deco: () => '<div class="st-warp"></div>',
+    back: () => STARS.map(star).join(''),
+    ambient: warp, every: [16_000, 32_000],
+  },
+  {
     name: 'halloween', label: 'Halloween', icon: '🎃', from: [10, 26], to: [10, 31],
     deco: () => `${spiderWeb()}${SPIDER}<div class="hw-flash"></div>`,
     back: () => `${GHOSTS.map(ghost).join('')}<svg class="hw-storm"></svg>`,
@@ -2313,7 +2397,7 @@ const STARS = (() => {
     delay: (-random() * 6).toFixed(1),
   }));
 })();
-const star = ({ left, top, size, twinkle, d, delay }) => `<i class="sw-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
+const star = ({ left, top, size, twinkle, d, delay }) => `<i class="season-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
 
 const TIE_FIGHTER = '<svg class="sw-tie" viewBox="-16 -12 32 24">'
   + '<path d="M-15,-11h3l1,3v16l-1,3h-3l1-3v-16zM15,-11h-3l-1,3v16l1,3h3l-1-3v-16z" fill="currentColor"/>'
@@ -2332,6 +2416,26 @@ function flyby() {
   lane.classList.remove('fly');
   void lane.getBoundingClientRect();
   lane.classList.add('fly');
+}
+
+const ENTERPRISE = '<svg class="st-ship" viewBox="-28 -12 52 24">'
+  + '<g fill="currentColor"><rect x="-26" y="-10" width="17" height="3" rx="1.5"/><rect x="-26" y="7" width="17" height="3" rx="1.5"/>'
+  + '<path d="M-7,0L-13,-8M-7,0L-13,8" stroke="currentColor" stroke-width="1.4"/>'
+  + '<ellipse cx="-6" cy="0" rx="8" ry="2.6"/><rect x="0" y="-1.2" width="6" height="2.4"/><circle cx="13" cy="0" r="10"/></g>'
+  + '<circle cx="13" cy="0" r="3.2" fill="var(--bg)" opacity=".35"/>'
+  + '<circle cx="-9.5" cy="-8.5" r="1.4" fill="var(--st-bussard)"/><circle cx="-9.5" cy="8.5" r="1.4" fill="var(--st-bussard)"/>'
+  + '<path d="M-24,-8.5h12M-24,8.5h12" stroke="var(--st-warp)" stroke-width="1"/></svg>';
+
+// The Enterprise drifts in at impulse, then stretches and jumps to warp.
+function warp() {
+  const lane = el('seasonDeco').querySelector('.st-warp');
+  if (!lane) return;
+  lane.classList.toggle('rtl', Math.random() < 0.5);
+  lane.style.setProperty('--y', `${(8 + Math.random() * 30).toFixed(0)}vh`);
+  lane.innerHTML = `<div class="st-craft">${ENTERPRISE}</div>`;
+  lane.classList.remove('engage');
+  void lane.getBoundingClientRect();
+  lane.classList.add('engage');
 }
 
 const calm = matchMedia('(prefers-reduced-motion: reduce)');

@@ -1236,6 +1236,7 @@ its own within its dates (`SEASONS` in `public/index.html`) and sleeps the rest 
 | Season | Dates | What it adds |
 |---|---|---|
 | `starwars` 🌌 | May 4–6 | A lightsaber by the title, a starfield, the Death Star in a corner, a TIE fighter crossing now and then |
+| `startrek` 🖖 | September 8–10 | The Starfleet delta by the title, an LCARS bar under the header, a starfield, the Enterprise jumping to warp now and then |
 | `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
 
 - **The board's own colours never change.** Indigo, amber, green and red keep saying what
