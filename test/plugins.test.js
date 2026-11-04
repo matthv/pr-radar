@@ -3,17 +3,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { load, normalise, decoratePr, pluginWarnings, focusSession } = require('../plugins');
+const { load, normalise, decoratePr, pluginWarnings, focusSession, openSession } = require('../plugins');
 
 const pr = number => ({ id: `p${number}`, repo: 'o/r', number });
 
-test('load reads each comma-separated path and refuses a module with neither decorate() nor focus()', () => {
-  const modules = { '/a.cjs': { name: 'a', decorate: () => ({}) }, '/b.cjs': { decorate: () => ({}) }, '/f.cjs': { focus: () => true }, '/bad.cjs': {} };
+test('load reads each comma-separated path and refuses a module with none of decorate(), focus() or open()', () => {
+  const modules = { '/a.cjs': { name: 'a', decorate: () => ({}) }, '/b.cjs': { decorate: () => ({}) }, '/f.cjs': { focus: () => true }, '/o.cjs': { open: () => true }, '/bad.cjs': {} };
   const req = file => modules[file];
   assert.deepEqual(load(' /a.cjs, ,/b.cjs ', req).map(plugin => plugin.name), ['a', 'b.cjs']);
   assert.deepEqual(load('', req), []);
   assert.deepEqual(load('/f.cjs', req).map(plugin => [plugin.name, plugin.decorate]), [['f.cjs', null]]);
-  assert.throws(() => load('/bad.cjs', req), /exports neither decorate\(\) nor focus\(\)/);
+  assert.deepEqual(load('/o.cjs', req).map(plugin => [plugin.name, plugin.decorate, plugin.focus]), [['o.cjs', null, null]]);
+  assert.throws(() => load('/bad.cjs', req), /exports none of decorate\(\), focus\(\) or open\(\)/);
   assert.throws(() => load('/missing.cjs', () => { throw new Error('nope'); }), /cannot load \/missing.cjs: nope/);
 });
 
@@ -78,8 +79,19 @@ test('focusSession takes the first plugin that brought the session forward, and 
   const focuses = { name: 'focuses', focus: async () => true };
   const never = { name: 'never', focus: () => assert.fail('the first answer wins') };
 
-  assert.deepEqual(await focusSession([broken, declines, focuses, never], session), { focused: true, failures: ['broken: no port'] });
+  assert.deepEqual(await focusSession([broken, declines, focuses, never], session), { done: true, failures: ['broken: no port'] });
   assert.deepEqual(seen, [session]);
-  assert.deepEqual(await focusSession([broken, declines], session), { focused: false, failures: ['broken: no port'] });
-  assert.deepEqual(await focusSession([{ name: 'd', decorate: () => ({}), focus: null }], session), { focused: false, failures: [] });
+  assert.deepEqual(await focusSession([broken, declines], session), { done: false, failures: ['broken: no port'] });
+  assert.deepEqual(await focusSession([{ name: 'd', decorate: () => ({}), focus: null }], session), { done: false, failures: [] });
+});
+
+test('openSession asks only the plugins that open, the first true winning', async () => {
+  const session = { sessionId: 's', cwd: '/repo' };
+  const seen = [];
+  const focusOnly = { name: 'f', focus: () => assert.fail('focus is not open') };
+  const opens = { name: 'o', open: async got => (seen.push(got), true) };
+
+  assert.deepEqual(await openSession([focusOnly, opens], session), { done: true, failures: [] });
+  assert.deepEqual(seen, [session]);
+  assert.deepEqual(await openSession([focusOnly], session), { done: false, failures: [] });
 });

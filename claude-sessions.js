@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
-const { focusSession } = require('./plugins');
+const { focusSession, openSession } = require('./plugins');
 const { firstTicket, pathTicket } = require('./ticket');
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
@@ -461,7 +461,7 @@ async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR, plugins 
   for (const pid of claudePids) {
     const session = { sessionId, pid, tty: processes.get(pid).tty, ancestors: ancestorsOf(pid, processes) };
     const answer = await focusSession(plugins, session);
-    if (answer.focused) return true;
+    if (answer.done) return true;
     failures.push(...answer.failures);
   }
   throw new Error(`this session is already open, in a terminal PR Radar cannot bring forward${failures.length ? ` (${failures.join('; ')})` : ''}`);
@@ -492,7 +492,9 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
     if (!session) return [404, 'no Claude session linked to this PR'];
   }
   try {
-    if (!(await focusRunning(session.sessionId, { exec, dir: runningDir, plugins }))) await openInTerminal(session, terminal, exec);
+    if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins })) return [200, null];
+    // A plugin may open it where its user runs Claude; when none does, the terminal of the setting.
+    if (!(await openSession(plugins, { sessionId: session.sessionId, cwd: session.cwd })).done) await openInTerminal(session, terminal, exec);
     return [200, null];
   } catch (error) {
     return [502, error.message];

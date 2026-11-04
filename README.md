@@ -787,8 +787,11 @@ module.exports = {
 ```
 
 The first `true` wins. A plugin that throws is passed over, and its message joins the error the
-click shows when none could. It runs only for a session already running: one that is not opens
-in `PR_RADAR_TERMINAL` as before.
+click shows when none could. It runs only for a session already running.
+
+**A session that is not running** is offered to `open(session)` the same way, with
+`{ sessionId, cwd }`, before the radar opens it in `PR_RADAR_TERMINAL`. A plugin opening it in the
+app its user runs Claude in answers true; one that declines or throws leaves it to the terminal.
 
 ## The Slack announcement link
 

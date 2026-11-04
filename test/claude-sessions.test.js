@@ -404,6 +404,23 @@ describe('the resume route', () => {
     assert.equal(args.at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
   });
 
+  test('a session not running opens through a plugin when one takes it, the terminal never asked', async () => {
+    const opened = [];
+    const plugin = { name: 'arbor', focus: null, open: async session => (opened.push(session), true) };
+
+    assert.deepEqual(await resume(request(), context({ plugins: [plugin] })), [200, null]);
+    assert.deepEqual(opened, [{ sessionId: OLDER, cwd: os.tmpdir() }]);
+  });
+
+  test('a plugin that declines or fails to open leaves the session to the terminal', async () => {
+    const calls = [];
+    const exec = async (command, args) => (calls.push([command, ...args]), '');
+    const failing = { name: 'arbor', open: async () => { throw new Error('app not running'); } };
+
+    assert.deepEqual(await resume(request(), context({ exec, plugins: [failing, { name: 'no', open: async () => false }] })), [200, null]);
+    assert.equal(calls[0].at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
+  });
+
   test('a session row resumes its own session, only one the board listed', async () => {
     await sessions({ dir: runningDir });
     const calls = [];

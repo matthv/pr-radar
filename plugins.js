@@ -12,7 +12,9 @@ const path = require('node:path');
 // claims someone else's PR for review and says whose turn it is: { claimedBy, since, turn, why }.
 // A plugin may also, or instead, export `focus(session)`, asked to bring forward a running Claude
 // session that lives where the radar's own terminals cannot reach: it gets { sessionId, pid, tty,
-// ancestors } (the commands above the session, nearest first) and answers true once it did.
+// ancestors } (the commands above the session, nearest first) and answers true once it did. And
+// `open(session)`, asked to start a session that is not running, before the radar falls back to
+// PR_RADAR_TERMINAL: it gets { sessionId, cwd } and answers true once the session is open.
 const KINDS = new Set(['', 'todo', 'pending', 'good', 'alert']);
 const TURNS = new Set(['me', 'author', 'bot']);
 
@@ -31,8 +33,9 @@ function load(value, req = require) {
       }
       const decorate = typeof plugin?.decorate === 'function' ? plugin.decorate : null;
       const focus = typeof plugin?.focus === 'function' ? plugin.focus : null;
-      if (!decorate && !focus) throw new Error(`PR_RADAR_PLUGINS: ${entry} exports neither decorate() nor focus()`);
-      return { name: String(plugin.name ?? path.basename(file)), decorate, focus };
+      const open = typeof plugin?.open === 'function' ? plugin.open : null;
+      if (!decorate && !focus && !open) throw new Error(`PR_RADAR_PLUGINS: ${entry} exports none of decorate(), focus() or open()`);
+      return { name: String(plugin.name ?? path.basename(file)), decorate, focus, open };
     });
 }
 
@@ -90,19 +93,22 @@ const pluginWarnings = failures => [...failures.entries()].map(([name, { count, 
   message: `${name} failed on ${count} PR(s), first ${first}`,
 }));
 
-// The first plugin that brings the session forward wins. One that throws is passed over, so a
-// broken plugin never hides another's, and its message comes back for the error the click shows.
-async function focusSession(plugins, session) {
+// The first plugin whose `hook` answers true wins. One that throws is passed over, so a broken
+// plugin never hides another's, and its message comes back for the error the click shows.
+async function ask(plugins, hook, session) {
   const failures = [];
   for (const plugin of plugins) {
-    if (!plugin.focus) continue;
+    if (!plugin[hook]) continue;
     try {
-      if (await plugin.focus(session)) return { focused: true, failures };
+      if (await plugin[hook](session)) return { done: true, failures };
     } catch (error) {
       failures.push(`${plugin.name}: ${error.message}`);
     }
   }
-  return { focused: false, failures };
+  return { done: false, failures };
 }
 
-module.exports = { load, normalise, decoratePr, pluginWarnings, focusSession };
+const focusSession = (plugins, session) => ask(plugins, 'focus', session);
+const openSession = (plugins, session) => ask(plugins, 'open', session);
+
+module.exports = { load, normalise, decoratePr, pluginWarnings, focusSession, openSession };
