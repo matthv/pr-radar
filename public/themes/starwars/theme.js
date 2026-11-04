@@ -7,6 +7,19 @@
     + '<circle cx="34" cy="31" r="11" fill="var(--bg)" opacity=".35"/><circle cx="34" cy="31" r="3" fill="var(--bg)" opacity=".6"/>'
     + '<path d="M50,2v45M50,52v46M14,18l30,29M86,82l-30-30" stroke="var(--bg)" stroke-width=".6" opacity=".35" fill="none"/></svg>';
 
+  const R2D2 = '<svg class="sw-r2" viewBox="0 0 40 48"><g class="rock" stroke="var(--sw-r2-line)" stroke-width=".8">'
+    + '<rect x="1" y="18" width="6" height="25" rx="2" fill="var(--sw-r2-body)"/><path d="M0,47l2-5h4l2,5z" fill="var(--sw-r2-dome)"/>'
+    + '<rect x="33" y="18" width="6" height="25" rx="2" fill="var(--sw-r2-body)"/><path d="M32,47l2-5h4l2,5z" fill="var(--sw-r2-dome)"/>'
+    + '<rect x="16" y="41" width="8" height="5" fill="var(--sw-r2-dome)"/>'
+    + '<rect x="7" y="17" width="26" height="25" rx="2" fill="var(--sw-r2-body)"/>'
+    + '<g fill="var(--sw-r2-blue)" stroke="none"><rect x="11" y="21" width="6" height="3"/><rect x="21" y="21" width="8" height="3"/>'
+    + '<rect x="11" y="27" width="3" height="11"/><rect x="26" y="27" width="3" height="11"/></g>'
+    + '<rect x="17" y="27" width="6" height="9" fill="var(--sw-r2-dome)"/>'
+    + '<path d="M7,17A13,13 0 0 1 33,17Z" fill="var(--sw-r2-dome)"/>'
+    + '<g stroke="none"><rect x="10" y="12" width="4" height="3" fill="var(--sw-r2-blue)"/><rect x="26" y="12" width="4" height="3" fill="var(--sw-r2-blue)"/>'
+    + '<g class="eye"><circle cx="20" cy="10" r="2.8" fill="var(--sw-r2-line)"/><circle cx="20.8" cy="9.3" r=".8" fill="#fff"/></g>'
+    + '<circle class="lamp" cx="25" cy="7.5" r="1" fill="var(--sw-sith)"/></g></g></svg>';
+
   // Seeded, so the sky stays the same from one load to the next.
   const STARS = (() => {
     let seed = 2026_05_04;
@@ -44,7 +57,7 @@
   }
 
   PRRadarTheme.register({
-    front: () => `${DEATH_STAR}<div class="sw-flyby"></div>`,
+    front: () => `${DEATH_STAR}${R2D2}<div class="sw-flyby"></div>`,
     back: () => STARS.map(star).join(''),
     ambient: flyby,
     every: [14_000, 30_000],

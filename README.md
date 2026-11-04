@@ -1236,7 +1236,7 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 
 | Theme | Season | What it adds |
 |---|---|---|
-| `starwars` 🌌 | May 4–6 | A lightsaber by the title, a starfield, the Death Star in a corner, a TIE fighter crossing now and then |
+| `starwars` 🌌 | May 4–6 | A lightsaber by the title, a starfield, the Death Star in a corner, R2-D2 rolling in and out at the bottom left, a TIE fighter crossing now and then |
 | `startrek` 🖖 | September 8–10 | The Starfleet delta by the title, an LCARS bar under the header, a starfield, the Enterprise jumping to warp now and then |
 | `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
 

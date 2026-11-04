@@ -10,6 +10,10 @@
   --sw-ship: #3f4657;
   --sw-laser: #16a34a;
   --sw-deathstar: rgba(55, 65, 90, .09);
+  --sw-r2-body: #f4f6fa;
+  --sw-r2-dome: #d5dae3;
+  --sw-r2-blue: #1d4ed8;
+  --sw-r2-line: #4b5563;
 }
 :root[data-theme="dark"] {
   --bg-accent: radial-gradient(1200px 320px at 12% -10%, #2b2600 0%, transparent 70%),
@@ -23,6 +27,10 @@
   --sw-ship: #b4bccc;
   --sw-laser: #4ade80;
   --sw-deathstar: rgba(205, 215, 240, .08);
+  --sw-r2-body: #e5e9f0;
+  --sw-r2-dome: #b8c0cc;
+  --sw-r2-blue: #3b82f6;
+  --sw-r2-line: #1f2937;
 }
 header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--border)); }
 .logo,
@@ -42,6 +50,10 @@ header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--borde
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--sw-blade) 40%, transparent),
               0 10px 26px -12px color-mix(in srgb, var(--sw-blade) 65%, transparent);
 }
+/* R2-D2 rolls in from the bottom left corner, looks around, and rolls back out: most of the
+   cycle it waits out of sight. */
+.sw-r2 { position: absolute; left: 0; bottom: 4px; width: 34px; height: 41px; transform: translateX(-56px); }
+.sw-r2 .rock { transform-box: fill-box; transform-origin: 50% 100%; }
 .sw-deathstar { position: absolute; right: -46px; bottom: -46px; width: 170px; height: 170px; color: var(--sw-deathstar); }
 .sw-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--sw-star); }
 .sw-flyby { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }
@@ -57,6 +69,10 @@ header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--borde
 .sw-flyby.fly .sw-bolt { animation: sw-shot .6s linear 3 1s; }
 .sw-flyby.fly .sw-bolt.b { animation-delay: 1.15s; }
 @media (prefers-reduced-motion: no-preference) {
+  .sw-r2 { animation: sw-r2-roll 24s ease-in-out infinite 6s; }
+  .sw-r2 .rock { animation: sw-r2-rock .45s ease-in-out infinite alternate; }
+  .sw-r2 .eye { animation: sw-r2-look 24s ease-in-out infinite 6s; }
+  .sw-r2 .lamp { animation: sw-r2-blink 1.3s steps(1) infinite; }
   .brand > span::after { animation: sw-ignite .7s ease-out .4s both, sw-hum 2.6s ease-in-out 1.2s infinite; }
   .empty:not(.kb-cell)::before { animation: sw-float 3s ease-in-out infinite; }
   .sw-star.twinkle { animation: sw-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
@@ -75,3 +91,15 @@ header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--borde
 }
 @keyframes sw-shot { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(260px); } }
 @keyframes sw-float { 0%, 100% { transform: translateY(0); opacity: .8; } 50% { transform: translateY(-5px); opacity: 1; } }
+@keyframes sw-r2-roll {
+  0%, 56% { transform: translateX(-56px); }
+  64%, 80% { transform: translateX(14px); }
+  88%, 100% { transform: translateX(-56px); }
+}
+@keyframes sw-r2-rock { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+@keyframes sw-r2-look {
+  0%, 66%, 78%, 100% { transform: translateX(0); }
+  69%, 71% { transform: translateX(-3px); }
+  74%, 76% { transform: translateX(3px); }
+}
+@keyframes sw-r2-blink { 0% { fill: var(--sw-sith); } 50% { fill: var(--sw-r2-blue); } }
