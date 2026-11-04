@@ -10,6 +10,9 @@
   --st-bussard: #e04a2a;
   --st-warp: #3b82f6;
   --st-star: rgba(40, 52, 85, .3);
+  --st-nebula-a: rgba(160, 102, 160, .32);
+  --st-nebula-b: rgba(107, 107, 220, .28);
+  --st-nebula-c: rgba(226, 121, 74, .24);
 }
 :root[data-theme="dark"] {
   --bg-accent: radial-gradient(1200px 320px at 12% -10%, #3a2200 0%, transparent 70%),
@@ -23,6 +26,9 @@
   --st-bussard: #ff6a3d;
   --st-warp: #7cc4ff;
   --st-star: rgba(255, 255, 255, .8);
+  --st-nebula-a: rgba(204, 153, 204, .4);
+  --st-nebula-b: rgba(120, 130, 255, .36);
+  --st-nebula-c: rgba(255, 153, 102, .3);
 }
 /* The LCARS bar under the header: its segments in the console's own colours. */
 header {
@@ -55,8 +61,18 @@ header {
 .st-ship { width: 100%; height: 100%; overflow: visible; }
 .st-warp.engage { animation: st-engage 7s linear; }
 .st-warp.rtl.engage { animation-name: st-engage-back; }
+/* A nebula in the bottom right corner: clouds of gas, blurred, drifting slowly. */
+.st-nebula {
+  position: absolute; right: -90px; bottom: -90px; width: 320px; height: 320px; filter: blur(12px);
+  background: radial-gradient(38% 30% at 42% 46%, var(--st-nebula-a), transparent 70%),
+              radial-gradient(34% 40% at 62% 58%, var(--st-nebula-b), transparent 72%),
+              radial-gradient(26% 22% at 34% 66%, var(--st-nebula-c), transparent 70%),
+              radial-gradient(22% 30% at 66% 32%, var(--st-nebula-a), transparent 70%);
+}
+.st-nebula-core { position: absolute; right: 38px; bottom: 34px; width: 3px; height: 3px; border-radius: 50%; background: var(--st-star); box-shadow: 0 0 6px 2px var(--st-nebula-b); }
 .st-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--st-star); }
 @media (prefers-reduced-motion: no-preference) {
+  .st-nebula { animation: st-drift 40s ease-in-out infinite alternate; }
   .st-star.twinkle { animation: st-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
   .brand > span::after { animation: st-shine 4s ease-in-out infinite; }
   .empty:not(.kb-cell)::before { animation: st-float 3s ease-in-out infinite; }
@@ -80,3 +96,4 @@ header {
 }
 @keyframes st-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @keyframes st-float { 0%, 100% { transform: translateY(0); opacity: .8; } 50% { transform: translateY(-5px); opacity: 1; } }
+@keyframes st-drift { from { transform: rotate(0) scale(1); } to { transform: rotate(18deg) scale(1.08); } }

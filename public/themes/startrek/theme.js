@@ -40,7 +40,7 @@
   }
 
   PRRadarTheme.register({
-    front: () => '<div class="st-warp"></div>',
+    front: () => '<div class="st-nebula"></div><i class="st-nebula-core"></i><div class="st-warp"></div>',
     back: () => STARS.map(star).join(''),
     ambient: warp,
     every: [16_000, 32_000],
