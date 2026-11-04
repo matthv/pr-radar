@@ -19,6 +19,21 @@
   })();
   const star = ({ left, top, size, twinkle, d, delay }) => `<i class="st-star${twinkle ? ' twinkle' : ''}" style="left:${left}%;top:${top}%;--s:${size}px;--d:${d}s;--delay:${delay}s"></i>`;
 
+  const CREW = '<svg class="st-crew" viewBox="0 0 24 52"><g stroke="var(--st-line)" stroke-width=".6">'
+    + '<rect x="5" y="30" width="6.5" height="19" fill="var(--st-pants)"/><rect x="12.5" y="30" width="6.5" height="19" fill="var(--st-pants)"/>'
+    + '<rect x="4.5" y="48" width="7" height="3" rx="1" fill="var(--st-pants)"/><rect x="12.5" y="48" width="7" height="3" rx="1" fill="var(--st-pants)"/>'
+    + '<rect x="1" y="13.5" width="3.6" height="15" rx="1.8" fill="var(--st-shirt)"/><rect x="19.4" y="13.5" width="3.6" height="15" rx="1.8" fill="var(--st-shirt)"/>'
+    + '<circle cx="2.8" cy="29.5" r="1.7" fill="var(--st-skin)"/><circle cx="21.2" cy="29.5" r="1.7" fill="var(--st-skin)"/>'
+    + '<path d="M4.5,14Q12,10.5 19.5,14L19.5,31H4.5Z" fill="var(--st-shirt)"/>'
+    + '<rect x="10.3" y="9" width="3.4" height="3" fill="var(--st-skin)"/>'
+    + '<circle cx="12" cy="6" r="4.4" fill="var(--st-skin)"/></g>'
+    + '<path d="M7.6,6.2C7.4,2.6 9.6,1.4 12,1.4S16.6,2.6 16.4,6.2C15.4,4.2 13.6,3.6 12,3.6S8.6,4.2 7.6,6.2Z" fill="var(--st-pants)"/>'
+    + '<path d="M8.6,12.4Q12,14.6 15.4,12.4" stroke="var(--st-pants)" stroke-width="1.4" fill="none"/>'
+    + '<path d="M8,16.2l1.2,3.4l-1.2,-.9l-1.2,.9z" fill="var(--st-gold)"/></svg>';
+  const SPARKLES = Array.from({ length: 12 }, (_, index) =>
+    `<i style="--x:${(8 + (index * 37) % 84)}%;--y:${(index * 23) % 78}%;--d:${(-(index * 0.37) % 1.1).toFixed(2)}s"></i>`).join('');
+  const TRANSPORTER = `<div class="st-transporter"><div class="st-beam">${SPARKLES}</div>${CREW}</div>`;
+
   const ENTERPRISE = '<svg class="st-ship" viewBox="-28 -12 52 24">'
     + '<g fill="currentColor"><rect x="-26" y="-10" width="17" height="3" rx="1.5"/><rect x="-26" y="7" width="17" height="3" rx="1.5"/>'
     + '<path d="M-7,0L-13,-8M-7,0L-13,8" stroke="currentColor" stroke-width="1.4"/>'
@@ -40,7 +55,7 @@
   }
 
   PRRadarTheme.register({
-    front: () => '<div class="st-nebula"></div><i class="st-nebula-core"></i><div class="st-warp"></div>',
+    front: () => `<div class="st-nebula"></div><i class="st-nebula-core"></i>${TRANSPORTER}<div class="st-warp"></div>`,
     back: () => STARS.map(star).join(''),
     ambient: warp,
     every: [16_000, 32_000],

@@ -13,6 +13,12 @@
   --st-nebula-a: rgba(160, 102, 160, .32);
   --st-nebula-b: rgba(107, 107, 220, .28);
   --st-nebula-c: rgba(226, 121, 74, .24);
+  --st-beam: rgba(245, 197, 66, .35);
+  --st-sparkle: #d4a017;
+  --st-shirt: #c62828;
+  --st-skin: #e0b48a;
+  --st-pants: #1f2937;
+  --st-line: #4b5563;
 }
 :root[data-theme="dark"] {
   --bg-accent: radial-gradient(1200px 320px at 12% -10%, #3a2200 0%, transparent 70%),
@@ -29,6 +35,12 @@
   --st-nebula-a: rgba(204, 153, 204, .4);
   --st-nebula-b: rgba(120, 130, 255, .36);
   --st-nebula-c: rgba(255, 153, 102, .3);
+  --st-beam: rgba(255, 224, 130, .45);
+  --st-sparkle: #fff3c4;
+  --st-shirt: #ef4444;
+  --st-skin: #d9a77c;
+  --st-pants: #374151;
+  --st-line: #9ca3af;
 }
 /* The LCARS bar under the header: its segments in the console's own colours. */
 header {
@@ -61,6 +73,18 @@ header {
 .st-ship { width: 100%; height: 100%; overflow: visible; }
 .st-warp.engage { animation: st-engage 7s linear; }
 .st-warp.rtl.engage { animation-name: st-engage-back; }
+/* A crew member beams in at the bottom left corner, stands a while, and beams out again: most of
+   the cycle the pad is empty. */
+.st-transporter { position: absolute; left: 16px; bottom: 4px; width: 26px; height: 54px; }
+.st-beam {
+  position: absolute; inset: -6px -5px 0; opacity: 0; border-radius: 50% / 18%;
+  background: linear-gradient(to top, transparent, var(--st-beam) 18%, var(--st-beam) 82%, transparent);
+}
+.st-beam i {
+  position: absolute; left: var(--x); bottom: var(--y); width: 2px; height: 2px; border-radius: 50%; opacity: 0;
+  background: var(--st-sparkle); box-shadow: 0 0 3px var(--st-sparkle);
+}
+.st-crew { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
 /* A nebula in the bottom right corner: clouds of gas, blurred, drifting slowly. */
 .st-nebula {
   position: absolute; right: -180px; bottom: -180px; width: 640px; height: 640px; filter: blur(24px);
@@ -72,6 +96,9 @@ header {
 .st-nebula-core { position: absolute; right: 38px; bottom: 34px; width: 3px; height: 3px; border-radius: 50%; background: var(--st-star); box-shadow: 0 0 6px 2px var(--st-nebula-b); }
 .st-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--st-star); }
 @media (prefers-reduced-motion: no-preference) {
+  .st-beam { animation: st-beam 24s linear infinite 3s; }
+  .st-beam i { animation: st-sparkle 1.1s ease-in infinite; animation-delay: var(--d); }
+  .st-crew { animation: st-crew 24s linear infinite 3s; }
   .st-nebula { animation: st-drift 40s ease-in-out infinite alternate; }
   .st-star.twinkle { animation: st-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
   .brand > span::after { animation: st-shine 4s ease-in-out infinite; }
@@ -97,3 +124,22 @@ header {
 @keyframes st-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @keyframes st-float { 0%, 100% { transform: translateY(0); opacity: .8; } 50% { transform: translateY(-5px); opacity: 1; } }
 @keyframes st-drift { from { transform: rotate(0) scale(1); } to { transform: rotate(18deg) scale(1.08); } }
+@keyframes st-beam {
+  0%, 50% { opacity: 0; }
+  54%, 60% { opacity: 1; }
+  63%, 78% { opacity: 0; }
+  81%, 86% { opacity: 1; }
+  89%, 100% { opacity: 0; }
+}
+@keyframes st-crew {
+  0%, 54% { opacity: 0; filter: brightness(3); }
+  60% { opacity: 1; filter: brightness(1.6); }
+  63%, 81% { opacity: 1; filter: brightness(1); }
+  84% { opacity: .8; filter: brightness(1.8); }
+  87%, 100% { opacity: 0; filter: brightness(3); }
+}
+@keyframes st-sparkle {
+  from { opacity: 0; transform: translateY(0); }
+  30% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-24px); }
+}
