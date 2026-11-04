@@ -15,12 +15,11 @@
   }
 
   // One group per ticket: its PRs, whichever side they sit on, and the sessions working on
-  // it. The most recently active first; whatever names no ticket last, together. A session
-  // shows when it is running, or when its ticket has a PR on the board: a finished session
-  // about nothing on the board is history, and sixty days of it would bury the rest.
+  // it. The most recently active first; whatever names no ticket last, together. Only a
+  // running session shows: a finished one that opened a PR is the button on that PR's card
+  // already, and the rest is history.
   function group(prs, sessions) {
-    const onBoard = new Set(prs.map(pr => pr.ticket).filter(Boolean));
-    const shown = sessions.filter(session => session.status != null || (session.ticket && onBoard.has(session.ticket)));
+    const shown = sessions.filter(session => session.status != null);
     const groups = new Map();
     const of = ticket => {
       if (!groups.has(ticket)) groups.set(ticket, { ticket, prs: [], sessions: [], activeAt: 0 });

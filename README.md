@@ -593,18 +593,18 @@ way, so the session waiting for you stands out without reading every card.
   touching two tickets sits under one of them only.
 - **A row says what the session is doing.** Its name, the one its terminal tab shows when it
   runs, else the title Claude gave it; that title; its status from Claude Code's registry,
-  **busy**, **idle** in the "your move" colour since an idle session is waiting for an answer,
-  or *not running*; the last skill it ran, read from its `Skill` calls; how long ago it moved.
+  **busy**, or **idle** in the "your move" colour since an idle session is waiting for an
+  answer; the last skill it ran, read from its `Skill` calls; how long ago it moved.
   A group holding an idle session, or a card asking for action, wears the same colour.
 - **The same transcripts as the card's button**, read the same way: once, then only what was
   appended. Only sessions active within `PR_RADAR_MAX_AGE_DAYS` are listed, plus any running
   one that has not written yet. A headless `claude -p` run never waits on anyone and is left
   out. The registry is read again on every poll of the page, so a status follows within the
   page's own refresh.
-- **A session shows when it is running, or when its ticket has a PR on the board.** A finished
-  session about nothing on the board is history: sixty days of them buried the groups that
-  matter. A ticket with nothing but a running session still gets its group, since work starts
-  before its first PR.
+- **Only a running session shows.** A finished one that opened a PR is already the button on
+  that PR's card, and the rest is history: sixty days of them buried the groups that matter. A
+  ticket with nothing but a running session still gets its group, since work starts before its
+  first PR.
 - **What names no ticket goes last**, under *No ticket*: its PRs and its running sessions.
 - **Groups fold** like the board's, kept with them in `pr-radar:collapsed`. The project picker,
   the snoozes and the hidden drafts apply to the cards; the sessions have no repo and always

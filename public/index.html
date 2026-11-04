@@ -1748,7 +1748,6 @@ const I18N = {
     sessionStatus_busy: 'au travail',
     sessionStatus_idle: 'en attente',
     sessionIdleTitle: 'ouverte, elle attend une réponse',
-    sessionClosed: 'fermée',
     sessionSkillTitle: 'dernier skill lancé dans cette session',
     sessionResumeTitle: 'ramener cette session Claude au premier plan, ou la reprendre dans un terminal',
     kanbanAction: 'À moi',
@@ -1976,7 +1975,6 @@ const I18N = {
     sessionStatus_busy: 'busy',
     sessionStatus_idle: 'idle',
     sessionIdleTitle: 'running, waiting for an answer',
-    sessionClosed: 'not running',
     sessionSkillTitle: 'the last skill this session ran',
     sessionResumeTitle: 'bring this Claude session forward, or resume it in a terminal',
     kanbanAction: 'My move',
@@ -3139,10 +3137,8 @@ function renderKanban(mine, reviews, focus) {
   for (const button of el('kanban').querySelectorAll('.note-btn.has-note')) button.title = cardNotes.get(button.dataset.note);
 }
 
-// What a running session is doing; one not running only says so. Idle is a session waiting
-// for you, so it wears "your move".
+// What a running session is doing. Idle is a session waiting for you, so it wears "your move".
 function sessionStatusPill({ status }) {
-  if (!status) return pill('', escapeHtml(t('sessionClosed')));
   const label = I18N[lang][`sessionStatus_${status}`] ?? status;
   return pill({ busy: 'pending running', idle: 'todo' }[status] ?? '', escapeHtml(label), status === 'idle' ? t('sessionIdleTitle') : '');
 }
