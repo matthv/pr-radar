@@ -896,7 +896,7 @@ test('a merged PR wears the version its release comment names, not the repo\'s n
     baseRefName: 'main',
     mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
     repository: {
-      nameWithOwner: 'o/r',
+      nameWithOwner: 'ForestAdmin/forestadmin',
       defaultBranchRef: { name: 'main' },
       latestRelease: { tagName: 'v2.1297.0', url: 'latest', publishedAt: ago(0.1) },
     },
@@ -916,6 +916,66 @@ test('a merged PR wears the version its release comment names, not the repo\'s n
   const guessed = merged([]).release;
   assert.equal(guessed.tag, 'v2.1297.0', 'no comment: the latest release since the merge, as before');
   assert.equal(guessed.exact, false);
+});
+
+const releaseComment = (version, url, createdAt) => ({
+  author: bot('forest-bot'),
+  createdAt,
+  url: 'c',
+  body: `:tada: This PR is included in version ${version} :tada:\n\nThe release is available on [GitHub release](${url})`,
+});
+
+const mergedWithComments = (comments, overrides = {}) => decorateMine(baseShape(node({
+  merged: true,
+  mergedAt: ago(2),
+  baseRefName: 'main',
+  mergeCommit: { oid: 'x', statusCheckRollup: { state: 'SUCCESS' } },
+  repository: { nameWithOwner: 'o/r', defaultBranchRef: { name: 'main' } },
+  comments: { nodes: comments },
+  ...overrides,
+}), ME));
+
+test('a prerelease then its stable version: the newest release comment wins', () => {
+  const { release } = mergedWithComments([
+    releaseComment('1.2.0-beta.1', 'https://github.com/o/r/releases/tag/v1.2.0-beta.1', ago(1.9)),
+    releaseComment('1.2.0', 'https://github.com/o/r/releases/tag/v1.2.0', ago(1)),
+  ]);
+  assert.equal(release.tag, 'v1.2.0');
+});
+
+test('a malformed tag in a release comment is kept raw, not thrown', () => {
+  const { release } = mergedWithComments([
+    releaseComment('1.2.0', 'https://github.com/o/r/releases/tag/v1.2.0%E0%A4%A', ago(1)),
+  ]);
+  assert.equal(release.tag, 'v1.2.0%E0%A4%A');
+});
+
+test('a release comment pointing at another repo is not taken as this PR\'s version', () => {
+  const { release } = mergedWithComments([
+    releaseComment('9.0.0', 'https://github.com/other/repo/releases/tag/v9.0.0', ago(1)),
+  ]);
+  assert.equal(release, null);
+});
+
+// forestadmin-server#8565 again, with semantic-release having commented before a later job
+// failed: main shipping afterwards still settles it.
+test('a release after the failure settles the card even when the bot had already commented', () => {
+  const decorated = mergedWithComments(
+    [releaseComment('1.0.0', 'https://github.com/o/r/releases/tag/v1.0.0', ago(1.9))],
+    {
+      author: user(ME),
+      repository: {
+        nameWithOwner: 'o/r',
+        defaultBranchRef: { name: 'main' },
+        latestRelease: { tagName: 'v1.0.1', url: 'u', publishedAt: ago(0.5) },
+      },
+      mergeCommit: { oid: 'x', statusCheckRollup: { state: 'FAILURE' }, checkSuites: { nodes: [
+        suite('push', 'Deploy', 'FAILURE', { updatedAt: ago(1) }),
+      ] } },
+    },
+  );
+  assert.equal(decorated.pipelineOutcome, 'done');
+  assert.equal(decorated.release.tag, 'v1.0.0', 'the badge still names the version that carried it');
 });
 
 test('a merge I took over is mine to watch, by the board\'s own notion of ownership', () => {

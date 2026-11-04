@@ -713,15 +713,31 @@ function pipelineSummary(mergeCommit) {
 
 // semantic-release's success comment names the version that actually carries the PR, so
 // cards of the same repo stop all wearing its newest tag. Matched on its wording, not its
-// author: the bot account differs between repos (forest-bot, github-actions, ...).
-const INCLUDED_IN_RELEASE = /This PR is included in version \S+[\s\S]*?\((https:\/\/github\.com\/[^)\s]+\/releases\/tag\/([^)\s]+))\)/;
-
+// author (the bot account differs between repos), so the link must point at the PR's own
+// repo. The newest comment wins: on a prerelease channel, x.y.z follows x.y.z-beta.1.
 function releaseFromBotComment(pr) {
-  for (const comment of pr.comments?.nodes ?? []) {
-    const match = INCLUDED_IN_RELEASE.exec(comment.body ?? '');
-    if (match) return { tag: decodeURIComponent(match[2]), url: match[1], publishedAt: comment.createdAt, exact: true };
+  const releasesUrl = `https://github.com/${pr.repository.nameWithOwner}/releases/tag/`;
+  const comments = pr.comments?.nodes ?? [];
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = comments[i].body ?? '';
+    if (!body.includes('This PR is included in version')) continue;
+    const start = body.indexOf(releasesUrl);
+    if (start < 0) continue;
+    const [url] = body.slice(start).match(/^[^)\s]+/);
+    const rawTag = url.slice(releasesUrl.length);
+    if (!rawTag) continue;
+    return { tag: safeDecode(rawTag), url, publishedAt: comments[i].createdAt, exact: true };
   }
   return null;
+}
+
+// A comment is anyone's text: a malformed escape must not throw out of the board fetch.
+function safeDecode(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 // Without that comment, the newest release of the repo, when it landed after this merge.
@@ -731,12 +747,9 @@ function releaseFromBotComment(pr) {
 // feature branch cannot be in it yet, whatever the repo published afterwards — observed on
 // forest-rails#803, whose checks passed and which would otherwise have worn v9.21.0
 // while sitting on a side branch main had not received.
-function releaseAfterMerge(pr) {
-  if (!pr.merged) return null;
-  const announced = releaseFromBotComment(pr);
-  if (announced) return announced;
+function latestReleaseAfterMerge(pr) {
   const latest = pr.repository.latestRelease;
-  if (!latest?.publishedAt) return null;
+  if (!pr.merged || !latest?.publishedAt) return null;
   if (pr.baseRefName && pr.baseRefName !== pr.repository.defaultBranchRef?.name) return null;
   if (new Date(latest.publishedAt) < new Date(pr.mergedAt)) return null;
   return { tag: latest.tagName, url: latest.url, publishedAt: latest.publishedAt, exact: false };
@@ -755,8 +768,11 @@ function settleByRelease(pipeline, release) {
 function baseShape(pr, me) {
   const lastCommit = pr.head.nodes[0]?.commit;
   const discussion = discussionThread(pr, me);
-  const release = releaseAfterMerge(pr);
-  const pipeline = settleByRelease(pipelineSummary(pr.mergeCommit), release);
+  const latestRelease = latestReleaseAfterMerge(pr);
+  const release = (pr.merged && releaseFromBotComment(pr)) || latestRelease;
+  // Settled by the repo's newest release, not the announced one: a job failing after the
+  // bot's comment is still carried by whatever main ships next (forestadmin-server#8565).
+  const pipeline = settleByRelease(pipelineSummary(pr.mergeCommit), latestRelease ?? release);
 
   return {
     id: pr.id,
