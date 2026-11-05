@@ -57,6 +57,7 @@ test('since: an approval and a change request are named; mine and a bot\'s are n
       review('christophebrun-forest', 'CHANGES_REQUESTED', '2026-10-05T09:01:00Z'),
       review(ME, 'APPROVED', '2026-10-05T09:02:00Z'),
       review('dependabot[bot]', 'APPROVED', '2026-10-05T09:03:00Z'),
+      { ...review('macroscopeapp', 'APPROVED', '2026-10-05T09:04:00Z'), fromBot: true },
     ],
     // The change request's body also lands in the conversation thread.
     threads: [thread('discussion:PR', 'christophebrun-forest', '2026-10-05T09:01:00Z')],

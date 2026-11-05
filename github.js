@@ -627,11 +627,14 @@ function discussionThread(pr, me) {
 const REVIEWER_STATES = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', DISMISSED: 'dismissed' };
 const REVIEWER_ORDER = ['changes', 'pending', 'dismissed', 'commented', 'approved'];
 
-function reviewersOf({ author, reviews, requested }) {
+function reviewersOf({ author, me, reviews, requested }) {
   const people = new Map();
-  const human = reviews.filter(review => !review.fromBot && review.author !== author && review.state !== 'PENDING');
-  for (const review of human) people.set(review.author, { login: review.author, avatarUrl: review.avatarUrl, state: 'commented' });
-  for (const review of latestReviewPerAuthor(human)) people.get(review.author).state = REVIEWER_STATES[review.state] ?? 'commented';
+  const blockingBots = new Set(latestReviewPerAuthor(reviews.filter(review => review.fromBot))
+    .filter(review => review.state === 'CHANGES_REQUESTED').map(review => review.author));
+  const counted = reviews.filter(review => (!review.fromBot || blockingBots.has(review.author))
+    && review.author !== author && review.author !== me && review.state !== 'PENDING');
+  for (const review of counted) people.set(review.author, { login: review.author, avatarUrl: review.avatarUrl, state: 'commented' });
+  for (const review of latestReviewPerAuthor(counted)) people.get(review.author).state = REVIEWER_STATES[review.state] ?? 'commented';
   for (const who of requested) {
     people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? people.get(who.login)?.avatarUrl ?? null, state: 'pending' });
   }
@@ -791,7 +794,7 @@ function baseShape(pr, me) {
   }));
   const requested = pr.reviewRequests.nodes
     .map(n => n?.requestedReviewer)
-    .filter(who => who?.__typename === 'User' && who.login && who.login !== pr.author?.login && !isBot(who));
+    .filter(who => who?.__typename === 'User' && who.login && who.login !== pr.author?.login && who.login !== me && !isBot(who));
 
   return {
     id: pr.id,
@@ -833,7 +836,7 @@ function baseShape(pr, me) {
     author: pr.author?.login ?? '?',
     authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
-    reviewers: reviewersOf({ author: pr.author?.login, reviews, requested }),
+    reviewers: reviewersOf({ author: pr.author?.login, me, reviews, requested }),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
@@ -845,7 +848,7 @@ function baseShape(pr, me) {
     ],
     reviews,
     requestedReviewers: pr.reviewRequests.nodes
-      .map(n => n.requestedReviewer)
+      .map(n => n?.requestedReviewer)
       .filter(Boolean)
       .map(r => (r.__typename === 'Team' ? `@team/${r.name}` : r.login)),
   };
