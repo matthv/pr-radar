@@ -29,6 +29,7 @@ const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
+const { listThemes, overlaps, themeFiles } = require('./themes');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -58,6 +59,7 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
+const THEME = (process.env.PR_RADAR_THEME ?? '').trim();
 const ORPHAN_DAYS = Math.max(0, Number(process.env.PR_RADAR_ORPHAN_DAYS ?? 2) || 0);
 const TERMINAL = (process.env.PR_RADAR_TERMINAL ?? '').trim() || 'Terminal';
 const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
@@ -83,6 +85,7 @@ const SOUND_TYPES = {
 // almost twice as old as the advertised interval.
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const THEMES_DIR = path.join(PUBLIC_DIR, 'themes');
 // A radar run by launchd or pm2 is restarted by them: relaunching itself would start a second one.
 const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
@@ -92,9 +95,10 @@ const BOOT_ID = randomUUID().slice(0, 8);
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
 async function assetVersion() {
-  const names = (await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)).sort();
+  const themed = (await themeFiles(THEMES_DIR)).map(file => path.join('themes', file));
+  const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themed].sort();
   const stamps = await Promise.all(
-    names.map(async name => `${name}:${(await fs.stat(path.join(PUBLIC_DIR, name))).mtimeMs}`),
+    names.map(async name => `${name}:${await fs.stat(path.join(PUBLIC_DIR, name)).then(stat => stat.mtimeMs, () => 0)}`),
   );
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }
@@ -573,6 +577,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/themes') {
+    const { themes } = await listThemes(THEMES_DIR);
+    return json(res, 200, { default: THEME || null, themes });
+  }
+
   if (url.pathname === '/sound') {
     try {
       if (!SOUND_FILE) throw new Error('no PR_RADAR_SOUND');
@@ -698,6 +707,15 @@ server.listen(PORT, async () => {
     });
     setInterval(() => readOrphansInBackground(false), 60_000).unref();
   }
+  const { themes, problems } = await listThemes(THEMES_DIR);
+  for (const problem of problems) logger.fail('theme', `left out, ${problem}`);
+  for (const [first, second] of overlaps(themes)) {
+    logger.fail('theme', `${first} and ${second} share days: ${first} wins, as it comes first by name`);
+  }
+  const seasonal = themes.filter(theme => theme.season).map(theme => theme.name);
+  const THEME_LINE = (THEME
+    ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes, none`)
+    : 'none (no PR_RADAR_THEME)') + (seasonal.length ? `, ${seasonal.join(', ')} within their dates` : '');
   const ORPHAN_LINE = orphanWatch
     ? `after ${ORPHAN_DAYS} working day${ORPHAN_DAYS > 1 ? 's' : ''} with no review, read every 30 min`
     : `off (${ORPHAN_DAYS ? 'no Slack channel' : 'PR_RADAR_ORPHAN_DAYS=0'})`;
@@ -720,6 +738,7 @@ server.listen(PORT, async () => {
       `  🙋 claimed PRs ${CLAIM_MODES[claimMode]}\n` +
       `  🧭 unreviewed announcements ${ORPHAN_LINE}\n` +
       `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
+      `  🎨 theme ${THEME_LINE}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
