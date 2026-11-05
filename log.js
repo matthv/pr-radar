@@ -9,6 +9,7 @@ const EMOJI = {
   webhook: '🪝',
   notes: '📝',
   orphans: '🧭',
+  theme: '🎨',
 };
 const FAILED = '⚠️';
 

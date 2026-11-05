@@ -1,0 +1,140 @@
+:root {
+  --bg-accent: radial-gradient(1200px 320px at 12% -10%, #ffe3c2 0%, transparent 70%),
+               radial-gradient(900px 280px at 88% -14%, #e3defa 0%, transparent 70%);
+  --st-orange: #d97400;
+  --st-lilac: #a066a0;
+  --st-blue: #6b6bdc;
+  --st-peach: #e2794a;
+  --st-gold: #b8860b;
+  --st-ship: #5b6170;
+  --st-bussard: #e04a2a;
+  --st-warp: #3b82f6;
+  --st-star: rgba(40, 52, 85, .3);
+  --st-nebula-a: rgba(160, 102, 160, .32);
+  --st-nebula-b: rgba(107, 107, 220, .28);
+  --st-nebula-c: rgba(226, 121, 74, .24);
+  --st-beam: rgba(245, 197, 66, .35);
+  --st-sparkle: #d4a017;
+  --st-shirt: #c62828;
+  --st-skin: #e0b48a;
+  --st-pants: #1f2937;
+  --st-line: #4b5563;
+}
+:root[data-theme="dark"] {
+  --bg-accent: radial-gradient(1200px 320px at 12% -10%, #3a2200 0%, transparent 70%),
+               radial-gradient(900px 280px at 88% -14%, #231b45 0%, transparent 70%);
+  --st-orange: #ff9c00;
+  --st-lilac: #cc99cc;
+  --st-blue: #9999ff;
+  --st-peach: #ff9966;
+  --st-gold: #f5c542;
+  --st-ship: #c3c9d6;
+  --st-bussard: #ff6a3d;
+  --st-warp: #7cc4ff;
+  --st-star: rgba(255, 255, 255, .8);
+  --st-nebula-a: rgba(204, 153, 204, .4);
+  --st-nebula-b: rgba(120, 130, 255, .36);
+  --st-nebula-c: rgba(255, 153, 102, .3);
+  --st-beam: rgba(255, 224, 130, .45);
+  --st-sparkle: #fff3c4;
+  --st-shirt: #ef4444;
+  --st-skin: #d9a77c;
+  --st-pants: #374151;
+  --st-line: #9ca3af;
+}
+header {
+  border-bottom: 3px solid transparent;
+  border-image: linear-gradient(to right, var(--st-orange) 0 38%, var(--bg) 38% 38.6%, var(--st-lilac) 38.6% 54%,
+    var(--bg) 54% 54.6%, var(--st-blue) 54.6% 82%, var(--bg) 82% 82.6%, var(--st-peach) 82.6%) 1;
+}
+.logo,
+.brand em a:hover { color: var(--st-orange); }
+.logo .blip { fill: var(--st-lilac); }
+#sweepGrad stop { stop-color: var(--st-orange); }
+#sweepGrad stop:last-child { stop-color: var(--st-blue); }
+.brand > span::after {
+  content: ""; display: inline-block; width: 12px; height: 17px; margin-left: 8px; vertical-align: -2px;
+  background: linear-gradient(160deg, var(--st-gold), color-mix(in srgb, var(--st-gold) 60%, #000));
+  clip-path: polygon(50% 0, 100% 100%, 50% 76%, 0 100%);
+}
+.empty:not(.kb-cell)::before { content: "🛰️"; display: block; font-size: 24px; margin-bottom: 6px; }
+.card:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-orange) 40%, transparent),
+              0 10px 26px -12px color-mix(in srgb, var(--st-orange) 60%, transparent);
+}
+.st-warp { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }
+/* Stretched from its bow, so the streak trails behind it. */
+.st-warp { transform-origin: 100% 50%; }
+.st-warp.rtl { transform-origin: 0 50%; }
+.st-craft { width: 52px; height: 24px; color: var(--st-ship); }
+.st-warp.rtl .st-craft { transform: scaleX(-1); }
+.st-ship { width: 100%; height: 100%; overflow: visible; }
+.st-warp.engage { animation: st-engage 7s linear; }
+.st-warp.rtl.engage { animation-name: st-engage-back; }
+.st-transporter { position: absolute; left: 16px; bottom: 4px; width: 26px; height: 54px; }
+.st-beam {
+  position: absolute; inset: -6px -5px 0; opacity: 0; border-radius: 50% / 18%;
+  background: linear-gradient(to top, transparent, var(--st-beam) 18%, var(--st-beam) 82%, transparent);
+}
+.st-beam i {
+  position: absolute; left: var(--x); bottom: var(--y); width: 2px; height: 2px; border-radius: 50%; opacity: 0;
+  background: var(--st-sparkle); box-shadow: 0 0 3px var(--st-sparkle);
+}
+.st-crew { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.st-nebula {
+  position: absolute; right: -180px; bottom: -180px; width: 640px; height: 640px; filter: blur(24px);
+  background: radial-gradient(38% 30% at 42% 46%, var(--st-nebula-a), transparent 70%),
+              radial-gradient(34% 40% at 62% 58%, var(--st-nebula-b), transparent 72%),
+              radial-gradient(26% 22% at 34% 66%, var(--st-nebula-c), transparent 70%),
+              radial-gradient(22% 30% at 66% 32%, var(--st-nebula-a), transparent 70%);
+}
+.st-nebula-core { position: absolute; right: 38px; bottom: 34px; width: 3px; height: 3px; border-radius: 50%; background: var(--st-star); box-shadow: 0 0 6px 2px var(--st-nebula-b); }
+.st-star { position: absolute; width: var(--s); height: var(--s); border-radius: 50%; background: var(--st-star); }
+@media (prefers-reduced-motion: no-preference) {
+  .st-beam { animation: st-beam 24s linear infinite 3s; }
+  .st-beam i { animation: st-sparkle 1.1s ease-in infinite; animation-delay: var(--d); }
+  .st-crew { animation: st-crew 24s linear infinite 3s; }
+  .st-nebula { animation: st-drift 40s ease-in-out infinite alternate; }
+  .st-star.twinkle { animation: st-twinkle var(--d) ease-in-out infinite; animation-delay: var(--delay); }
+  .brand > span::after { animation: st-shine 4s ease-in-out infinite; }
+  .empty:not(.kb-cell)::before { animation: st-float 3s ease-in-out infinite; }
+}
+@keyframes st-shine { 0%, 80%, 100% { filter: brightness(1); } 88% { filter: brightness(1.6); } }
+@keyframes st-engage {
+  0% { opacity: 0; transform: translateX(-70px); }
+  6% { opacity: 1; }
+  74% { opacity: 1; transform: translateX(38vw) scaleX(1); filter: none; }
+  80% { transform: translateX(44vw) scaleX(4); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+  86% { opacity: 1; transform: translateX(115vw) scaleX(7); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+  100% { opacity: 0; transform: translateX(115vw) scaleX(7); }
+}
+@keyframes st-engage-back {
+  0% { opacity: 0; transform: translateX(calc(100vw + 20px)); }
+  6% { opacity: 1; }
+  74% { opacity: 1; transform: translateX(58vw) scaleX(1); filter: none; }
+  80% { transform: translateX(52vw) scaleX(4); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+  86% { opacity: 1; transform: translateX(-20vw) scaleX(7); filter: brightness(2.2) drop-shadow(0 0 6px var(--st-warp)); }
+  100% { opacity: 0; transform: translateX(-20vw) scaleX(7); }
+}
+@keyframes st-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes st-float { 0%, 100% { transform: translateY(0); opacity: .8; } 50% { transform: translateY(-5px); opacity: 1; } }
+@keyframes st-drift { from { transform: rotate(0) scale(1); } to { transform: rotate(18deg) scale(1.08); } }
+@keyframes st-beam {
+  0%, 50% { opacity: 0; }
+  54%, 60% { opacity: 1; }
+  63%, 78% { opacity: 0; }
+  81%, 86% { opacity: 1; }
+  89%, 100% { opacity: 0; }
+}
+@keyframes st-crew {
+  0%, 54% { opacity: 0; filter: brightness(3); }
+  60% { opacity: 1; filter: brightness(1.6); }
+  63%, 81% { opacity: 1; filter: brightness(1); }
+  84% { opacity: .8; filter: brightness(1.8); }
+  87%, 100% { opacity: 0; filter: brightness(3); }
+}
+@keyframes st-sparkle {
+  from { opacity: 0; transform: translateY(0); }
+  30% { opacity: 1; }
+  to { opacity: 0; transform: translateY(-24px); }
+}
