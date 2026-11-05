@@ -108,7 +108,7 @@ function node({
     },
     reviewRequests: {
       nodes: requested.map(r => ({
-        requestedReviewer: r.startsWith('@team/') ? { __typename: 'Team', name: r.slice('@team/'.length) } : { __typename: 'User', login: r },
+        requestedReviewer: r.startsWith('@team/') ? { __typename: 'Team', name: r.slice('@team/'.length) } : { __typename: 'User', login: r, avatarUrl: avatarOf(r) },
       })),
     },
     reviewThreads: {
@@ -152,6 +152,8 @@ function minePrs() {
       repo: 'ForestAdmin/forestadmin', number: 10012,
       title: 'feat(inbox): PRD-812 show the automation status of each inbox in the settings panel',
       createdMin: 26 * 60, commitMin: 5 * 60, decision: 'REVIEW_REQUIRED', labels: [LABEL.feature],
+      reviews: [['PMerlet', 'APPROVED', 3 * 60], ['christophebrun-forest', 'COMMENTED', 40]],
+      requested: ['nbouliol'],
       threads: [
         { path: 'app/features/inbox/settings/component.ts', line: 88, messages: [['christophebrun-forest', 40, 'This sentence reads as an error while the inbox is just paused. Could we soften it and link to the workflow settings?']] },
         { path: 'app/features/inbox/settings/template.hbs', line: 12, resolved: true, messages: [['macroscopeapp', 5 * 60, '🟡 **Medium** missing translation key for the paused state'], [ME, 4 * 60, 'Fixed in the last commit.']] },

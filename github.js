@@ -88,10 +88,10 @@ query($ids: [ID!]!) {
       recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(last: 100) { totalCount nodes { id author { __typename login } state submittedAt url body } }
+      reviews(last: 100) { totalCount nodes { id author { __typename login avatarUrl } state submittedAt url body } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
-        nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
+        nodes { requestedReviewer { __typename ... on User { login avatarUrl } ... on Team { name } } }
       }
       reviewThreads(last: 100) {
         totalCount
@@ -630,6 +630,30 @@ function discussionThread(pr, me) {
   };
 }
 
+const REVIEWER_ORDER = ['changes', 'pending', 'commented', 'approved'];
+const VERDICTS = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes' };
+
+// A request still pending is newer than any review from the same person: GitHub drops it once
+// they submit. Their last approval or change request is their verdict; a comment only counts
+// when they gave none.
+function reviewersOf(pr) {
+  const author = pr.author?.login;
+  const people = new Map();
+  const reviews = pr.reviews.nodes
+    .filter(review => review?.author && !isBot(review.author) && review.author.login !== author && review.state !== 'PENDING')
+    .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+  for (const { author: who, state } of reviews) {
+    const current = people.get(who.login);
+    const verdict = VERDICTS[state] ?? (current?.state ?? 'commented');
+    people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? null, state: verdict });
+  }
+  for (const { requestedReviewer: who } of pr.reviewRequests.nodes.filter(Boolean)) {
+    if (who?.__typename !== 'User' || !who.login || who.login === author) continue;
+    people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? people.get(who.login)?.avatarUrl ?? null, state: 'pending' });
+  }
+  return [...people.values()].sort((a, b) => REVIEWER_ORDER.indexOf(a.state) - REVIEWER_ORDER.indexOf(b.state));
+}
+
 // PR author first, then commit authors chronologically: the order people entered the PR.
 function contributorsOf(pr) {
   const people = new Map();
@@ -814,6 +838,7 @@ function baseShape(pr, me) {
     author: pr.author?.login ?? '?',
     authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
+    reviewers: reviewersOf(pr),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,

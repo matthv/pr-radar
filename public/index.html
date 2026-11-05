@@ -795,6 +795,24 @@
   .face:hover { box-shadow: 0 0 0 2px var(--indigo); transform: scale(1.12); z-index: 1; }
   .face:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; z-index: 1; }
   .card.action .face { border-color: var(--surface); }
+  .reviewers { display: inline-flex; align-items: center; gap: 6px; }
+  .reviewers-label { color: var(--text-faint); }
+  .reviewers-faces { display: inline-flex; gap: 5px; }
+  .reviewer { position: relative; display: block; width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--ring); transition: transform .15s; }
+  .reviewer img { width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover; background: var(--hairline); }
+  .reviewer.pending img { opacity: .55; }
+  .reviewer:hover { transform: scale(1.12); z-index: 1; }
+  .reviewer:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .reviewer-badge {
+    position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--ring); color: #fff; font-size: 8px; line-height: 11px; text-align: center; font-weight: 700;
+    box-shadow: 0 0 0 1.5px var(--surface);
+  }
+  .reviewer.pending .reviewer-badge { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ring), 0 0 0 1.5px var(--surface); }
+  .reviewer.approved { --ring: var(--emerald); }
+  .reviewer.changes { --ring: var(--rose); }
+  .reviewer.commented { --ring: var(--text-faint); }
+  .reviewer.pending { --ring: var(--amber); }
 
   .pill {
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
@@ -1653,6 +1671,11 @@ const I18N = {
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
     openProfile: 'ouvrir le profil de {login}',
+    reviewersLabel: 'Reviewers',
+    reviewer_approved: '{login} — a approuvé',
+    reviewer_changes: '{login} — a demandé des changements',
+    reviewer_commented: '{login} — a commenté',
+    reviewer_pending: '{login} — n’a pas encore répondu',
     snooze: 'mettre en veille jusqu’au prochain mouvement',
     snoozedShow: 'afficher',
     snoozedHide: 'masquer',
@@ -1869,6 +1892,11 @@ const I18N = {
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
     openProfile: 'open {login}’s profile',
+    reviewersLabel: 'Reviewers',
+    reviewer_approved: '{login} — approved',
+    reviewer_changes: '{login} — requested changes',
+    reviewer_commented: '{login} — commented',
+    reviewer_pending: '{login} — not answered yet',
     snooze: 'snooze until something moves',
     snoozedShow: 'show',
     snoozedHide: 'hide',
@@ -2695,6 +2723,21 @@ function glowTwins(id) {
   }, TWIN_GLOW_MS - GLOW_FADE_MS);
 }
 
+const REVIEWER_BADGES = { approved: '✓', changes: '✕', commented: '…', pending: '' };
+
+function reviewersHtml(pr) {
+  if (pr.side !== 'mine' || pr.merged || !pr.reviewers?.length) return '';
+  const faces = pr.reviewers
+    .map(person =>
+      `<a class="reviewer ${person.state}" href="https://github.com/${encodeURIComponent(person.login)}" target="_blank" rel="noopener"`
+      + ` title="${escapeHtml(t(`reviewer_${person.state}`, { login: person.login }))}">`
+      + `<img src="${escapeHtml(person.avatarUrl ? `${person.avatarUrl}&s=48` : `https://github.com/${encodeURIComponent(person.login)}.png?size=48`)}" alt="" loading="lazy">`
+      + `<span class="reviewer-badge">${REVIEWER_BADGES[person.state]}</span></a>`)
+    .join('');
+  return `<span class="sep reviewers"><span class="reviewers-label">${escapeHtml(t('reviewersLabel'))}</span>`
+    + `<span class="reviewers-faces">${faces}</span></span>`;
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
@@ -2722,6 +2765,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
         <span class="sep activity" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
+        ${reviewersHtml(pr)}
         ${count ? expander(' in-meta') : ''}
       </div>
       ${reasonsHtml(pr)}

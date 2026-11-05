@@ -1321,6 +1321,35 @@ test('lastActivity ignores a Validator journal, reposted at every step', () => {
   assert.ok((Date.now() - new Date(lastActivity(pr))) / DAY > 5);
 });
 
+test('my PR: reviewers carry their last verdict, a pending request first among the waiting', () => {
+  const review = (login, state, at) => ({ id: `R_${login}_${at}`, author: user(login), state, body: '', submittedAt: ago(at), url: 'u' });
+  const pr = baseShape(node({
+    author: user(ME),
+    reviews: { nodes: [
+      review('alice', 'CHANGES_REQUESTED', 3), review('alice', 'APPROVED', 1), review('alice', 'COMMENTED', 0.5),
+      review('bob', 'CHANGES_REQUESTED', 2), review('bob', 'COMMENTED', 1),
+      review('carol', 'COMMENTED', 2),
+      review('dave', 'APPROVED', 3),
+      { ...review('macroscope', 'COMMENTED', 1), author: bot('macroscope') },
+      review(ME, 'COMMENTED', 1),
+    ] },
+    reviewRequests: { nodes: [
+      { requestedReviewer: { __typename: 'User', login: 'dave', avatarUrl: 'https://avatars/dave' } },
+      { requestedReviewer: { __typename: 'User', login: 'erin', avatarUrl: 'https://avatars/erin' } },
+      { requestedReviewer: { __typename: 'Team', name: 'core' } },
+    ] },
+  }), ME);
+
+  assert.deepEqual(pr.reviewers.map(r => [r.login, r.state]), [
+    ['bob', 'changes'],
+    ['dave', 'pending'],
+    ['erin', 'pending'],
+    ['carol', 'commented'],
+    ['alice', 'approved'],
+  ], 'a comment after a verdict keeps the verdict; asked again is pending; bots, teams and the author left out');
+  assert.equal(pr.reviewers.find(r => r.login === 'erin').avatarUrl, 'https://avatars/erin');
+});
+
 // Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
 // and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
 test('my PR: a release published after its failed pipeline settles it', () => {
