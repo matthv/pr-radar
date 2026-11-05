@@ -800,20 +800,20 @@
   .reviewers-faces { display: inline-flex; gap: 5px; }
   .reviewer { position: relative; display: block; width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--ring); transition: transform .15s; }
   .reviewer img { width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover; background: var(--hairline); }
-  .reviewer.pending img { opacity: .55; }
+  .reviewer.pending img { opacity: .45; }
   .reviewer:hover { transform: scale(1.12); z-index: 1; }
-  .reviewer:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .reviewer:focus-visible, .reviewer.pending:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
   .reviewer-badge {
     position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%;
     background: var(--ring); color: #fff; font-size: 8px; line-height: 11px; text-align: center; font-weight: 700;
     box-shadow: 0 0 0 1.5px var(--surface);
   }
-  .reviewer.pending .reviewer-badge { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ring), 0 0 0 1.5px var(--surface); }
+  .reviewer.pending .reviewer-badge { display: none; }
   .reviewer.approved { --ring: var(--emerald); }
   .reviewer.changes { --ring: var(--rose); }
   .reviewer.commented, .reviewer.dismissed { --ring: var(--text-faint); }
   .reviewers-more { color: var(--text-faint); font-size: 12px; cursor: default; }
-  .reviewer.pending { --ring: var(--amber); }
+  .reviewer.pending { --ring: var(--text-faint); box-shadow: none; outline: 1.5px dashed var(--ring); outline-offset: 1px; }
 
   .pill {
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
