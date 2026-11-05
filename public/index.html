@@ -811,7 +811,8 @@
   .reviewer.pending .reviewer-badge { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ring), 0 0 0 1.5px var(--surface); }
   .reviewer.approved { --ring: var(--emerald); }
   .reviewer.changes { --ring: var(--rose); }
-  .reviewer.commented { --ring: var(--text-faint); }
+  .reviewer.commented, .reviewer.dismissed { --ring: var(--text-faint); }
+  .reviewers-more { color: var(--text-faint); font-size: 12px; cursor: default; }
   .reviewer.pending { --ring: var(--amber); }
 
   .pill {
@@ -1675,6 +1676,7 @@ const I18N = {
     reviewer_approved: '{login} — a approuvé',
     reviewer_changes: '{login} — a demandé des changements',
     reviewer_commented: '{login} — a commenté',
+    reviewer_dismissed: '{login} — review rejetée, à refaire',
     reviewer_pending: '{login} — n’a pas encore répondu',
     snooze: 'mettre en veille jusqu’au prochain mouvement',
     snoozedShow: 'afficher',
@@ -1896,6 +1898,7 @@ const I18N = {
     reviewer_approved: '{login} — approved',
     reviewer_changes: '{login} — requested changes',
     reviewer_commented: '{login} — commented',
+    reviewer_dismissed: '{login} — review dismissed, to do again',
     reviewer_pending: '{login} — not answered yet',
     snooze: 'snooze until something moves',
     snoozedShow: 'show',
@@ -2436,6 +2439,16 @@ const LINEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.886
 const CLAUDE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#D97757" stroke-width="2.6"'
   + ' stroke-linecap="round" d="M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3 5.3 18.7"/></svg>';
 
+function avatarSrc(person, size) {
+  try {
+    const url = new URL(person.avatarUrl || `https://github.com/${encodeURIComponent(person.login)}.png`);
+    url.searchParams.set(url.hostname === 'github.com' ? 'size' : 's', String(size));
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
   if (!people.length) return '';
@@ -2451,9 +2464,7 @@ function whoHtml(pr) {
         `<a class="face" href="https://github.com/${encodeURIComponent(person.login)}"`
         + ` target="_blank" rel="noopener"`
         + ` title="${escapeHtml(t('openProfile', { login: person.login }))}">`
-        + (person.avatarUrl
-          ? `<img src="${escapeHtml(person.avatarUrl)}&s=48" alt="" loading="lazy">`
-          : '')
+        + `<img src="${escapeHtml(avatarSrc(person, 48))}" alt="" loading="lazy">`
         + '</a>',
     )
     .join('');
@@ -2723,19 +2734,24 @@ function glowTwins(id) {
   }, TWIN_GLOW_MS - GLOW_FADE_MS);
 }
 
-const REVIEWER_BADGES = { approved: '✓', changes: '✕', commented: '…', pending: '' };
+const REVIEWER_BADGES = { approved: '✓', changes: '✕', dismissed: '↺', commented: '…', pending: '' };
 
 function reviewersHtml(pr) {
-  if (pr.side !== 'mine' || pr.merged || !pr.reviewers?.length) return '';
-  const faces = pr.reviewers
+  if (pr.side !== 'mine' || pr.state !== 'OPEN' || !pr.reviewers?.length) return '';
+  const shown = pr.reviewers.slice(0, MAX_FACES);
+  const hidden = pr.reviewers.slice(MAX_FACES);
+  const faces = shown
     .map(person =>
       `<a class="reviewer ${person.state}" href="https://github.com/${encodeURIComponent(person.login)}" target="_blank" rel="noopener"`
       + ` title="${escapeHtml(t(`reviewer_${person.state}`, { login: person.login }))}">`
-      + `<img src="${escapeHtml(person.avatarUrl ? `${person.avatarUrl}&s=48` : `https://github.com/${encodeURIComponent(person.login)}.png?size=48`)}" alt="" loading="lazy">`
+      + `<img src="${escapeHtml(avatarSrc(person, 48))}" alt="" loading="lazy">`
       + `<span class="reviewer-badge">${REVIEWER_BADGES[person.state]}</span></a>`)
     .join('');
+  const more = hidden.length
+    ? `<span class="reviewers-more" title="${escapeHtml(hidden.map(person => t(`reviewer_${person.state}`, { login: person.login })).join('\n'))}">+${hidden.length}</span>`
+    : '';
   return `<span class="sep reviewers"><span class="reviewers-label">${escapeHtml(t('reviewersLabel'))}</span>`
-    + `<span class="reviewers-faces">${faces}</span></span>`;
+    + `<span class="reviewers-faces">${faces}</span>${more}</span>`;
 }
 
 function cardHtml(pr, threadsToShow, extraPills) {

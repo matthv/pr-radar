@@ -630,25 +630,15 @@ function discussionThread(pr, me) {
   };
 }
 
-const REVIEWER_ORDER = ['changes', 'pending', 'commented', 'approved'];
-const VERDICTS = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes' };
+const REVIEWER_STATES = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', DISMISSED: 'dismissed' };
+const REVIEWER_ORDER = ['changes', 'pending', 'dismissed', 'commented', 'approved'];
 
-// A request still pending is newer than any review from the same person: GitHub drops it once
-// they submit. Their last approval or change request is their verdict; a comment only counts
-// when they gave none.
-function reviewersOf(pr) {
-  const author = pr.author?.login;
+function reviewersOf({ author, reviews, requested }) {
   const people = new Map();
-  const reviews = pr.reviews.nodes
-    .filter(review => review?.author && !isBot(review.author) && review.author.login !== author && review.state !== 'PENDING')
-    .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
-  for (const { author: who, state } of reviews) {
-    const current = people.get(who.login);
-    const verdict = VERDICTS[state] ?? (current?.state ?? 'commented');
-    people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? null, state: verdict });
-  }
-  for (const { requestedReviewer: who } of pr.reviewRequests.nodes.filter(Boolean)) {
-    if (who?.__typename !== 'User' || !who.login || who.login === author) continue;
+  const human = reviews.filter(review => !review.fromBot && review.author !== author && review.state !== 'PENDING');
+  for (const review of human) people.set(review.author, { login: review.author, avatarUrl: review.avatarUrl, state: 'commented' });
+  for (const review of latestReviewPerAuthor(human)) people.get(review.author).state = REVIEWER_STATES[review.state] ?? 'commented';
+  for (const who of requested) {
     people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? people.get(who.login)?.avatarUrl ?? null, state: 'pending' });
   }
   return [...people.values()].sort((a, b) => REVIEWER_ORDER.indexOf(a.state) - REVIEWER_ORDER.indexOf(b.state));
@@ -797,6 +787,17 @@ function baseShape(pr, me) {
   // Settled by the repo's newest release, not the announced one: a job failing after the
   // bot's comment is still carried by whatever main ships next (forestadmin-server#8565).
   const pipeline = settleByRelease(pipelineSummary(pr.mergeCommit), latestRelease ?? release);
+  const reviews = pr.reviews.nodes.filter(Boolean).map(r => ({
+    author: r.author?.login ?? '?',
+    avatarUrl: r.author?.avatarUrl ?? null,
+    fromBot: isBot(r.author),
+    state: r.state,
+    submittedAt: r.submittedAt,
+    url: r.url,
+  }));
+  const requested = pr.reviewRequests.nodes
+    .map(n => n?.requestedReviewer)
+    .filter(who => who?.__typename === 'User' && who.login && who.login !== pr.author?.login && !isBot(who));
 
   return {
     id: pr.id,
@@ -838,7 +839,7 @@ function baseShape(pr, me) {
     author: pr.author?.login ?? '?',
     authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
-    reviewers: reviewersOf(pr),
+    reviewers: reviewersOf({ author: pr.author?.login, reviews, requested }),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
@@ -848,12 +849,7 @@ function baseShape(pr, me) {
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
       ...(discussion ? [discussion] : []),
     ],
-    reviews: pr.reviews.nodes.filter(Boolean).map(r => ({
-      author: r.author?.login ?? '?',
-      state: r.state,
-      submittedAt: r.submittedAt,
-      url: r.url,
-    })),
+    reviews,
     requestedReviewers: pr.reviewRequests.nodes
       .map(n => n.requestedReviewer)
       .filter(Boolean)

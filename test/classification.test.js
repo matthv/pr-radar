@@ -1350,6 +1350,33 @@ test('my PR: reviewers carry their last verdict, a pending request first among t
   assert.equal(pr.reviewers.find(r => r.login === 'erin').avatarUrl, 'https://avatars/erin');
 });
 
+test('my PR: a dismissed review is a verdict to give again, never an older one brought back', () => {
+  const review = (login, state, at) => ({ id: `R_${login}_${at}`, author: user(login), state, body: '', submittedAt: ago(at), url: 'u' });
+  const pr = node({
+    author: user(ME),
+    reviews: { nodes: [
+      review('alice', 'APPROVED', 3), review('alice', 'DISMISSED', 2),
+      review('bob', 'DISMISSED', 2),
+      review('carol', 'CHANGES_REQUESTED', 3), review('carol', 'DISMISSED', 1),
+    ] },
+  });
+  const shaped = decorateMine(baseShape(pr, ME));
+  assert.deepEqual(shaped.reviewers.map(r => [r.login, r.state]), [['alice', 'dismissed'], ['bob', 'dismissed'], ['carol', 'dismissed']]);
+  assert.equal(shaped.changesRequested.length, 0, 'the faces and the "changes requested" reason agree');
+});
+
+test('my PR: a bot asked for a review is no pending reviewer', () => {
+  const pr = baseShape(node({
+    author: user(ME),
+    reviewRequests: { nodes: [
+      { requestedReviewer: { __typename: 'User', login: 'macroscopeapp' } },
+      { requestedReviewer: { __typename: 'User', login: 'renovate[bot]' } },
+      { requestedReviewer: { __typename: 'User', login: 'erin' } },
+    ] },
+  }), ME);
+  assert.deepEqual(pr.reviewers.map(r => r.login), ['erin']);
+});
+
 // Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
 // and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
 test('my PR: a release published after its failed pipeline settles it', () => {
