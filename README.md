@@ -1238,6 +1238,7 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 |---|---|---|
 | `starwars` 🌌 | May 4–6 | A lightsaber by the title, a starfield, the Death Star in a corner, R2-D2 rolling in and out at the bottom left, a TIE fighter crossing now and then |
 | `startrek` 🖖 | September 8–10 | The Starfleet delta by the title, an LCARS bar under the header, a starfield, a nebula in a corner, a crew member beaming in and out at the bottom left, the Enterprise jumping to warp now and then |
+| `masseffect` 🌠 | November 7 (N7 Day) | The N7 mark by the title, the N7 stripe under the header, a starfield, a mass relay in a corner, the Normandy crossing now and then |
 | `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
 
 - **Which one shows**: a seasonal theme within its dates, otherwise the one named in
