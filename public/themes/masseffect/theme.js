@@ -29,7 +29,6 @@
     + '<path d="M14,-2.4L19,-1.2" stroke="var(--bg)" stroke-width=".9" opacity=".6"/>'
     + '<circle class="engine" cx="-25" cy="-1.6" r="1.4"/><circle class="engine" cx="-25" cy="1.6" r="1.4"/></svg>';
 
-  // The Normandy crosses the top of the window, one way or the other, its drive trailing.
   function flyby({ front }) {
     const lane = front.querySelector('.me-flyby');
     if (!lane) return;
@@ -43,8 +42,8 @@
   }
 
   PRRadarTheme.register({
-    front: () => `${RELAY}${OMNI_TOOL}<div class="me-flyby"></div>`,
-    back: () => PRRadarTheme.stars({ seed: 20071120, count: 88, className: 'me-star' }),
+    front: () => `${OMNI_TOOL}<div class="me-flyby"></div>`,
+    back: () => RELAY + PRRadarTheme.stars({ seed: 20071120, count: 88, className: 'me-star' }),
     ambient: flyby,
     every: [15_000, 30_000],
   });

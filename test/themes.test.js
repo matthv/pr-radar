@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const { listThemes, overlaps, themeFiles } = require('../themes');
 const { inSeason, seasonYear, pickDecor, offKey, readOff, stars } = require('../public/decor');
@@ -47,6 +48,15 @@ test('decor: a season over the new year is one season, turned off once', () => {
   assert.equal(seasonYear(winter.season, new Date(2027, 0, 3, 12)), 2026);
   assert.equal(offKey(winter, day(12, 24)), offKey(winter, new Date(2027, 0, 3, 12)));
   assert.equal(offKey({ name: 'mine', season: null }, day(3, 1)), true);
+  assert.equal(offKey(winter, day(3, 1)), true, 'worn as the default out of season, it stays off');
+});
+
+test('decor: two seasons on the same day, the first by name wins', () => {
+  const themes = [
+    { name: 'autumn', season: { from: [10, 1], to: [11, 30] } },
+    { name: 'halloween', season: { from: [10, 26], to: [10, 31] } },
+  ];
+  assert.equal(pickDecor({ themes, fallback: null }, { now: day(10, 28) }).name, 'autumn');
 });
 
 test('decor: each theme keeps its own off state, the old single value read once', () => {
@@ -92,6 +102,7 @@ test('themes: each folder is read, a broken one left out and named', async () =>
     nocss: { 'theme.json': { label: 'No CSS', icon: '❓' } },
     badseason: { 'theme.json': { label: 'Bad', icon: '❓', season: { from: [13, 1], to: [1, 1] } }, 'theme.css': '' },
     nolabel: { 'theme.json': { icon: '❓' }, 'theme.css': '' },
+    nodate: { 'theme.json': { label: 'No date', icon: '❓', season: { from: [2, 30], to: [3, 1] } }, 'theme.css': '' },
     Upper: { 'theme.json': { label: 'Upper', icon: '❓' }, 'theme.css': '' },
   });
   const { themes, problems } = await listThemes(dir);
@@ -100,7 +111,8 @@ test('themes: each folder is read, a broken one left out and named', async () =>
     { name: 'halloween', label: 'Halloween', icon: '🎃', season: { from: [10, 26], to: [10, 31] }, script: true },
     { name: 'mine', label: 'Mine', icon: '🌿', season: null, script: false },
   ]);
-  assert.equal(problems.length, 4);
+  assert.equal(problems.length, 5);
+  assert.ok(problems.some(problem => problem.startsWith('nodate:')), 'February 30 does not exist');
   assert.ok(problems.some(problem => problem.startsWith('nocss: theme.css is missing')));
   assert.ok(problems.some(problem => problem.startsWith('badseason:')));
   assert.ok(problems.some(problem => problem.startsWith('nolabel:')));
@@ -120,4 +132,22 @@ test('themes: the shipped ones are all valid, and no two share a day', async () 
 test('themes: the files the asset version is made of are listed without being read', async () => {
   const dir = await themesDir({ mine: { 'theme.json': '{', 'theme.css': '', 'notes.txt': '' } });
   assert.deepEqual((await themeFiles(dir)).sort(), [path.join('mine', 'theme.css'), path.join('mine', 'theme.json')]);
+});
+
+test('themes: each shipped theme.js registers hooks that draw', async () => {
+  const dir = path.join(__dirname, '..', 'public', 'themes');
+  const { themes } = await listThemes(dir);
+  for (const { name } of themes.filter(theme => theme.script)) {
+    let registered = null;
+    const PRRadarTheme = { register: definition => { registered = definition; }, stars };
+    vm.runInNewContext(await fs.readFile(path.join(dir, name, 'theme.js'), 'utf8'), { PRRadarTheme });
+    assert.ok(registered, `${name} registers`);
+    for (const hook of ['front', 'back']) {
+      if (registered[hook]) assert.equal(typeof registered[hook](), 'string', `${name} ${hook}()`);
+    }
+    if (registered.ambient) {
+      assert.equal(typeof registered.ambient, 'function', `${name} ambient`);
+      assert.ok(Array.isArray(registered.every) && registered.every.length === 2, `${name} every`);
+    }
+  }
 });

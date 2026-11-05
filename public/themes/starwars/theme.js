@@ -25,7 +25,6 @@
     + '<path d="M-11,0h22" stroke="currentColor" stroke-width="2.4"/>'
     + '<circle r="5" fill="currentColor"/><circle r="2.6" fill="var(--bg)" opacity=".5"/></svg>';
 
-  // A TIE fighter crosses the top of the window, one way or the other, firing ahead of it.
   function flyby({ front }) {
     const lane = front.querySelector('.sw-flyby');
     if (!lane) return;
@@ -39,8 +38,8 @@
   }
 
   PRRadarTheme.register({
-    front: () => `${DEATH_STAR}${R2D2}<div class="sw-flyby"></div>`,
-    back: () => PRRadarTheme.stars({ seed: 20260504, count: 88, className: 'sw-star' }),
+    front: () => `${R2D2}<div class="sw-flyby"></div>`,
+    back: () => DEATH_STAR + PRRadarTheme.stars({ seed: 20260504, count: 88, className: 'sw-star' }),
     ambient: flyby,
     every: [14_000, 30_000],
   });

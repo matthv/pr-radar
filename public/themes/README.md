@@ -11,8 +11,9 @@ public/themes/<name>/
 
 Which one is worn: a seasonal theme within its dates, otherwise the one named in
 `PR_RADAR_THEME`, otherwise none. `?theme=<name>` in the address shows any, whatever the date;
-an unknown name falls back to that rule. The 🎨 line at start-up says which one is set, names
-any folder left out and why, and any two seasons sharing a day (the first by name wins).
+an unknown name falls back to that rule. At start-up, the 🎨 line says which one is set, and a
+⚠️ line names each folder left out and why, and each two seasons sharing a day (the first by
+name wins).
 
 ## theme.json
 
@@ -26,7 +27,7 @@ any folder left out and why, and any two seasons sharing a day (the first by nam
 
 - `label`: shown in the button's tooltip.
 - `icon`: the header button, which turns the theme off and on again.
-- `season` (optional): `[month, day]`, both days included. A window may run over the new
+- `season` (optional): `[month, day]`, both days included, a day that exists in that month. A window may run over the new
   year (`[12, 20]` to `[1, 5]`). Without it, the theme is only worn through `PR_RADAR_THEME`.
   Pick days no other season uses.
 
@@ -61,9 +62,11 @@ Registers what CSS alone cannot draw:
 })();
 ```
 
-- `front()`: HTML laid over the page, under the header's menus. Keep it to corners and edges, it
-  covers what is beneath it.
-- `back()`: HTML behind the cards, seen only in the gaps between them.
+- `front()`: HTML laid over the page, under the header's menus. It covers what is beneath it, so
+  keep it to small things at the edges, and to what only passes by (a ship crossing for a few
+  seconds).
+- `back()`: HTML behind the cards, seen only in the gaps between them. Large decorations (a planet
+  in a corner, a nebula) belong here.
 - `ambient({ front, back })`: called a few seconds after load, then every `every` milliseconds
   (a random delay within the range). It gets the two layers to draw into. Never called when the
   system asks for reduced motion.

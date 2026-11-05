@@ -28,10 +28,10 @@
       ?? null;
   }
 
-  // What is remembered as turned off, per theme: `true` for the default one, the season's year
-  // for a seasonal one. The single value the first version kept is read once, then dropped.
+  // What is remembered as turned off, per theme: the season's year while it is worn for its
+  // season, `true` otherwise. The single value the first version kept is read until a click.
   function offKey(theme, now) {
-    return theme.season ? seasonYear(theme.season, now) : true;
+    return theme.season && inSeason(theme.season, now) ? seasonYear(theme.season, now) : true;
   }
 
   function readOff(raw, legacy) {

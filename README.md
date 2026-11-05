@@ -1247,7 +1247,8 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
   they say (see [Reading the colours](#reading-the-colours)); a theme only adds to the
   header, the empty states and the background.
 - **Turn it off** with its button in the header, next to the theme one. The choice is kept in
-  this browser: for this year only for a seasonal theme, until you turn it back on for yours.
+  this browser: a theme worn for its season comes back with its next season, the default one
+  stays off until you turn it back on.
 - **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
 - **To try one**, add `?theme=<name>` to the page's address, whatever the date.
 - **Any theme can be the default one**: `PR_RADAR_THEME=starwars` wears Star Wars all year,

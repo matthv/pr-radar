@@ -98,7 +98,7 @@ async function assetVersion() {
   const themed = (await themeFiles(THEMES_DIR)).map(file => path.join('themes', file));
   const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themed].sort();
   const stamps = await Promise.all(
-    names.map(async name => `${name}:${(await fs.stat(path.join(PUBLIC_DIR, name))).mtimeMs}`),
+    names.map(async name => `${name}:${await fs.stat(path.join(PUBLIC_DIR, name)).then(stat => stat.mtimeMs, () => 0)}`),
   );
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }

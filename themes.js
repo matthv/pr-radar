@@ -7,7 +7,7 @@ const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 const isDay = day => Array.isArray(day) && day.length === 2
   && Number.isInteger(day[0]) && day[0] >= 1 && day[0] <= 12
-  && Number.isInteger(day[1]) && day[1] >= 1 && day[1] <= 31;
+  && Number.isInteger(day[1]) && day[1] >= 1 && day[1] <= new Date(2024, day[0], 0).getDate();
 
 const exists = file => fs.access(file).then(() => true, () => false);
 

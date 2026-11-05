@@ -24,7 +24,6 @@
     + '<circle cx="-9.5" cy="-8.5" r="1.4" fill="var(--st-bussard)"/><circle cx="-9.5" cy="8.5" r="1.4" fill="var(--st-bussard)"/>'
     + '<path d="M-24,-8.5h12M-24,8.5h12" stroke="var(--st-warp)" stroke-width="1"/></svg>';
 
-  // The Enterprise drifts in at impulse, then stretches and jumps to warp.
   function warp({ front }) {
     const lane = front.querySelector('.st-warp');
     if (!lane) return;
@@ -37,8 +36,8 @@
   }
 
   PRRadarTheme.register({
-    front: () => `<div class="st-nebula"></div><i class="st-nebula-core"></i>${TRANSPORTER}<div class="st-warp"></div>`,
-    back: () => PRRadarTheme.stars({ seed: 19660908, count: 88, className: 'st-star' }),
+    front: () => `${TRANSPORTER}<div class="st-warp"></div>`,
+    back: () => '<div class="st-nebula"></div><i class="st-nebula-core"></i>' + PRRadarTheme.stars({ seed: 19660908, count: 88, className: 'st-star' }),
     ambient: warp,
     every: [16_000, 32_000],
   });

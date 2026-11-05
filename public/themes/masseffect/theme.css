@@ -24,7 +24,6 @@
   --me-armor-edge: #9aa3b5;
   --me-omni: #ff9a2e;
 }
-/* The N7 stripe: white, red, white. */
 header {
   border-bottom: 3px solid transparent;
   border-image: linear-gradient(to bottom, var(--surface) 0 30%, var(--me-red) 30% 70%, var(--surface) 70%) 1;
@@ -49,7 +48,6 @@ header {
 .me-relay { position: absolute; right: -120px; bottom: -110px; width: 320px; height: 320px; color: var(--me-relay); overflow: visible; }
 .me-relay .core { fill: var(--me-glow); filter: drop-shadow(0 0 6px var(--me-blue)) drop-shadow(0 0 14px var(--me-blue)); opacity: .55; }
 .me-relay .ring { fill: none; stroke: var(--me-glow); stroke-width: 1.4; opacity: .4; transform-box: fill-box; transform-origin: center; }
-/* A forearm reaches in from the bottom left corner, its omni-tool lights up, then it withdraws. */
 .me-omni { position: absolute; left: 0; bottom: 6px; width: 66px; height: 54px; transform: translateX(-72px); overflow: visible; }
 .me-omni .holo { opacity: 0; filter: drop-shadow(0 0 2px var(--me-omni)) drop-shadow(0 0 6px var(--me-omni)); }
 .me-flyby { position: absolute; left: 0; top: var(--y, 20vh); opacity: 0; }

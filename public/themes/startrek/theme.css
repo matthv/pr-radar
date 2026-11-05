@@ -42,7 +42,6 @@
   --st-pants: #374151;
   --st-line: #9ca3af;
 }
-/* The LCARS bar under the header: its segments in the console's own colours. */
 header {
   border-bottom: 3px solid transparent;
   border-image: linear-gradient(to right, var(--st-orange) 0 38%, var(--bg) 38% 38.6%, var(--st-lilac) 38.6% 54%,
@@ -53,7 +52,6 @@ header {
 .logo .blip { fill: var(--st-lilac); }
 #sweepGrad stop { stop-color: var(--st-orange); }
 #sweepGrad stop:last-child { stop-color: var(--st-blue); }
-/* The Starfleet delta. */
 .brand > span::after {
   content: ""; display: inline-block; width: 12px; height: 17px; margin-left: 8px; vertical-align: -2px;
   background: linear-gradient(160deg, var(--st-gold), color-mix(in srgb, var(--st-gold) 60%, #000));
@@ -73,8 +71,6 @@ header {
 .st-ship { width: 100%; height: 100%; overflow: visible; }
 .st-warp.engage { animation: st-engage 7s linear; }
 .st-warp.rtl.engage { animation-name: st-engage-back; }
-/* A crew member beams in at the bottom left corner, stands a while, and beams out again: most of
-   the cycle the pad is empty. */
 .st-transporter { position: absolute; left: 16px; bottom: 4px; width: 26px; height: 54px; }
 .st-beam {
   position: absolute; inset: -6px -5px 0; opacity: 0; border-radius: 50% / 18%;
@@ -85,7 +81,6 @@ header {
   background: var(--st-sparkle); box-shadow: 0 0 3px var(--st-sparkle);
 }
 .st-crew { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
-/* A nebula in the bottom right corner: clouds of gas, blurred, drifting slowly. */
 .st-nebula {
   position: absolute; right: -180px; bottom: -180px; width: 640px; height: 640px; filter: blur(24px);
   background: radial-gradient(38% 30% at 42% 46%, var(--st-nebula-a), transparent 70%),

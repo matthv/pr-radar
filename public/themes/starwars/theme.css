@@ -38,7 +38,6 @@ header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--borde
 .logo .blip { fill: var(--sw-sith); }
 #sweepGrad stop { stop-color: var(--sw-gold); }
 #sweepGrad stop:last-child { stop-color: var(--sw-blade); }
-/* A lightsaber: the hilt, then the blade, which ignites on load. */
 .brand > span::after {
   content: ""; display: inline-block; width: 32px; height: 4px; margin-left: 9px; vertical-align: middle; border-radius: 2px;
   background: linear-gradient(var(--sw-hilt), var(--sw-hilt)) left / 9px 100% no-repeat,
@@ -50,8 +49,6 @@ header { border-bottom-color: color-mix(in srgb, var(--sw-gold) 35%, var(--borde
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--sw-blade) 40%, transparent),
               0 10px 26px -12px color-mix(in srgb, var(--sw-blade) 65%, transparent);
 }
-/* R2-D2 rolls in from the bottom left corner, looks around, and rolls back out: most of the
-   cycle it waits out of sight. */
 .sw-r2 { position: absolute; left: 0; bottom: 4px; width: 34px; height: 41px; transform: translateX(-56px); }
 .sw-r2 .rock { transform-box: fill-box; transform-origin: 50% 100%; }
 .sw-deathstar { position: absolute; right: -64px; bottom: -64px; width: 238px; height: 238px; color: var(--sw-deathstar); }
