@@ -35,6 +35,13 @@ const BOT_LOGINS = new Set([
 
 const LINT_BOTS = new Set(['qltysh', 'qlty-cloud-legacy']);
 
+const PAGE_INFO = 'pageInfo { hasPreviousPage startCursor }';
+const CONNECTION_FIELDS = {
+  reviews: 'id author { __typename login } state submittedAt url body',
+  reviewThreads: `id isResolved isOutdated path line
+    comments(first: 20) { totalCount nodes { author { __typename login } body createdAt url pullRequestReview { id } } }`,
+};
+
 const PR_QUERY = `
 query($ids: [ID!]!) {
   nodes(ids: $ids) {
@@ -88,25 +95,12 @@ query($ids: [ID!]!) {
       recent: commits(last: 50) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
-      reviews(last: 100) { totalCount nodes { id author { __typename login } state submittedAt url body } }
+      reviews(last: 100) { totalCount ${PAGE_INFO} nodes { ${CONNECTION_FIELDS.reviews} } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
       }
-      reviewThreads(last: 100) {
-        totalCount
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          comments(first: 20) {
-            totalCount
-            nodes { author { __typename login } body createdAt url pullRequestReview { id } }
-          }
-        }
-      }
+      reviewThreads(last: 100) { totalCount ${PAGE_INFO} nodes { ${CONNECTION_FIELDS.reviewThreads} } }
     }
   }
 }`;
@@ -1242,9 +1236,33 @@ async function discover({ org, extraRepos = [], maxAgeDays, claimedRefs = [] }) 
   };
 }
 
+const MAX_EARLIER_PAGES = 10;
+const EARLIER_QUERY = Object.fromEntries(Object.entries(CONNECTION_FIELDS).map(([connection, fields]) => [connection, `
+query($id: ID!, $before: String!) {
+  node(id: $id) { ... on PullRequest { ${connection}(last: 100, before: $before) { ${PAGE_INFO} nodes { ${fields} } } } }
+}`]));
+
+async function loadEarlierPages(nodes, run = graphql) {
+  const truncated = [...nodes.values()].flatMap(node =>
+    Object.keys(EARLIER_QUERY).filter(connection => node[connection]?.pageInfo?.hasPreviousPage).map(connection => ({ node, connection })),
+  );
+  await mapWithConcurrency(truncated, PR_CONCURRENCY, async ({ node, connection }) => {
+    const list = node[connection];
+    try {
+      for (let page = 0; page < MAX_EARLIER_PAGES && list.pageInfo.hasPreviousPage; page += 1) {
+        const earlier = (await run(EARLIER_QUERY[connection], { id: node.id, before: list.pageInfo.startCursor })).node[connection];
+        list.nodes = [...earlier.nodes, ...list.nodes];
+        list.pageInfo = earlier.pageInfo;
+      }
+    } catch {
+      // What is still missing is reported by truncationOf.
+    }
+  });
+}
+
 async function loadNodes(ids, warnings) {
   const byId = await fetchPullRequests(ids, warnings);
-  await settleMergeable(byId, warnings);
+  await Promise.all([settleMergeable(byId, warnings), loadEarlierPages(byId)]);
   return byId;
 }
 
@@ -1420,6 +1438,7 @@ module.exports = {
   claimInScope,
   fetchBoard,
   loadNodes,
+  loadEarlierPages,
   shapeBoard,
   ownerScope,
   parseExtraRepos,
