@@ -37,7 +37,7 @@ const LINT_BOTS = new Set(['qltysh', 'qlty-cloud-legacy']);
 
 const PAGE_INFO = 'pageInfo { hasPreviousPage startCursor }';
 const CONNECTION_FIELDS = {
-  reviews: 'id author { __typename login } state submittedAt url body',
+  reviews: 'id author { __typename login avatarUrl } state submittedAt url body',
   reviewThreads: `id isResolved isOutdated path line
     comments(first: 20) { totalCount nodes { author { __typename login } body createdAt url pullRequestReview { id } } }`,
 };
@@ -98,7 +98,7 @@ query($ids: [ID!]!) {
       reviews(last: 100) { totalCount ${PAGE_INFO} nodes { ${CONNECTION_FIELDS.reviews} } }
       comments(last: 30) { nodes { author { __typename login } createdAt url body } }
       reviewRequests(first: 20) {
-        nodes { requestedReviewer { __typename ... on User { login } ... on Team { name } } }
+        nodes { requestedReviewer { __typename ... on User { login avatarUrl } ... on Team { name } } }
       }
       reviewThreads(last: 100) { totalCount ${PAGE_INFO} nodes { ${CONNECTION_FIELDS.reviewThreads} } }
     }
@@ -624,6 +624,23 @@ function discussionThread(pr, me) {
   };
 }
 
+const REVIEWER_STATES = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', DISMISSED: 'dismissed' };
+const REVIEWER_ORDER = ['changes', 'pending', 'dismissed', 'commented', 'approved'];
+
+function reviewersOf({ author, me, reviews, requested }) {
+  const people = new Map();
+  const blockingBots = new Set(latestReviewPerAuthor(reviews.filter(review => review.fromBot))
+    .filter(review => review.state === 'CHANGES_REQUESTED').map(review => review.author));
+  const counted = reviews.filter(review => (!review.fromBot || blockingBots.has(review.author))
+    && review.author !== author && review.author !== me && review.state !== 'PENDING');
+  for (const review of counted) people.set(review.author, { login: review.author, avatarUrl: review.avatarUrl, state: 'commented' });
+  for (const review of latestReviewPerAuthor(counted)) people.get(review.author).state = REVIEWER_STATES[review.state] ?? 'commented';
+  for (const who of requested) {
+    people.set(who.login, { login: who.login, avatarUrl: who.avatarUrl ?? people.get(who.login)?.avatarUrl ?? null, state: 'pending' });
+  }
+  return [...people.values()].sort((a, b) => REVIEWER_ORDER.indexOf(a.state) - REVIEWER_ORDER.indexOf(b.state));
+}
+
 // PR author first, then commit authors chronologically: the order people entered the PR.
 function contributorsOf(pr) {
   const people = new Map();
@@ -767,6 +784,17 @@ function baseShape(pr, me) {
   // Settled by the repo's newest release, not the announced one: a job failing after the
   // bot's comment is still carried by whatever main ships next (forestadmin-server#8565).
   const pipeline = settleByRelease(pipelineSummary(pr.mergeCommit), latestRelease ?? release);
+  const reviews = pr.reviews.nodes.filter(Boolean).map(r => ({
+    author: r.author?.login ?? '?',
+    avatarUrl: r.author?.avatarUrl ?? null,
+    fromBot: isBot(r.author),
+    state: r.state,
+    submittedAt: r.submittedAt,
+    url: r.url,
+  }));
+  const requested = pr.reviewRequests.nodes
+    .map(n => n?.requestedReviewer)
+    .filter(who => who?.__typename === 'User' && who.login && who.login !== pr.author?.login && who.login !== me && !isBot(who));
 
   return {
     id: pr.id,
@@ -808,6 +836,7 @@ function baseShape(pr, me) {
     author: pr.author?.login ?? '?',
     authorIsBot: isBot(pr.author),
     contributors: contributorsOf(pr),
+    reviewers: reviewersOf({ author: pr.author?.login, me, reviews, requested }),
     labels: pr.labels.nodes.map(l => ({ name: l.name, color: l.color })),
     ciState: lastCommit?.statusCheckRollup?.state ?? null,
     lastCommitAt: lastCommit?.committedDate ?? null,
@@ -817,14 +846,9 @@ function baseShape(pr, me) {
       ...pr.reviewThreads.nodes.filter(Boolean).map(t => analyzeThread(t, me)).filter(Boolean),
       ...(discussion ? [discussion] : []),
     ],
-    reviews: pr.reviews.nodes.filter(Boolean).map(r => ({
-      author: r.author?.login ?? '?',
-      state: r.state,
-      submittedAt: r.submittedAt,
-      url: r.url,
-    })),
+    reviews,
     requestedReviewers: pr.reviewRequests.nodes
-      .map(n => n.requestedReviewer)
+      .map(n => n?.requestedReviewer)
       .filter(Boolean)
       .map(r => (r.__typename === 'Team' ? `@team/${r.name}` : r.login)),
   };

@@ -795,6 +795,25 @@
   .face:hover { box-shadow: 0 0 0 2px var(--indigo); transform: scale(1.12); z-index: 1; }
   .face:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; z-index: 1; }
   .card.action .face { border-color: var(--surface); }
+  .reviewers { display: inline-flex; align-items: center; gap: 6px; }
+  .reviewers-label { color: var(--text-faint); }
+  .reviewers-faces { display: inline-flex; gap: 5px; }
+  .reviewer { position: relative; display: block; width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1.5px var(--ring); transition: transform .15s; }
+  .reviewer img { width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover; background: var(--hairline); }
+  .reviewer.pending img { opacity: .45; }
+  .reviewer:hover { transform: scale(1.12); z-index: 1; }
+  .reviewer:focus-visible, .reviewer.pending:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .reviewer-badge {
+    position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--ring); color: #fff; font-size: 8px; line-height: 11px; text-align: center; font-weight: 700;
+    box-shadow: 0 0 0 1.5px var(--surface);
+  }
+  .reviewer.pending .reviewer-badge { display: none; }
+  .reviewer.approved { --ring: var(--emerald); }
+  .reviewer.changes { --ring: var(--rose); }
+  .reviewer.commented, .reviewer.dismissed { --ring: var(--text-faint); }
+  .reviewers-more { color: var(--text-faint); font-size: 12px; cursor: default; }
+  .reviewer.pending { --ring: var(--text-faint); box-shadow: none; outline: 1.5px dashed var(--ring); outline-offset: 1px; }
 
   .pill {
     padding: 2.5px 8px; border-radius: 7px; font-size: 11.5px; font-weight: 580;
@@ -1567,6 +1586,12 @@ const I18N = {
     allProjects: 'Tous les projets ({n})',
     searchProject: 'Filtrer les projets…',
     openProfile: 'ouvrir le profil de {login}',
+    reviewersLabel: 'Reviewers',
+    reviewer_approved: '{login} — a approuvé',
+    reviewer_changes: '{login} — a demandé des changements',
+    reviewer_commented: '{login} — a commenté',
+    reviewer_dismissed: '{login} — review rejetée, à refaire',
+    reviewer_pending: '{login} — n’a pas encore répondu',
     snooze: 'mettre en veille jusqu’au prochain mouvement',
     snoozedShow: 'afficher',
     snoozedHide: 'masquer',
@@ -1783,6 +1808,12 @@ const I18N = {
     allProjects: 'All projects ({n})',
     searchProject: 'Filter projects…',
     openProfile: 'open {login}’s profile',
+    reviewersLabel: 'Reviewers',
+    reviewer_approved: '{login} — approved',
+    reviewer_changes: '{login} — requested changes',
+    reviewer_commented: '{login} — commented',
+    reviewer_dismissed: '{login} — review dismissed, to do again',
+    reviewer_pending: '{login} — not answered yet',
     snooze: 'snooze until something moves',
     snoozedShow: 'show',
     snoozedHide: 'hide',
@@ -2279,6 +2310,16 @@ const LINEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.886
 const CLAUDE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#D97757" stroke-width="2.6"'
   + ' stroke-linecap="round" d="M12 2.5v19M2.5 12h19M5.3 5.3l13.4 13.4M18.7 5.3 5.3 18.7"/></svg>';
 
+function avatarSrc(person, size) {
+  try {
+    const url = new URL(person.avatarUrl || `https://github.com/${encodeURIComponent(person.login)}.png`);
+    url.searchParams.set(url.hostname === 'github.com' ? 'size' : 's', String(size));
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
 function whoHtml(pr) {
   const people = pr.contributors ?? [];
   if (!people.length) return '';
@@ -2294,9 +2335,7 @@ function whoHtml(pr) {
         `<a class="face" href="https://github.com/${encodeURIComponent(person.login)}"`
         + ` target="_blank" rel="noopener"`
         + ` title="${escapeHtml(t('openProfile', { login: person.login }))}">`
-        + (person.avatarUrl
-          ? `<img src="${escapeHtml(person.avatarUrl)}&s=48" alt="" loading="lazy">`
-          : '')
+        + `<img src="${escapeHtml(avatarSrc(person, 48))}" alt="" loading="lazy">`
         + '</a>',
     )
     .join('');
@@ -2566,6 +2605,26 @@ function glowTwins(id) {
   }, TWIN_GLOW_MS - GLOW_FADE_MS);
 }
 
+const REVIEWER_BADGES = { approved: '✓', changes: '✕', dismissed: '↺', commented: '…', pending: '' };
+
+function reviewersHtml(pr) {
+  if (pr.side !== 'mine' || pr.state !== 'OPEN' || !pr.reviewers?.length) return '';
+  const shown = pr.reviewers.slice(0, MAX_FACES);
+  const hidden = pr.reviewers.slice(MAX_FACES);
+  const faces = shown
+    .map(person =>
+      `<a class="reviewer ${person.state}" href="https://github.com/${encodeURIComponent(person.login)}" target="_blank" rel="noopener"`
+      + ` title="${escapeHtml(t(`reviewer_${person.state}`, { login: person.login }))}">`
+      + `<img src="${escapeHtml(avatarSrc(person, 48))}" alt="" loading="lazy">`
+      + `<span class="reviewer-badge">${REVIEWER_BADGES[person.state]}</span></a>`)
+    .join('');
+  const more = hidden.length
+    ? `<span class="reviewers-more" title="${escapeHtml(hidden.map(person => t(`reviewer_${person.state}`, { login: person.login })).join('\n'))}">+${hidden.length}</span>`
+    : '';
+  return `<span class="sep reviewers"><span class="reviewers-label">${escapeHtml(t('reviewersLabel'))}</span>`
+    + `<span class="reviewers-faces">${faces}</span>${more}</span>`;
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
@@ -2593,6 +2652,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
         <span>+${pr.additions}/−${pr.deletions} · ${t('files', { n: pr.changedFiles })}</span>
         <span class="sep activity" title="${t('agoTitle')}">${t('activeAgo', { v: ago(pr.lastActivityAt) })}</span>
         ${whoHtml(pr)}
+        ${reviewersHtml(pr)}
         ${count ? expander(' in-meta') : ''}
       </div>
       ${reasonsHtml(pr)}

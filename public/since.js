@@ -5,7 +5,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.PRRadarSince = api;
 })(this, () => {
-  // The page has no bot flag on reviews, only on threads: a login is what it can test.
+  // A thread's last author comes as a bare login, with no bot flag: the login is what it can test.
   const isBotLogin = login => !login || /\[bot\]$/.test(login);
 
   const CI = { SUCCESS: 'ok', FAILURE: 'ko', ERROR: 'ko', PENDING: 'running', EXPECTED: 'running' };
@@ -47,7 +47,7 @@
     };
 
     for (const review of pr.reviews) {
-      if (review.author === me || isBotLogin(review.author)) continue;
+      if (review.author === me || review.fromBot || isBotLogin(review.author)) continue;
       if (seenReviews.has(`${review.author}|${review.state}|${review.submittedAt}`)) continue;
       if (review.state === 'CHANGES_REQUESTED' && askedAgain.has(review.author)) {
         if (!handedBack.has(review.author) || review.submittedAt > handedBack.get(review.author)) {

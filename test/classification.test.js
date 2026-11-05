@@ -1321,6 +1321,122 @@ test('lastActivity ignores a Validator journal, reposted at every step', () => {
   assert.ok((Date.now() - new Date(lastActivity(pr))) / DAY > 5);
 });
 
+test('my PR: reviewers carry their last verdict, a pending request first among the waiting', () => {
+  const review = (login, state, at) => ({ id: `R_${login}_${at}`, author: user(login), state, body: '', submittedAt: ago(at), url: 'u' });
+  const pr = baseShape(node({
+    author: user(ME),
+    reviews: { nodes: [
+      review('alice', 'CHANGES_REQUESTED', 3), review('alice', 'APPROVED', 1), review('alice', 'COMMENTED', 0.5),
+      review('bob', 'CHANGES_REQUESTED', 2), review('bob', 'COMMENTED', 1),
+      review('carol', 'COMMENTED', 2),
+      review('dave', 'APPROVED', 3),
+      { ...review('macroscope', 'COMMENTED', 1), author: bot('macroscope') },
+      review(ME, 'COMMENTED', 1),
+    ] },
+    reviewRequests: { nodes: [
+      { requestedReviewer: { __typename: 'User', login: 'dave', avatarUrl: 'https://avatars/dave' } },
+      { requestedReviewer: { __typename: 'User', login: 'erin', avatarUrl: 'https://avatars/erin' } },
+      { requestedReviewer: { __typename: 'Team', name: 'core' } },
+    ] },
+  }), ME);
+
+  assert.deepEqual(pr.reviewers.map(r => [r.login, r.state]), [
+    ['bob', 'changes'],
+    ['dave', 'pending'],
+    ['erin', 'pending'],
+    ['carol', 'commented'],
+    ['alice', 'approved'],
+  ], 'a comment after a verdict keeps the verdict; asked again is pending; bots, teams and the author left out');
+  assert.equal(pr.reviewers.find(r => r.login === 'erin').avatarUrl, 'https://avatars/erin');
+});
+
+test('my PR: a dismissed review is a verdict to give again, never an older one brought back', () => {
+  const review = (login, state, at) => ({ id: `R_${login}_${at}`, author: user(login), state, body: '', submittedAt: ago(at), url: 'u' });
+  const pr = node({
+    author: user(ME),
+    reviews: { nodes: [
+      review('alice', 'APPROVED', 3), review('alice', 'DISMISSED', 2),
+      review('bob', 'DISMISSED', 2),
+      review('carol', 'CHANGES_REQUESTED', 3), review('carol', 'DISMISSED', 1),
+    ] },
+  });
+  const shaped = decorateMine(baseShape(pr, ME));
+  assert.deepEqual(shaped.reviewers.map(r => [r.login, r.state]), [['alice', 'dismissed'], ['bob', 'dismissed'], ['carol', 'dismissed']]);
+  assert.equal(shaped.changesRequested.length, 0, 'the faces and the "changes requested" reason agree');
+});
+
+test('my PR: a bot asked for a review is no pending reviewer', () => {
+  const pr = baseShape(node({
+    author: user(ME),
+    reviewRequests: { nodes: [
+      { requestedReviewer: { __typename: 'User', login: 'macroscopeapp' } },
+      { requestedReviewer: { __typename: 'User', login: 'renovate[bot]' } },
+      { requestedReviewer: { __typename: 'User', login: 'erin' } },
+    ] },
+  }), ME);
+  assert.deepEqual(pr.reviewers.map(r => r.login), ['erin']);
+});
+
+const reviewOf = (login, state, at, author = user(login)) => ({ id: `R_${login}_${at}_${state}`, author, state, body: '', submittedAt: ago(at), url: 'u' });
+const asked = (login, avatarUrl) => ({ requestedReviewer: { __typename: 'User', login, ...(avatarUrl && { avatarUrl }) } });
+
+test('my PR: the five reviewer states in the order that decides who goes behind +N', () => {
+  const pr = baseShape(node({
+    author: user(ME),
+    reviews: { nodes: [
+      reviewOf('approver', 'APPROVED', 1),
+      reviewOf('commenter', 'COMMENTED', 1),
+      reviewOf('dismissed', 'DISMISSED', 1),
+      reviewOf('blocker', 'CHANGES_REQUESTED', 1),
+    ] },
+    reviewRequests: { nodes: [asked('waiting')] },
+  }), ME);
+  assert.deepEqual(pr.reviewers.map(r => [r.login, r.state]), [
+    ['blocker', 'changes'], ['waiting', 'pending'], ['dismissed', 'dismissed'], ['commenter', 'commented'], ['approver', 'approved'],
+  ]);
+});
+
+test('my PR: after a dismissal, a new verdict counts and a comment does not', () => {
+  const pr = baseShape(node({
+    author: user(ME),
+    reviews: { nodes: [
+      reviewOf('alice', 'DISMISSED', 2), reviewOf('alice', 'APPROVED', 1),
+      reviewOf('bob', 'DISMISSED', 2), reviewOf('bob', 'COMMENTED', 1),
+    ] },
+  }), ME);
+  assert.deepEqual(pr.reviewers.map(r => [r.login, r.state]), [['bob', 'dismissed'], ['alice', 'approved']]);
+});
+
+test('my PR: asked again after requesting changes, the reviewer is pending and the reason drops', () => {
+  const pr = decorateMine(baseShape(node({
+    author: user(ME),
+    reviews: { nodes: [reviewOf('alice', 'CHANGES_REQUESTED', 2, { ...user('alice'), avatarUrl: 'https://avatars/alice' })] },
+    reviewRequests: { nodes: [asked('alice')] },
+  }), ME));
+  assert.deepEqual(pr.reviewers.map(r => [r.login, r.state]), [['alice', 'pending']]);
+  assert.equal(pr.reviewers[0].avatarUrl, 'https://avatars/alice', 'the request has no avatar, the review has one');
+  assert.equal(pr.changesRequested.length, 0);
+});
+
+test('my PR: a bot requesting changes shows its face, as the reason it raises does', () => {
+  const shaped = reviews => decorateMine(baseShape(node({ author: user(ME), reviews: { nodes: reviews } }), ME));
+  const blocking = shaped([reviewOf('coderabbit', 'CHANGES_REQUESTED', 1, bot('coderabbit'))]);
+  assert.deepEqual(blocking.reviewers.map(r => [r.login, r.state]), [['coderabbit', 'changes']]);
+  assert.deepEqual(blocking.changesRequested.map(r => r.author), ['coderabbit']);
+
+  const settled = shaped([reviewOf('coderabbit', 'CHANGES_REQUESTED', 2, bot('coderabbit')), reviewOf('coderabbit', 'APPROVED', 1, bot('coderabbit'))]);
+  assert.deepEqual(settled.reviewers, [], 'once it approves, a bot is left out again');
+});
+
+test('my PR: on a PR I took over, my own review and a request to me are not among the reviewers', () => {
+  const pr = baseShape(node({
+    author: user('former'),
+    reviews: { nodes: [reviewOf(ME, 'APPROVED', 1), reviewOf('alice', 'COMMENTED', 1)] },
+    reviewRequests: { nodes: [asked(ME)] },
+  }), ME);
+  assert.deepEqual(pr.reviewers.map(r => r.login), ['alice']);
+});
+
 // Observed on forestadmin-server#8565: its merge pipeline failed at 14:53, main was fixed,
 // and 1.1220.2 shipped it at 17:16, yet the card stayed red as a release to fix.
 test('my PR: a release published after its failed pipeline settles it', () => {
