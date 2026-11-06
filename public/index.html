@@ -1198,6 +1198,7 @@
   }
   .decor-panel .decor-remove:hover { color: var(--rose); background: var(--hairline); }
   .decor-panel .decor-remove.confirm { color: var(--rose); font-weight: 600; }
+  .decor-error { padding: 4px 8px; font-size: 11.5px; line-height: 1.35; color: var(--rose); }
   .decor-heading {
     margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border);
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint);
@@ -2231,9 +2232,12 @@ function renderDecorMenu() {
   if (custom.length || catalog.canGenerate) {
     options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label, removable: true })));
   }
+  if (removeError) options.push({ error: removeError });
   if (catalog.canGenerate) options.push({ add: true });
-  const html = options.map(({ value, icon, label, hint, heading, add, removable }) => heading
+  const html = options.map(({ value, icon, label, hint, heading, add, removable, error }) => heading
     ? `<div class="decor-heading" role="presentation">${escapeHtml(heading)}</div>`
+    : error
+    ? `<div class="decor-error" role="alert">${escapeHtml(t('decorFailed', { error }))}</div>`
     : add
     ? `<button type="button" class="picker-option" data-decor-add aria-expanded="${!el('decorNew').hidden}"><span class="label">${escapeHtml(t('decorNew'))}</span></button>`
     : `<button type="button" class="picker-option" role="option" data-decor="${escapeHtml(value)}" aria-selected="${value === chosen}">`
@@ -2253,6 +2257,7 @@ const THEME_EMOJIS = [
 ];
 
 let removing = null;
+let removeError = null;
 
 // A server started before this page's code has no such route: its static 404 is plain text.
 const themeError = async response => {
@@ -2286,7 +2291,10 @@ function renderDecorForm() {
 }
 
 function openDecorMenu(open) {
-  if (!open) removing = null;
+  if (!open) {
+    removing = null;
+    removeError = null;
+  }
   el('decorPanel').hidden = !open;
   el('decor').setAttribute('aria-expanded', String(open));
   if (open) renderDecorMenu();
@@ -2306,13 +2314,13 @@ el('decorList').addEventListener('click', async event => {
     try {
       await removeCustomTheme(name);
     } catch (error) {
-      el('decorNewStatus').className = 'failed';
-      el('decorNewStatus').textContent = t('decorFailed', { error: error.message });
+      removeError = error.message;
     }
     renderDecorMenu();
     return;
   }
   removing = null;
+  removeError = null;
   if (event.target.closest('[data-decor-add]')) {
     el('decorNew').hidden = !el('decorNew').hidden;
     renderDecorForm();
