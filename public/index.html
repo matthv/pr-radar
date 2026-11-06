@@ -1630,6 +1630,7 @@ const I18N = {
     decorFailed: 'Échec : {error}',
     decorRemoveTitle: 'Supprimer ce thème (son dossier dans custom-themes/)',
     decorRemoveConfirm: 'Supprimer ?',
+    decorRestart: 'le serveur tourne une version plus ancienne, relance-le',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1863,6 +1864,7 @@ const I18N = {
     decorFailed: 'Failed: {error}',
     decorRemoveTitle: 'Remove this theme (its folder in custom-themes/)',
     decorRemoveConfirm: 'Remove?',
+    decorRestart: 'the server runs an older version, restart it',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2252,11 +2254,21 @@ const THEME_EMOJIS = [
 
 let removing = null;
 
+// A server started before this page's code has no such route: its static 404 is plain text.
+const themeError = async response => {
+  const text = await response.text();
+  try {
+    return JSON.parse(text).error ?? response.statusText;
+  } catch {
+    return response.status === 404 ? t('decorRestart') : text || response.statusText;
+  }
+};
+
 async function removeCustomTheme(name) {
   const response = await fetch(`/api/themes/${encodeURIComponent(name)}`, {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
   });
-  if (!response.ok) throw new Error((await response.json()).error ?? response.statusText);
+  if (!response.ok) throw new Error(await themeError(response));
   if (store.get('themePick', '') === name) store.set('themePick', '');
   definitions.delete(name);
   catalog = await (await fetch('/api/themes')).json();
@@ -2344,8 +2356,8 @@ el('decorNew').addEventListener('submit', async event => {
         label: el('decorNewName').value, icon: el('decorNewIcon').value, description: el('decorNewDescription').value,
       }),
     });
+    if (!response.ok) throw new Error(await themeError(response));
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error ?? response.statusText);
     catalog = await (await fetch('/api/themes')).json();
     catalog.themes ??= [];
     el('decorNew').reset();
