@@ -1257,6 +1257,8 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
   a description; **Generate** asks the `claude` CLI (Sonnet, no tools) for its CSS and script, a
   minute or two, then wears it. It lands in `custom-themes/<name>/`, yours to tweak. Anything in
   the answer reaching the network or the page's storage is refused, and nothing is written.
+- **Remove one** with the ✕ on its row, under My themes, clicked twice: it deletes its folder in
+  `custom-themes/`. Shipped themes have no ✕.
 - **Or write it yourself**: `npm run new-theme -- <name> ["Label"] [icon]` creates a working
   `custom-themes/<name>/` to edit; reload the page and pick it from the menu. `custom-themes/` is
   git-ignored, so your themes stay yours and never block an update. How to write one

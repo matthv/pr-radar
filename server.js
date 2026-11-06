@@ -30,7 +30,7 @@ const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
 const { listAllThemes, overlaps, themeFiles } = require('./themes');
-const { generateTheme } = require('./new-theme');
+const { generateTheme, removeTheme } = require('./new-theme');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -597,6 +597,22 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       logger.fail('theme', `generation failed, ${error.message}`);
       return json(res, 422, { error: error.message });
+    }
+  }
+
+  if (url.pathname.startsWith('/api/themes/') && req.method === 'DELETE') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 409, { error: 'not in the demo' });
+    const name = decodeURIComponent(url.pathname.slice('/api/themes/'.length));
+    try {
+      await removeTheme(name, { dir: CUSTOM_THEMES_DIR });
+      logger.info('theme', `removed custom-themes/${name}`);
+      return json(res, 200, { ok: true });
+    } catch (error) {
+      return json(res, 404, { error: error.message });
     }
   }
 

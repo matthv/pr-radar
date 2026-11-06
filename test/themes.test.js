@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
-const { createTheme, generateTheme, parseGenerated } = require('../new-theme');
+const { createTheme, generateTheme, removeTheme, parseGenerated } = require('../new-theme');
 const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
@@ -204,4 +204,17 @@ test('new-theme: a generated theme reaching the network is refused', () => {
   assert.throws(() => parseGenerated(wrap('@import "x.css";', '1')), /network/);
   assert.throws(() => parseGenerated(wrap('a{background:url(//x/y.png)}', '1')), /network/);
   assert.throws(() => parseGenerated('just prose'), /css and a js block/);
+});
+
+test('new-theme: removing a theme deletes its folder, and only a theme folder in that directory', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-remove-'));
+  const dir = path.join(root, 'custom');
+  await createTheme('gone', { dir, shippedDir: root });
+  await fs.writeFile(path.join(root, 'keep.txt'), 'x');
+  await removeTheme('gone', { dir });
+  await assert.rejects(fs.access(path.join(dir, 'gone')));
+  await assert.rejects(removeTheme('gone', { dir }), /no such theme/);
+  await assert.rejects(removeTheme('..', { dir }), /no such theme/);
+  await assert.rejects(removeTheme('../keep.txt', { dir }), /no such theme/);
+  await fs.access(path.join(root, 'keep.txt'));
 });

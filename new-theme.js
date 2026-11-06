@@ -133,6 +133,13 @@ async function generateTheme({ label, icon, description }, { dir = THEMES_DIR, c
   return name;
 }
 
+async function removeTheme(name, { dir = THEMES_DIR } = {}) {
+  if (!NAME_RE.test(name ?? '')) throw new Error('no such theme');
+  const folder = path.join(dir, name);
+  if (!(await fs.stat(folder).then(stat => stat.isDirectory(), () => false))) throw new Error('no such theme');
+  await fs.rm(folder, { recursive: true });
+}
+
 const GENERATE_ARGS = [
   '-p', '--model', 'sonnet',
   '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
@@ -152,4 +159,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createTheme, generateTheme, parseGenerated, slugOf };
+module.exports = { createTheme, generateTheme, removeTheme, parseGenerated, slugOf };

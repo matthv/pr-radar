@@ -1190,6 +1190,14 @@
   .decor-new-actions span { flex: 1; font-size: 11.5px; line-height: 1.35; color: var(--text-faint); }
   .decor-new-actions span.failed { color: var(--rose); }
   .decor-new-actions button { height: 28px; flex: none; }
+  .decor-row { display: flex; align-items: center; }
+  .decor-row .picker-option { flex: 1; min-width: 0; }
+  .decor-panel .decor-remove {
+    flex: none; height: 26px; padding: 0 8px; font-size: 11.5px; color: var(--text-faint);
+    border: 0; background: none; box-shadow: none; border-radius: 6px; transform: none;
+  }
+  .decor-panel .decor-remove:hover { color: var(--rose); background: var(--hairline); }
+  .decor-panel .decor-remove.confirm { color: var(--rose); font-weight: 600; }
   .decor-heading {
     margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border);
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint);
@@ -1620,6 +1628,8 @@ const I18N = {
     decorGenerate: 'Générer',
     decorGenerating: 'Claude le dessine, une à deux minutes…',
     decorFailed: 'Échec : {error}',
+    decorRemoveTitle: 'Supprimer ce thème (son dossier dans custom-themes/)',
+    decorRemoveConfirm: 'Supprimer ?',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1851,6 +1861,8 @@ const I18N = {
     decorGenerate: 'Generate',
     decorGenerating: 'Claude is drawing it, a minute or two…',
     decorFailed: 'Failed: {error}',
+    decorRemoveTitle: 'Remove this theme (its folder in custom-themes/)',
+    decorRemoveConfirm: 'Remove?',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2215,17 +2227,21 @@ function renderDecorMenu() {
   ];
   const custom = catalog.themes.filter(theme => theme.custom);
   if (custom.length || catalog.canGenerate) {
-    options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })));
+    options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label, removable: true })));
   }
   if (catalog.canGenerate) options.push({ add: true });
-  el('decorList').innerHTML = options.map(({ value, icon, label, hint, heading, add }) => heading
+  const html = options.map(({ value, icon, label, hint, heading, add, removable }) => heading
     ? `<div class="decor-heading" role="presentation">${escapeHtml(heading)}</div>`
     : add
     ? `<button type="button" class="picker-option" data-decor-add aria-expanded="${!el('decorNew').hidden}"><span class="label">${escapeHtml(t('decorNew'))}</span></button>`
     : `<button type="button" class="picker-option" role="option" data-decor="${escapeHtml(value)}" aria-selected="${value === chosen}">`
     + `<span class="label">${escapeHtml(icon)} ${escapeHtml(label)}</span>`
     + (hint ? `<span class="n">${escapeHtml(hint)}</span>` : '')
-    + '</button>').join('');
+    + '</button>'
+    + (removable
+      ? `<button type="button" class="decor-remove${removing === value ? ' confirm' : ''}" data-decor-remove="${escapeHtml(value)}" title="${escapeHtml(t('decorRemoveTitle'))}">${removing === value ? escapeHtml(t('decorRemoveConfirm')) : '✕'}</button>`
+      : ''));
+  el('decorList').innerHTML = html.map((row, index) => (options[index].removable ? `<div class="decor-row">${row}</div>` : row)).join('');
 }
 
 const THEME_EMOJIS = [
@@ -2233,6 +2249,20 @@ const THEME_EMOJIS = [
   '🌲', '🍂', '🌸', '🌻', '🍄', '🐙', '🐋', '🦊', '🐉', '🦉', '🐝', '🦋', '👾', '🤖', '🎃', '👻',
   '🎄', '🎆', '🏴‍☠️', '⚔️', '🧙', '🏰', '🎮', '🕹️', '🎸', '🍕', '☕', '🍩', '⚽', '🏎️', '💎', '🌹',
 ];
+
+let removing = null;
+
+async function removeCustomTheme(name) {
+  const response = await fetch(`/api/themes/${encodeURIComponent(name)}`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) throw new Error((await response.json()).error ?? response.statusText);
+  if (store.get('themePick', '') === name) store.set('themePick', '');
+  definitions.delete(name);
+  catalog = await (await fetch('/api/themes')).json();
+  catalog.themes ??= [];
+  await wearDecor();
+}
 
 function renderDecorForm() {
   el('decorEmojis').innerHTML = THEME_EMOJIS
@@ -2244,13 +2274,33 @@ function renderDecorForm() {
 }
 
 function openDecorMenu(open) {
+  if (!open) removing = null;
   el('decorPanel').hidden = !open;
   el('decor').setAttribute('aria-expanded', String(open));
   if (open) renderDecorMenu();
 }
 
 el('decor').addEventListener('click', () => openDecorMenu(el('decorPanel').hidden));
-el('decorList').addEventListener('click', event => {
+el('decorList').addEventListener('click', async event => {
+  const remove = event.target.closest('[data-decor-remove]');
+  if (remove) {
+    const name = remove.dataset.decorRemove;
+    if (removing !== name) {
+      removing = name;
+      renderDecorMenu();
+      return;
+    }
+    removing = null;
+    try {
+      await removeCustomTheme(name);
+    } catch (error) {
+      el('decorNewStatus').className = 'failed';
+      el('decorNewStatus').textContent = t('decorFailed', { error: error.message });
+    }
+    renderDecorMenu();
+    return;
+  }
+  removing = null;
   if (event.target.closest('[data-decor-add]')) {
     el('decorNew').hidden = !el('decorNew').hidden;
     renderDecorForm();
