@@ -7,8 +7,9 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const { listThemes, overlaps, themeFiles } = require('../themes');
-const { inSeason, seasonYear, pickDecor, offKey, readOff, stars } = require('../public/decor');
+const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
+const { createTheme } = require('../new-theme');
+const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
 
@@ -42,13 +43,18 @@ test('decor: a theme asked in the address shows whatever the date', () => {
   assert.equal(pickDecor({ themes, fallback: 'mine' }, { asked: 'nope', now: day(10, 28) }).name, 'halloween');
 });
 
-test('decor: a season over the new year is one season, turned off once', () => {
-  const winter = { name: 'winter', season: { from: [12, 20], to: [1, 5] } };
-  assert.equal(seasonYear(winter.season, day(12, 24)), 2026);
-  assert.equal(seasonYear(winter.season, new Date(2027, 0, 3, 12)), 2026);
-  assert.equal(offKey(winter, day(12, 24)), offKey(winter, new Date(2027, 0, 3, 12)));
-  assert.equal(offKey({ name: 'mine', season: null }, day(3, 1)), true);
-  assert.equal(offKey(winter, day(3, 1)), true, 'worn as the default out of season, it stays off');
+test('decor: the menu pick wins over the season and the default, the address over the pick', () => {
+  const themes = [
+    { name: 'halloween', season: { from: [10, 26], to: [10, 31] } },
+    { name: 'mine', season: null },
+    { name: 'starwars', season: { from: [5, 4], to: [5, 6] } },
+  ];
+  const catalog = { themes, fallback: 'mine' };
+  assert.equal(pickDecor(catalog, { chosen: 'starwars', now: day(10, 28) }).name, 'starwars');
+  assert.equal(pickDecor(catalog, { chosen: 'none', now: day(10, 28) }), null);
+  assert.equal(pickDecor(catalog, { chosen: '', now: day(10, 28) }).name, 'halloween', 'auto follows the season');
+  assert.equal(pickDecor(catalog, { chosen: 'gone', now: day(3, 1) }).name, 'mine', 'a removed theme falls back to auto');
+  assert.equal(pickDecor(catalog, { asked: 'halloween', chosen: 'none', now: day(3, 1) }).name, 'halloween');
 });
 
 test('decor: two seasons on the same day, the first by name wins', () => {
@@ -57,13 +63,6 @@ test('decor: two seasons on the same day, the first by name wins', () => {
     { name: 'halloween', season: { from: [10, 26], to: [10, 31] } },
   ];
   assert.equal(pickDecor({ themes, fallback: null }, { now: day(10, 28) }).name, 'autumn');
-});
-
-test('decor: each theme keeps its own off state, the old single value read once', () => {
-  assert.deepEqual(readOff('{"mine":true,"halloween":2026}', ''), { mine: true, halloween: 2026 });
-  assert.deepEqual(readOff(null, 'halloween-2026'), { halloween: 2026 }, 'the first version kept one value');
-  assert.deepEqual(readOff('{"halloween":2025}', 'halloween-2026'), { halloween: 2025 }, 'the new state wins');
-  assert.deepEqual(readOff('not json', 'nonsense'), {});
 });
 
 test('decor: a starfield is the same from one load to the next', () => {
@@ -150,4 +149,28 @@ test('themes: each shipped theme.js registers hooks that draw', async () => {
       assert.ok(Array.isArray(registered.every) && registered.every.length === 2, `${name} every`);
     }
   }
+});
+
+test('new-theme: scaffolds a folder the server accepts, and never overwrites one', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-new-theme-'));
+  await createTheme('deep-sea', { icon: '🐙', dir, shippedDir: path.join(__dirname, '..', 'public', 'themes') });
+  const { themes, problems } = await listThemes(dir);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(themes, [{ name: 'deep-sea', label: 'Deep Sea', icon: '🐙', season: null, script: true }]);
+  await assert.rejects(createTheme('deep-sea', { dir }), /already exists/);
+  await assert.rejects(createTheme('Bad Name', { dir }), /lowercase/);
+  await assert.rejects(createTheme('halloween', { dir }), /shipped theme/);
+});
+
+test('themes: custom-themes join the shipped ones, which keep their name', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-custom-'));
+  const shipped = path.join(root, 'shipped');
+  const custom = path.join(root, 'custom');
+  await createTheme('zeta', { dir: shipped, shippedDir: root });
+  await createTheme('alpha', { dir: custom, shippedDir: root });
+  await createTheme('zeta', { dir: custom, shippedDir: root });
+  const { themes, problems } = await listAllThemes(shipped, custom);
+  assert.deepEqual(themes.map(theme => [theme.name, Boolean(theme.custom)]), [['alpha', true], ['zeta', false]]);
+  assert.match(problems.join('\n'), /custom-themes\/zeta: a shipped theme has this name/);
+  assert.deepEqual(await listAllThemes(shipped, path.join(root, 'missing')).then(r => r.problems), []);
 });

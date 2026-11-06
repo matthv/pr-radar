@@ -1163,8 +1163,15 @@
 
   /* Themes: public/themes/<name>/, whose stylesheet is loaded only while it is worn, so the
      board's own colours (each one means a state) are untouched the rest of the time. */
-  #decor { width: 32px; padding: 0; justify-content: center; }
+  #decor { width: 32px; height: 100%; padding: 0; justify-content: center; }
   #decor.off { filter: grayscale(1); opacity: .5; }
+  .decor-panel { left: auto; right: 0; width: 240px; }
+  .decor-panel .picker-option { width: 100%; padding: 6px 8px; box-shadow: none; border: 0; background: none; transform: none; }
+  .decor-panel .picker-option:hover { background: var(--hairline); color: var(--text); }
+  .decor-heading {
+    margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint);
+  }
   #decorFront, #decorBack { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
   /* Under the header and the pickers' panels, so it never paints over a menu. */
   #decorFront { z-index: 9; }
@@ -1201,7 +1208,12 @@
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
-    <button type="button" id="decor" hidden></button>
+    <div class="picker" id="decorPicker">
+      <button type="button" id="decor" aria-haspopup="listbox" aria-expanded="false" hidden></button>
+      <div class="picker-panel decor-panel" id="decorPanel" hidden>
+        <div class="picker-list" id="decorList" role="listbox"></div>
+      </div>
+    </div>
     <button id="theme">☾</button>
     <button type="button" id="settings" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 4h3.5M8.5 4H14M2 8h7.5M12.5 8H14M2 12h1.5M6.5 12H14"/><circle cx="7" cy="4" r="1.5"/><circle cx="11" cy="8" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></button>
     <button id="reload" hidden></button>
@@ -1566,8 +1578,10 @@ const I18N = {
     updateDone: 'Mis à jour ({from} → {to}).',
     updateEnvVars: 'Nouveau dans .env.example : {names}.',
     themeTitle: 'Thème clair / sombre',
-    decorOn: 'Thème {name} {icon} — cliquer pour l’éteindre',
-    decorOff: 'Thème {name} éteint — cliquer pour le rallumer',
+    decorTitle: 'Thème : {name} — cliquer pour en choisir un autre',
+    decorAuto: 'Auto',
+    decorNone: 'Aucun',
+    decorCustom: 'Mes thèmes',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1788,8 +1802,10 @@ const I18N = {
     updateDone: 'Updated ({from} → {to}).',
     updateEnvVars: 'New in .env.example: {names}.',
     themeTitle: 'Light / dark theme',
-    decorOn: '{name} theme {icon} — click to turn it off',
-    decorOff: '{name} theme off — click to bring it back',
+    decorTitle: 'Theme: {name} — click to pick another',
+    decorAuto: 'Auto',
+    decorNone: 'None',
+    decorCustom: 'My themes',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2054,8 +2070,11 @@ const PRRadarTheme = (() => {
 })();
 
 let decor = null;
-const offThemes = () => PRRadarDecor.readOff(store.get('decorOff', '{}'), store.get('seasonOff', ''));
-const decorOff = () => Boolean(decor) && offThemes()[decor.name] === PRRadarDecor.offKey(decor, new Date());
+let catalog = { themes: [], default: null };
+const addressParams = new URLSearchParams(location.search);
+let askedTheme = addressParams.get('theme') ?? addressParams.get('season');
+let wearing = 0;
+const definitions = new Map();
 
 const loadScript = src => new Promise((resolve, reject) => {
   const script = document.createElement('script');
@@ -2065,37 +2084,51 @@ const loadScript = src => new Promise((resolve, reject) => {
   document.head.append(script);
 });
 
+async function themeDefinition(pick) {
+  if (!pick.script) return null;
+  if (!definitions.has(pick.name)) {
+    try {
+      await loadScript(`/themes/${pick.name}/theme.js`);
+      definitions.set(pick.name, PRRadarTheme.take());
+    } catch {
+      definitions.set(pick.name, null);
+    }
+  }
+  return definitions.get(pick.name);
+}
+
+const autoDecor = () => PRRadarDecor.pickDecor({ themes: catalog.themes, fallback: catalog.default });
+
+// Async because a theme.js loads once, on first wear: a quicker second pick wins over a slow first.
+async function wearDecor() {
+  const ticket = ++wearing;
+  const pick = PRRadarDecor.pickDecor(
+    { themes: catalog.themes, fallback: catalog.default },
+    { asked: askedTheme, chosen: store.get('themePick', '') },
+  );
+  const definition = pick ? await themeDefinition(pick) : null;
+  if (ticket !== wearing) return;
+  decor?.style.remove();
+  decor = null;
+  if (pick) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = `/themes/${pick.name}/theme.css`;
+    document.head.append(style);
+    const { front, back, ambient, every } = definition ?? {};
+    decor = { ...pick, front, back, ambient, every, style };
+  }
+  applyDecor();
+}
+
 async function loadDecor() {
-  let catalog;
   try {
     catalog = await (await fetch('/api/themes')).json();
   } catch {
     return;
   }
-  const params = new URLSearchParams(location.search);
-  const pick = PRRadarDecor.pickDecor(
-    { themes: catalog.themes ?? [], fallback: catalog.default },
-    { asked: params.get('theme') ?? params.get('season') },
-  );
-  if (!pick) return;
-  decor = { ...pick };
-  const style = document.createElement('link');
-  style.rel = 'stylesheet';
-  style.href = `/themes/${pick.name}/theme.css`;
-  style.disabled = decorOff();
-  document.head.append(style);
-  let definition = null;
-  if (pick.script) {
-    try {
-      await loadScript(`/themes/${pick.name}/theme.js`);
-      definition = PRRadarTheme.take();
-    } catch {
-      definition = null;
-    }
-  }
-  const { front, back, ambient, every } = definition ?? {};
-  decor = { ...pick, front, back, ambient, every, style };
-  applyDecor();
+  catalog.themes ??= [];
+  await wearDecor();
 }
 
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
@@ -2110,34 +2143,63 @@ function scheduleAmbient(delay) {
     scheduleAmbient(min + Math.random() * (max - min));
   }, delay);
 }
-calm.addEventListener('change', () => scheduleAmbient(decorOff() ? null : 4_000));
+calm.addEventListener('change', () => scheduleAmbient(decor ? 4_000 : null));
 
 function decorTitle() {
-  if (decor) el('decor').title = t(decorOff() ? 'decorOff' : 'decorOn', { name: decor.label, icon: decor.icon });
+  el('decor').title = t('decorTitle', { name: decor ? `${decor.label} ${decor.icon}` : t('decorNone') });
+  if (!el('decorPanel').hidden) renderDecorMenu();
 }
 
 function applyDecor() {
-  el('decor').hidden = !decor;
-  if (!decor) return;
-  const on = !decorOff();
-  decor.style.disabled = !on;
-  el('decor').textContent = decor.icon;
-  el('decor').classList.toggle('off', !on);
-  el('decor').setAttribute('aria-pressed', String(on));
+  el('decor').hidden = catalog.themes.length === 0;
+  el('decor').textContent = decor?.icon ?? '🎨';
+  el('decor').classList.toggle('off', !decor);
   decorTitle();
-  el('decorFront').innerHTML = on && decor.front ? decor.front() : '';
-  el('decorBack').innerHTML = on && decor.back ? decor.back() : '';
-  scheduleAmbient(on ? 4_000 : null);
+  el('decorFront').innerHTML = decor?.front ? decor.front() : '';
+  el('decorBack').innerHTML = decor?.back ? decor.back() : '';
+  scheduleAmbient(decor ? 4_000 : null);
 }
-el('decor').addEventListener('click', () => {
-  const off = offThemes();
-  if (decorOff()) delete off[decor.name];
-  else off[decor.name] = PRRadarDecor.offKey(decor, new Date());
-  store.set('decorOff', JSON.stringify(off));
-  try {
-    localStorage.removeItem('pr-radar:seasonOff');
-  } catch {}
-  applyDecor();
+
+function renderDecorMenu() {
+  const chosen = store.get('themePick', '');
+  const auto = autoDecor();
+  const options = [
+    { value: '', icon: '✨', label: t('decorAuto'), hint: auto ? `${auto.label} ${auto.icon}` : t('decorNone') },
+    { value: 'none', icon: '∅', label: t('decorNone') },
+    ...catalog.themes.filter(theme => !theme.custom).map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })),
+  ];
+  const custom = catalog.themes.filter(theme => theme.custom);
+  if (custom.length) {
+    options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })));
+  }
+  el('decorList').innerHTML = options.map(({ value, icon, label, hint, heading }) => heading
+    ? `<div class="decor-heading" role="presentation">${escapeHtml(heading)}</div>`
+    : `<button type="button" class="picker-option" role="option" data-decor="${escapeHtml(value)}" aria-selected="${value === chosen}">`
+    + `<span class="label">${escapeHtml(icon)} ${escapeHtml(label)}</span>`
+    + (hint ? `<span class="n">${escapeHtml(hint)}</span>` : '')
+    + '</button>').join('');
+}
+
+function openDecorMenu(open) {
+  el('decorPanel').hidden = !open;
+  el('decor').setAttribute('aria-expanded', String(open));
+  if (open) renderDecorMenu();
+}
+
+el('decor').addEventListener('click', () => openDecorMenu(el('decorPanel').hidden));
+el('decorList').addEventListener('click', event => {
+  const option = event.target.closest('[data-decor]');
+  if (!option) return;
+  store.set('themePick', option.dataset.decor);
+  askedTheme = null;
+  openDecorMenu(false);
+  wearDecor();
+});
+document.addEventListener('click', event => {
+  if (!event.target.closest('#decorPicker')) openDecorMenu(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') openDecorMenu(false);
 });
 loadDecor();
 

@@ -29,7 +29,7 @@ const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
-const { listThemes, overlaps, themeFiles } = require('./themes');
+const { listAllThemes, overlaps, themeFiles } = require('./themes');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -86,6 +86,7 @@ const SOUND_TYPES = {
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const THEMES_DIR = path.join(PUBLIC_DIR, 'themes');
+const CUSTOM_THEMES_DIR = path.join(__dirname, 'custom-themes');
 // A radar run by launchd or pm2 is restarted by them: relaunching itself would start a second one.
 const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
@@ -95,10 +96,13 @@ const BOOT_ID = randomUUID().slice(0, 8);
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
 async function assetVersion() {
-  const themed = (await themeFiles(THEMES_DIR)).map(file => path.join('themes', file));
-  const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themed].sort();
+  const files = [
+    ...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)).map(name => path.join(PUBLIC_DIR, name)),
+    ...(await themeFiles(THEMES_DIR)).map(file => path.join(THEMES_DIR, file)),
+    ...(await themeFiles(CUSTOM_THEMES_DIR)).map(file => path.join(CUSTOM_THEMES_DIR, file)),
+  ].sort();
   const stamps = await Promise.all(
-    names.map(async name => `${name}:${await fs.stat(path.join(PUBLIC_DIR, name)).then(stat => stat.mtimeMs, () => 0)}`),
+    files.map(async file => `${path.relative(__dirname, file)}:${await fs.stat(file).then(stat => stat.mtimeMs, () => 0)}`),
   );
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }
@@ -513,9 +517,10 @@ async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
   if (!target.startsWith(PUBLIC_DIR)) return json(res, 403, { error: 'forbidden' });
+  const custom = target.startsWith(THEMES_DIR + path.sep) ? path.join(CUSTOM_THEMES_DIR, path.relative(THEMES_DIR, target)) : null;
 
   try {
-    const file = await fs.readFile(target);
+    const file = await fs.readFile(target).catch(error => (custom ? fs.readFile(custom) : Promise.reject(error)));
     res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream' });
     res.end(file);
   } catch {
@@ -578,7 +583,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/themes') {
-    const { themes } = await listThemes(THEMES_DIR);
+    const { themes } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
     return json(res, 200, { default: THEME || null, themes });
   }
 
@@ -707,14 +712,14 @@ server.listen(PORT, async () => {
     });
     setInterval(() => readOrphansInBackground(false), 60_000).unref();
   }
-  const { themes, problems } = await listThemes(THEMES_DIR);
+  const { themes, problems } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
   for (const problem of problems) logger.fail('theme', `left out, ${problem}`);
   for (const [first, second] of overlaps(themes)) {
     logger.fail('theme', `${first} and ${second} share days: ${first} wins, as it comes first by name`);
   }
   const seasonal = themes.filter(theme => theme.season).map(theme => theme.name);
   const THEME_LINE = (THEME
-    ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes, none`)
+    ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes or custom-themes, none`)
     : 'none (no PR_RADAR_THEME)') + (seasonal.length ? `, ${seasonal.join(', ')} within their dates` : '');
   const ORPHAN_LINE = orphanWatch
     ? `after ${ORPHAN_DAYS} working day${ORPHAN_DAYS > 1 ? 's' : ''} with no review, read every 30 min`

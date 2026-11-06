@@ -112,7 +112,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
-| `PR_RADAR_THEME` | — | The theme worn outside the seasonal ones, a folder name in `public/themes/` — see [Themes](#themes) |
+| `PR_RADAR_THEME` | — | The theme worn on Auto outside the seasonal ones, a folder name in `public/themes/` or `custom-themes/` — see [Themes](#themes) |
 | `PR_RADAR_WEBHOOK_URL` | — | POSTs the status changes to that URL, one call per status with every PR that reached it — see [The webhook](#the-webhook). Empty, no call |
 | `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
@@ -1241,20 +1241,22 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 | `masseffect` 🌠 | November 6 to 7 (N7 Day) | The N7 mark by the title, the N7 stripe under the header, a starfield, a mass relay in a corner, an omni-tool lighting up at the bottom left, the Normandy crossing now and then |
 | `halloween` 🎃 | October 26–31 | A pumpkin, ghosts, a spider on its web, lightning |
 
-- **Which one shows**: a seasonal theme within its dates, otherwise the one named in
+- **Pick one** from the theme button in the header: every theme is listed, plus **Auto** and
+  **None**. The pick is kept in this browser and switches the page at once.
+- **Auto** (the default): a seasonal theme within its dates, otherwise the one named in
   `PR_RADAR_THEME`, otherwise none. A season always wins over `PR_RADAR_THEME`.
 - **The board's own colours never change.** Indigo, amber, green and red keep saying what
   they say (see [Reading the colours](#reading-the-colours)); a theme only adds to the
   header, the empty states and the background.
-- **Turn it off** with its button in the header, next to the theme one. The choice is kept in
-  this browser: a theme worn for its season comes back with its next season, the default one
-  stays off until you turn it back on.
+- **Turn it off** by picking **None**; pick **Auto** to get the seasons back.
 - **Nothing moves** when the system asks for reduced motion, and nothing takes a click.
 - **To try one**, add `?theme=<name>` to the page's address, whatever the date.
 - **Any theme can be the default one**: `PR_RADAR_THEME=starwars` wears Star Wars all year,
   and Halloween still takes over from October 26 to 31.
-- **Your own theme**: a folder in `public/themes/` and its name in `PR_RADAR_THEME`. How to write
-  one is in [`public/themes/README.md`](public/themes/README.md).
+- **Your own theme**: `npm run new-theme -- <name> ["Label"] [icon]` creates a working
+  `custom-themes/<name>/` to edit; reload the page and pick it from the menu. `custom-themes/` is
+  git-ignored, so your themes stay yours and never block an update. How to write one
+  is in [`public/themes/README.md`](public/themes/README.md).
 
 ## Implementation notes
 
