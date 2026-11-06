@@ -1172,6 +1172,15 @@
   .decor-new { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
   .decor-new-row { display: flex; gap: 6px; }
   .decor-new-row #decorNewIcon { flex: 0 0 56px; text-align: center; }
+  .decor-emojis {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin-top: 6px; padding: 4px;
+    background: var(--sunken); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .decor-panel .decor-emojis button {
+    height: 26px; padding: 0; justify-content: center; font-size: 16px;
+    border: 0; background: none; box-shadow: none; border-radius: 6px; transform: none;
+  }
+  .decor-panel .decor-emojis button:hover { background: var(--hairline); }
   .decor-new textarea {
     width: 100%; font: inherit; font-size: 12.5px; color: var(--text); resize: vertical;
     background: var(--sunken); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px;
@@ -1230,6 +1239,7 @@
             <input id="decorNewName" maxlength="40" required autocomplete="off">
             <input id="decorNewIcon" maxlength="8" autocomplete="off">
           </div>
+          <div class="decor-emojis" id="decorEmojis" hidden></div>
           <textarea id="decorNewDescription" rows="4" maxlength="1000" required></textarea>
           <div class="decor-new-actions"><span id="decorNewStatus"></span><button type="submit" id="decorNewGo"></button></div>
         </form>
@@ -2218,7 +2228,15 @@ function renderDecorMenu() {
     + '</button>').join('');
 }
 
+const THEME_EMOJIS = [
+  '🎨', '✨', '🌌', '🪐', '🚀', '🛸', '🌙', '☀️', '🌈', '⚡', '❄️', '🔥', '🌊', '🌋', '🏔️', '🌵',
+  '🌲', '🍂', '🌸', '🌻', '🍄', '🐙', '🐋', '🦊', '🐉', '🦉', '🐝', '🦋', '👾', '🤖', '🎃', '👻',
+  '🎄', '🎆', '🏴‍☠️', '⚔️', '🧙', '🏰', '🎮', '🕹️', '🎸', '🍕', '☕', '🍩', '⚽', '🏎️', '💎', '🌹',
+];
+
 function renderDecorForm() {
+  el('decorEmojis').innerHTML = THEME_EMOJIS
+    .map(emoji => `<button type="button" data-emoji="${emoji}">${emoji}</button>`).join('');
   el('decorNewName').placeholder = t('decorNewName');
   el('decorNewIcon').placeholder = t('decorNewIcon');
   el('decorNewDescription').placeholder = t('decorNewDescription');
@@ -2246,6 +2264,20 @@ el('decorList').addEventListener('click', event => {
   askedTheme = null;
   openDecorMenu(false);
   wearDecor();
+});
+el('decorNewIcon').addEventListener('focus', () => {
+  el('decorEmojis').hidden = false;
+});
+el('decorNewIcon').addEventListener('blur', () => {
+  el('decorEmojis').hidden = true;
+});
+// mousedown, not click: keeping the focus in the field keeps the grid open until a pick.
+el('decorEmojis').addEventListener('mousedown', event => {
+  event.preventDefault();
+  const emoji = event.target.closest('[data-emoji]')?.dataset.emoji;
+  if (!emoji) return;
+  el('decorNewIcon').value = emoji;
+  el('decorNewIcon').blur();
 });
 el('decorNew').addEventListener('submit', async event => {
   event.preventDefault();
