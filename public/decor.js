@@ -16,35 +16,15 @@
       : compare(day, season.from) >= 0 && compare(day, season.to) <= 0;
   }
 
-  // The year the current window opened: December 20 to January 5 is one season, not two.
-  function seasonYear(season, now) {
-    return wraps(season) && compare(today(now), season.to) <= 0 ? now.getFullYear() - 1 : now.getFullYear();
-  }
-
-  function pickDecor({ themes, fallback }, { asked = null, now = new Date() } = {}) {
-    return themes.find(theme => theme.name === asked)
+  // `chosen` is the header menu's pick: '' (auto: the season, else the default), 'none', or a name.
+  function pickDecor({ themes, fallback }, { asked = null, chosen = '', now = new Date() } = {}) {
+    const named = name => themes.find(theme => theme.name === name);
+    if (named(asked)) return named(asked);
+    if (chosen === 'none') return null;
+    return named(chosen)
       ?? themes.find(theme => theme.season && inSeason(theme.season, now))
-      ?? themes.find(theme => theme.name === fallback)
+      ?? named(fallback)
       ?? null;
-  }
-
-  // What is remembered as turned off, per theme: the season's year while it is worn for its
-  // season, `true` otherwise. The single value the first version kept is read until a click.
-  function offKey(theme, now) {
-    return theme.season && inSeason(theme.season, now) ? seasonYear(theme.season, now) : true;
-  }
-
-  function readOff(raw, legacy) {
-    let off = {};
-    try {
-      const parsed = JSON.parse(raw ?? '{}');
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) off = parsed;
-    } catch {
-      off = {};
-    }
-    const match = /^([a-z0-9][a-z0-9-]*)-(\d{4})$/.exec(legacy ?? '');
-    if (match && !(match[1] in off)) off[match[1]] = Number(match[2]);
-    return off;
   }
 
   function mulberry32(seed) {
@@ -71,5 +51,5 @@
     }).join('');
   }
 
-  return { inSeason, seasonYear, pickDecor, offKey, readOff, stars };
+  return { inSeason, pickDecor, stars };
 });

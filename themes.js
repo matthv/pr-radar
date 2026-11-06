@@ -49,6 +49,22 @@ async function listThemes(dir) {
   return { themes, problems };
 }
 
+async function listAllThemes(shippedDir, customDir) {
+  const shipped = await listThemes(shippedDir);
+  const custom = await listThemes(customDir);
+  const taken = new Set(shipped.themes.map(theme => theme.name));
+  return {
+    themes: [...shipped.themes, ...custom.themes.filter(theme => !taken.has(theme.name)).map(theme => ({ ...theme, custom: true }))]
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    problems: [
+      ...shipped.problems,
+      ...custom.problems.map(problem => `custom-themes/${problem}`),
+      ...custom.themes.filter(theme => taken.has(theme.name))
+        .map(theme => `custom-themes/${theme.name}: a shipped theme has this name, rename the folder`),
+    ],
+  };
+}
+
 const dayKeys = ({ from, to }) => {
   const keys = new Set();
   const day = new Date(2024, from[0] - 1, from[1]);
@@ -76,4 +92,4 @@ async function themeFiles(dir) {
   return files.flat();
 }
 
-module.exports = { listThemes, overlaps, themeFiles };
+module.exports = { NAME_RE, listThemes, listAllThemes, overlaps, themeFiles };

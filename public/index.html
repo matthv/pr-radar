@@ -1163,8 +1163,46 @@
 
   /* Themes: public/themes/<name>/, whose stylesheet is loaded only while it is worn, so the
      board's own colours (each one means a state) are untouched the rest of the time. */
-  #decor { width: 32px; padding: 0; justify-content: center; }
+  #decor { width: 32px; height: 100%; padding: 0; justify-content: center; }
   #decor.off { filter: grayscale(1); opacity: .5; }
+  .decor-panel { left: auto; right: 0; width: 240px; }
+  .decor-panel .picker-list { max-height: none; }
+  .decor-panel .picker-option { width: 100%; padding: 6px 8px; box-shadow: none; border: 0; background: none; transform: none; }
+  .decor-panel .picker-option:hover { background: var(--hairline); color: var(--text); }
+  .decor-new { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .decor-new-row { display: flex; gap: 6px; }
+  .decor-new-row #decorNewIcon { flex: 0 0 56px; text-align: center; }
+  .decor-emojis {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; margin-top: 6px; padding: 4px;
+    background: var(--sunken); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .decor-panel .decor-emojis button {
+    height: 26px; padding: 0; justify-content: center; font-size: 16px;
+    border: 0; background: none; box-shadow: none; border-radius: 6px; transform: none;
+  }
+  .decor-panel .decor-emojis button:hover { background: var(--hairline); }
+  .decor-new textarea {
+    width: 100%; font: inherit; font-size: 12.5px; color: var(--text); resize: vertical;
+    background: var(--sunken); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px;
+  }
+  .decor-new textarea:focus { outline: none; border-color: var(--indigo); }
+  .decor-new-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .decor-new-actions span { flex: 1; font-size: 11.5px; line-height: 1.35; color: var(--text-faint); }
+  .decor-new-actions span.failed { color: var(--rose); }
+  .decor-new-actions button { height: 28px; flex: none; }
+  .decor-row { display: flex; align-items: center; }
+  .decor-row .picker-option { flex: 1; min-width: 0; }
+  .decor-panel .decor-remove {
+    flex: none; height: 26px; padding: 0 8px; font-size: 11.5px; color: var(--text-faint);
+    border: 0; background: none; box-shadow: none; border-radius: 6px; transform: none;
+  }
+  .decor-panel .decor-remove:hover { color: var(--rose); background: var(--hairline); }
+  .decor-panel .decor-remove.confirm { color: var(--rose); font-weight: 600; }
+  .decor-error { padding: 4px 8px; font-size: 11.5px; line-height: 1.35; color: var(--rose); }
+  .decor-heading {
+    margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint);
+  }
   #decorFront, #decorBack { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
   /* Under the header and the pickers' panels, so it never paints over a menu. */
   #decorFront { z-index: 9; }
@@ -1201,7 +1239,21 @@
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
-    <button type="button" id="decor" hidden></button>
+    <div class="picker" id="decorPicker">
+      <button type="button" id="decor" aria-haspopup="listbox" aria-expanded="false" hidden></button>
+      <div class="picker-panel decor-panel" id="decorPanel" hidden>
+        <div class="picker-list" id="decorList" role="listbox"></div>
+        <form class="decor-new" id="decorNew" hidden>
+          <div class="decor-new-row">
+            <input id="decorNewName" maxlength="40" required autocomplete="off">
+            <input id="decorNewIcon" maxlength="8" autocomplete="off">
+          </div>
+          <div class="decor-emojis" id="decorEmojis" hidden></div>
+          <textarea id="decorNewDescription" rows="4" maxlength="1000" required></textarea>
+          <div class="decor-new-actions"><span id="decorNewStatus"></span><button type="submit" id="decorNewGo"></button></div>
+        </form>
+      </div>
+    </div>
     <button id="theme">☾</button>
     <button type="button" id="settings" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 4h3.5M8.5 4H14M2 8h7.5M12.5 8H14M2 12h1.5M6.5 12H14"/><circle cx="7" cy="4" r="1.5"/><circle cx="11" cy="8" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></button>
     <button id="reload" hidden></button>
@@ -1566,8 +1618,20 @@ const I18N = {
     updateDone: 'Mis à jour ({from} → {to}).',
     updateEnvVars: 'Nouveau dans .env.example : {names}.',
     themeTitle: 'Thème clair / sombre',
-    decorOn: 'Thème {name} {icon} — cliquer pour l’éteindre',
-    decorOff: 'Thème {name} éteint — cliquer pour le rallumer',
+    decorTitle: 'Thème : {name} — cliquer pour en choisir un autre',
+    decorAuto: 'Auto',
+    decorNone: 'Aucun',
+    decorCustom: 'Mes thèmes',
+    decorNew: '+ Nouveau thème',
+    decorNewName: 'Nom',
+    decorNewIcon: 'Icône',
+    decorNewDescription: 'Décris-le : couleurs, ambiance, ce qu’il faut dessiner, ce qui passe de temps en temps',
+    decorGenerate: 'Générer',
+    decorGenerating: 'Claude le dessine, une à deux minutes…',
+    decorFailed: 'Échec : {error}',
+    decorRemoveTitle: 'Supprimer ce thème (son dossier dans custom-themes/)',
+    decorRemoveConfirm: 'Supprimer ?',
+    decorRestart: 'le serveur tourne une version plus ancienne, relance-le',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1788,8 +1852,20 @@ const I18N = {
     updateDone: 'Updated ({from} → {to}).',
     updateEnvVars: 'New in .env.example: {names}.',
     themeTitle: 'Light / dark theme',
-    decorOn: '{name} theme {icon} — click to turn it off',
-    decorOff: '{name} theme off — click to bring it back',
+    decorTitle: 'Theme: {name} — click to pick another',
+    decorAuto: 'Auto',
+    decorNone: 'None',
+    decorCustom: 'My themes',
+    decorNew: '+ New theme',
+    decorNewName: 'Name',
+    decorNewIcon: 'Icon',
+    decorNewDescription: 'Describe it: colours, mood, what to draw, what passes by now and then',
+    decorGenerate: 'Generate',
+    decorGenerating: 'Claude is drawing it, a minute or two…',
+    decorFailed: 'Failed: {error}',
+    decorRemoveTitle: 'Remove this theme (its folder in custom-themes/)',
+    decorRemoveConfirm: 'Remove?',
+    decorRestart: 'the server runs an older version, restart it',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2054,8 +2130,11 @@ const PRRadarTheme = (() => {
 })();
 
 let decor = null;
-const offThemes = () => PRRadarDecor.readOff(store.get('decorOff', '{}'), store.get('seasonOff', ''));
-const decorOff = () => Boolean(decor) && offThemes()[decor.name] === PRRadarDecor.offKey(decor, new Date());
+let catalog = { themes: [], default: null };
+const addressParams = new URLSearchParams(location.search);
+let askedTheme = addressParams.get('theme') ?? addressParams.get('season');
+let wearing = 0;
+const definitions = new Map();
 
 const loadScript = src => new Promise((resolve, reject) => {
   const script = document.createElement('script');
@@ -2065,37 +2144,51 @@ const loadScript = src => new Promise((resolve, reject) => {
   document.head.append(script);
 });
 
+async function themeDefinition(pick) {
+  if (!pick.script) return null;
+  if (!definitions.has(pick.name)) {
+    try {
+      await loadScript(`/themes/${pick.name}/theme.js`);
+      definitions.set(pick.name, PRRadarTheme.take());
+    } catch {
+      definitions.set(pick.name, null);
+    }
+  }
+  return definitions.get(pick.name);
+}
+
+const autoDecor = () => PRRadarDecor.pickDecor({ themes: catalog.themes, fallback: catalog.default });
+
+// Async because a theme.js loads once, on first wear: a quicker second pick wins over a slow first.
+async function wearDecor() {
+  const ticket = ++wearing;
+  const pick = PRRadarDecor.pickDecor(
+    { themes: catalog.themes, fallback: catalog.default },
+    { asked: askedTheme, chosen: store.get('themePick', '') },
+  );
+  const definition = pick ? await themeDefinition(pick) : null;
+  if (ticket !== wearing) return;
+  decor?.style.remove();
+  decor = null;
+  if (pick) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = `/themes/${pick.name}/theme.css`;
+    document.head.append(style);
+    const { front, back, ambient, every } = definition ?? {};
+    decor = { ...pick, front, back, ambient, every, style };
+  }
+  applyDecor();
+}
+
 async function loadDecor() {
-  let catalog;
   try {
     catalog = await (await fetch('/api/themes')).json();
   } catch {
     return;
   }
-  const params = new URLSearchParams(location.search);
-  const pick = PRRadarDecor.pickDecor(
-    { themes: catalog.themes ?? [], fallback: catalog.default },
-    { asked: params.get('theme') ?? params.get('season') },
-  );
-  if (!pick) return;
-  decor = { ...pick };
-  const style = document.createElement('link');
-  style.rel = 'stylesheet';
-  style.href = `/themes/${pick.name}/theme.css`;
-  style.disabled = decorOff();
-  document.head.append(style);
-  let definition = null;
-  if (pick.script) {
-    try {
-      await loadScript(`/themes/${pick.name}/theme.js`);
-      definition = PRRadarTheme.take();
-    } catch {
-      definition = null;
-    }
-  }
-  const { front, back, ambient, every } = definition ?? {};
-  decor = { ...pick, front, back, ambient, every, style };
-  applyDecor();
+  catalog.themes ??= [];
+  await wearDecor();
 }
 
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
@@ -2110,34 +2203,190 @@ function scheduleAmbient(delay) {
     scheduleAmbient(min + Math.random() * (max - min));
   }, delay);
 }
-calm.addEventListener('change', () => scheduleAmbient(decorOff() ? null : 4_000));
+calm.addEventListener('change', () => scheduleAmbient(decor ? 4_000 : null));
 
 function decorTitle() {
-  if (decor) el('decor').title = t(decorOff() ? 'decorOff' : 'decorOn', { name: decor.label, icon: decor.icon });
+  el('decor').title = t('decorTitle', { name: decor ? `${decor.label} ${decor.icon}` : t('decorNone') });
+  if (!el('decorPanel').hidden) renderDecorMenu();
 }
 
 function applyDecor() {
-  el('decor').hidden = !decor;
-  if (!decor) return;
-  const on = !decorOff();
-  decor.style.disabled = !on;
-  el('decor').textContent = decor.icon;
-  el('decor').classList.toggle('off', !on);
-  el('decor').setAttribute('aria-pressed', String(on));
+  el('decor').hidden = catalog.themes.length === 0;
+  el('decor').textContent = decor?.icon ?? '🎨';
+  el('decor').classList.toggle('off', !decor);
   decorTitle();
-  el('decorFront').innerHTML = on && decor.front ? decor.front() : '';
-  el('decorBack').innerHTML = on && decor.back ? decor.back() : '';
-  scheduleAmbient(on ? 4_000 : null);
+  el('decorFront').innerHTML = decor?.front ? decor.front() : '';
+  el('decorBack').innerHTML = decor?.back ? decor.back() : '';
+  scheduleAmbient(decor ? 4_000 : null);
 }
-el('decor').addEventListener('click', () => {
-  const off = offThemes();
-  if (decorOff()) delete off[decor.name];
-  else off[decor.name] = PRRadarDecor.offKey(decor, new Date());
-  store.set('decorOff', JSON.stringify(off));
+
+function renderDecorMenu() {
+  const chosen = store.get('themePick', '');
+  const auto = autoDecor();
+  const options = [
+    { value: '', icon: '✨', label: t('decorAuto'), hint: auto ? `${auto.label} ${auto.icon}` : t('decorNone') },
+    { value: 'none', icon: '🚫', label: t('decorNone') },
+    ...catalog.themes.filter(theme => !theme.custom).map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })),
+  ];
+  const custom = catalog.themes.filter(theme => theme.custom);
+  if (custom.length || catalog.canGenerate) {
+    options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label, removable: true })));
+  }
+  if (removeError) options.push({ error: removeError });
+  if (catalog.canGenerate) options.push({ add: true });
+  const html = options.map(({ value, icon, label, hint, heading, add, removable, error }) => heading
+    ? `<div class="decor-heading" role="presentation">${escapeHtml(heading)}</div>`
+    : error
+    ? `<div class="decor-error" role="alert">${escapeHtml(t('decorFailed', { error }))}</div>`
+    : add
+    ? `<button type="button" class="picker-option" data-decor-add aria-expanded="${!el('decorNew').hidden}"><span class="label">${escapeHtml(t('decorNew'))}</span></button>`
+    : `<button type="button" class="picker-option" role="option" data-decor="${escapeHtml(value)}" aria-selected="${value === chosen}">`
+    + `<span class="label">${escapeHtml(icon)} ${escapeHtml(label)}</span>`
+    + (hint ? `<span class="n">${escapeHtml(hint)}</span>` : '')
+    + '</button>'
+    + (removable
+      ? `<button type="button" class="decor-remove${removing === value ? ' confirm' : ''}" data-decor-remove="${escapeHtml(value)}" title="${escapeHtml(t('decorRemoveTitle'))}">${removing === value ? escapeHtml(t('decorRemoveConfirm')) : '✕'}</button>`
+      : ''));
+  el('decorList').innerHTML = html.map((row, index) => (options[index].removable ? `<div class="decor-row">${row}</div>` : row)).join('');
+}
+
+const THEME_EMOJIS = [
+  '🎨', '✨', '🌌', '🪐', '🚀', '🛸', '🌙', '☀️', '🌈', '⚡', '❄️', '🔥', '🌊', '🌋', '🏔️', '🌵',
+  '🌲', '🍂', '🌸', '🌻', '🍄', '🐙', '🐋', '🦊', '🐉', '🦉', '🐝', '🦋', '👾', '🤖', '🎃', '👻',
+  '🎄', '🎆', '🏴‍☠️', '⚔️', '🧙', '🏰', '🎮', '🕹️', '🎸', '🍕', '☕', '🍩', '⚽', '🏎️', '💎', '🌹',
+];
+
+let removing = null;
+let removeError = null;
+
+// A server started before this page's code has no such route: its static 404 is plain text.
+const themeError = async response => {
+  const text = await response.text();
   try {
-    localStorage.removeItem('pr-radar:seasonOff');
-  } catch {}
-  applyDecor();
+    return JSON.parse(text).error ?? response.statusText;
+  } catch {
+    return response.status === 404 ? t('decorRestart') : text || response.statusText;
+  }
+};
+
+async function removeCustomTheme(name) {
+  const response = await fetch(`/api/themes/${encodeURIComponent(name)}`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) throw new Error(await themeError(response));
+  if (store.get('themePick', '') === name) store.set('themePick', '');
+  definitions.delete(name);
+  catalog = await (await fetch('/api/themes')).json();
+  catalog.themes ??= [];
+  await wearDecor();
+}
+
+function renderDecorForm() {
+  el('decorEmojis').innerHTML = THEME_EMOJIS
+    .map(emoji => `<button type="button" data-emoji="${emoji}">${emoji}</button>`).join('');
+  el('decorNewName').placeholder = t('decorNewName');
+  el('decorNewIcon').placeholder = t('decorNewIcon');
+  el('decorNewDescription').placeholder = t('decorNewDescription');
+  el('decorNewGo').textContent = t('decorGenerate');
+}
+
+function openDecorMenu(open) {
+  if (!open) {
+    removing = null;
+    removeError = null;
+  }
+  el('decorPanel').hidden = !open;
+  el('decor').setAttribute('aria-expanded', String(open));
+  if (open) renderDecorMenu();
+}
+
+el('decor').addEventListener('click', () => openDecorMenu(el('decorPanel').hidden));
+el('decorList').addEventListener('click', async event => {
+  const remove = event.target.closest('[data-decor-remove]');
+  if (remove) {
+    const name = remove.dataset.decorRemove;
+    if (removing !== name) {
+      removing = name;
+      renderDecorMenu();
+      return;
+    }
+    removing = null;
+    try {
+      await removeCustomTheme(name);
+    } catch (error) {
+      removeError = error.message;
+    }
+    renderDecorMenu();
+    return;
+  }
+  removing = null;
+  removeError = null;
+  if (event.target.closest('[data-decor-add]')) {
+    el('decorNew').hidden = !el('decorNew').hidden;
+    renderDecorForm();
+    renderDecorMenu();
+    if (!el('decorNew').hidden) el('decorNewName').focus();
+    return;
+  }
+  const option = event.target.closest('[data-decor]');
+  if (!option) return;
+  store.set('themePick', option.dataset.decor);
+  askedTheme = null;
+  openDecorMenu(false);
+  wearDecor();
+});
+el('decorNewIcon').addEventListener('focus', () => {
+  el('decorEmojis').hidden = false;
+});
+el('decorNewIcon').addEventListener('blur', () => {
+  el('decorEmojis').hidden = true;
+});
+// mousedown, not click: keeping the focus in the field keeps the grid open until a pick.
+el('decorEmojis').addEventListener('mousedown', event => {
+  event.preventDefault();
+  const emoji = event.target.closest('[data-emoji]')?.dataset.emoji;
+  if (!emoji) return;
+  el('decorNewIcon').value = emoji;
+  el('decorNewIcon').blur();
+});
+el('decorNew').addEventListener('submit', async event => {
+  event.preventDefault();
+  const status = el('decorNewStatus');
+  const fields = [el('decorNewName'), el('decorNewIcon'), el('decorNewDescription'), el('decorNewGo')];
+  for (const field of fields) field.disabled = true;
+  status.className = '';
+  status.textContent = t('decorGenerating');
+  try {
+    const response = await fetch('/api/themes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: el('decorNewName').value, icon: el('decorNewIcon').value, description: el('decorNewDescription').value,
+      }),
+    });
+    if (!response.ok) throw new Error(await themeError(response));
+    const body = await response.json();
+    catalog = await (await fetch('/api/themes')).json();
+    catalog.themes ??= [];
+    el('decorNew').reset();
+    el('decorNew').hidden = true;
+    status.textContent = '';
+    store.set('themePick', body.name);
+    askedTheme = null;
+    await wearDecor();
+  } catch (error) {
+    status.className = 'failed';
+    status.textContent = t('decorFailed', { error: error.message });
+  } finally {
+    for (const field of fields) field.disabled = false;
+  }
+});
+document.addEventListener('click', event => {
+  // The path, not closest(): a click that redraws the list has detached its own target by now.
+  if (!event.composedPath().includes(el('decorPicker'))) openDecorMenu(false);
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') openDecorMenu(false);
 });
 loadDecor();
 

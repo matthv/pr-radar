@@ -1,5 +1,11 @@
 # Themes
 
+Quickest: **+ New theme** in the header's theme menu, a name, an icon, a description, and Claude
+draws it into `custom-themes/<name>/`.
+
+By hand: `npm run new-theme -- <name> ["Label"] [icon]` creates a working folder in
+`custom-themes/` (git-ignored, at the repo's root), with a starfield and a title mark to edit. Reload the page and pick it from the header's theme menu.
+
 One folder per theme, named after it (lowercase letters, digits and dashes):
 
 ```
@@ -9,8 +15,8 @@ public/themes/<name>/
   theme.js     optional: decorations drawn by script, and an event played now and then
 ```
 
-Which one is worn: a seasonal theme within its dates, otherwise the one named in
-`PR_RADAR_THEME`, otherwise none. `?theme=<name>` in the address shows any, whatever the date;
+Which one is worn: the one picked in the header's theme menu. On **Auto** (the default), a
+seasonal theme within its dates, otherwise the one named in `PR_RADAR_THEME`, otherwise none. `?theme=<name>` in the address shows any, whatever the date;
 an unknown name falls back to that rule. At start-up, the 🎨 line says which one is set, and a
 ⚠️ line names each folder left out and why, and each two seasons sharing a day (the first by
 name wins).
@@ -26,7 +32,7 @@ name wins).
 ```
 
 - `label`: shown in the button's tooltip.
-- `icon`: the header button, which turns the theme off and on again.
+- `icon`: shown on the header button and in its menu.
 - `season` (optional): `[month, day]`, both days included, a day that exists in that month. A window may run over the new
   year (`[12, 20]` to `[1, 5]`). Without it, the theme is only worn through `PR_RADAR_THEME`.
   Pick days no other season uses.
@@ -34,7 +40,7 @@ name wins).
 ## theme.css
 
 Plain CSS, no prefix needed: the stylesheet is only loaded while the theme is worn, and
-switched off with the button.
+removed when another one is picked.
 
 - **Never change the board's state colours** (indigo, amber, green, red): they say what a card
   needs. Dress the header, the logo, the empty states and the background.
@@ -78,6 +84,8 @@ Everything is optional. Nothing in a theme takes a click: both layers ignore the
 
 ## A personal theme
 
-Create its folder here and set `PR_RADAR_THEME=<name>` in `.env`. An untracked folder does not
-stop the page's **Update** button from pulling. Pick a name no shipped theme uses, or a later
-update adding one with the same name will refuse to pull until you rename yours.
+Personal themes live in `custom-themes/<name>/`, at the repo's root, with the same three files.
+The folder is git-ignored: nothing there is committed, and the **Update** button always pulls.
+`npm run new-theme -- <name>` creates one and refuses a shipped theme's name; a folder there that
+takes a shipped name is left out, with a ⚠️ line at start-up. Pick it from the menu, or set
+`PR_RADAR_THEME=<name>` in `.env` to make it the default outside the seasons.
