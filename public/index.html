@@ -2225,7 +2225,7 @@ function renderDecorMenu() {
   const auto = autoDecor();
   const options = [
     { value: '', icon: '✨', label: t('decorAuto'), hint: auto ? `${auto.label} ${auto.icon}` : t('decorNone') },
-    { value: 'none', icon: '∅', label: t('decorNone') },
+    { value: 'none', icon: '🚫', label: t('decorNone') },
     ...catalog.themes.filter(theme => !theme.custom).map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })),
   ];
   const custom = catalog.themes.filter(theme => theme.custom);
