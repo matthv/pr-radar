@@ -1,6 +1,9 @@
 # Themes
 
-Quick start: `npm run new-theme -- <name> ["Label"] [icon]` creates a working folder in
+Quickest: **+ New theme** in the header's theme menu, a name, an icon, a description, and Claude
+draws it into `custom-themes/<name>/`.
+
+By hand: `npm run new-theme -- <name> ["Label"] [icon]` creates a working folder in
 `custom-themes/` (git-ignored, at the repo's root), with a starfield and a title mark to edit. Reload the page and pick it from the header's theme menu.
 
 One folder per theme, named after it (lowercase letters, digits and dashes):

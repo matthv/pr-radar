@@ -1253,7 +1253,11 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 - **To try one**, add `?theme=<name>` to the page's address, whatever the date.
 - **Any theme can be the default one**: `PR_RADAR_THEME=starwars` wears Star Wars all year,
   and Halloween still takes over from October 26 to 31.
-- **Your own theme**: `npm run new-theme -- <name> ["Label"] [icon]` creates a working
+- **Have Claude draw one**: **+ New theme** at the bottom of the menu takes a name, an icon and
+  a description; **Generate** asks the `claude` CLI (Sonnet, no tools) for its CSS and script, a
+  minute or two, then wears it. It lands in `custom-themes/<name>/`, yours to tweak. Anything in
+  the answer reaching the network or the page's storage is refused, and nothing is written.
+- **Or write it yourself**: `npm run new-theme -- <name> ["Label"] [icon]` creates a working
   `custom-themes/<name>/` to edit; reload the page and pick it from the menu. `custom-themes/` is
   git-ignored, so your themes stay yours and never block an update. How to write one
   is in [`public/themes/README.md`](public/themes/README.md).

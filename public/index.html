@@ -1166,8 +1166,21 @@
   #decor { width: 32px; height: 100%; padding: 0; justify-content: center; }
   #decor.off { filter: grayscale(1); opacity: .5; }
   .decor-panel { left: auto; right: 0; width: 240px; }
+  .decor-panel .picker-list { max-height: none; }
   .decor-panel .picker-option { width: 100%; padding: 6px 8px; box-shadow: none; border: 0; background: none; transform: none; }
   .decor-panel .picker-option:hover { background: var(--hairline); color: var(--text); }
+  .decor-new { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .decor-new-row { display: flex; gap: 6px; }
+  .decor-new-row #decorNewIcon { flex: 0 0 56px; text-align: center; }
+  .decor-new textarea {
+    width: 100%; font: inherit; font-size: 12.5px; color: var(--text); resize: vertical;
+    background: var(--sunken); border: 1px solid var(--border); border-radius: 8px; padding: 6px 9px;
+  }
+  .decor-new textarea:focus { outline: none; border-color: var(--indigo); }
+  .decor-new-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .decor-new-actions span { flex: 1; font-size: 11.5px; line-height: 1.35; color: var(--text-faint); }
+  .decor-new-actions span.failed { color: var(--rose); }
+  .decor-new-actions button { height: 28px; flex: none; }
   .decor-heading {
     margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border);
     font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint);
@@ -1212,6 +1225,14 @@
       <button type="button" id="decor" aria-haspopup="listbox" aria-expanded="false" hidden></button>
       <div class="picker-panel decor-panel" id="decorPanel" hidden>
         <div class="picker-list" id="decorList" role="listbox"></div>
+        <form class="decor-new" id="decorNew" hidden>
+          <div class="decor-new-row">
+            <input id="decorNewName" maxlength="40" required autocomplete="off">
+            <input id="decorNewIcon" maxlength="8" autocomplete="off">
+          </div>
+          <textarea id="decorNewDescription" rows="4" maxlength="1000" required></textarea>
+          <div class="decor-new-actions"><span id="decorNewStatus"></span><button type="submit" id="decorNewGo"></button></div>
+        </form>
       </div>
     </div>
     <button id="theme">☾</button>
@@ -1582,6 +1603,13 @@ const I18N = {
     decorAuto: 'Auto',
     decorNone: 'Aucun',
     decorCustom: 'Mes thèmes',
+    decorNew: '+ Nouveau thème',
+    decorNewName: 'Nom',
+    decorNewIcon: 'Icône',
+    decorNewDescription: 'Décris-le : couleurs, ambiance, ce qu’il faut dessiner, ce qui passe de temps en temps',
+    decorGenerate: 'Générer',
+    decorGenerating: 'Claude le dessine, une à deux minutes…',
+    decorFailed: 'Échec : {error}',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1806,6 +1834,13 @@ const I18N = {
     decorAuto: 'Auto',
     decorNone: 'None',
     decorCustom: 'My themes',
+    decorNew: '+ New theme',
+    decorNewName: 'Name',
+    decorNewIcon: 'Icon',
+    decorNewDescription: 'Describe it: colours, mood, what to draw, what passes by now and then',
+    decorGenerate: 'Generate',
+    decorGenerating: 'Claude is drawing it, a minute or two…',
+    decorFailed: 'Failed: {error}',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2169,15 +2204,25 @@ function renderDecorMenu() {
     ...catalog.themes.filter(theme => !theme.custom).map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })),
   ];
   const custom = catalog.themes.filter(theme => theme.custom);
-  if (custom.length) {
+  if (custom.length || catalog.canGenerate) {
     options.push({ heading: t('decorCustom') }, ...custom.map(theme => ({ value: theme.name, icon: theme.icon, label: theme.label })));
   }
-  el('decorList').innerHTML = options.map(({ value, icon, label, hint, heading }) => heading
+  if (catalog.canGenerate) options.push({ add: true });
+  el('decorList').innerHTML = options.map(({ value, icon, label, hint, heading, add }) => heading
     ? `<div class="decor-heading" role="presentation">${escapeHtml(heading)}</div>`
+    : add
+    ? `<button type="button" class="picker-option" data-decor-add aria-expanded="${!el('decorNew').hidden}"><span class="label">${escapeHtml(t('decorNew'))}</span></button>`
     : `<button type="button" class="picker-option" role="option" data-decor="${escapeHtml(value)}" aria-selected="${value === chosen}">`
     + `<span class="label">${escapeHtml(icon)} ${escapeHtml(label)}</span>`
     + (hint ? `<span class="n">${escapeHtml(hint)}</span>` : '')
     + '</button>').join('');
+}
+
+function renderDecorForm() {
+  el('decorNewName').placeholder = t('decorNewName');
+  el('decorNewIcon').placeholder = t('decorNewIcon');
+  el('decorNewDescription').placeholder = t('decorNewDescription');
+  el('decorNewGo').textContent = t('decorGenerate');
 }
 
 function openDecorMenu(open) {
@@ -2188,6 +2233,13 @@ function openDecorMenu(open) {
 
 el('decor').addEventListener('click', () => openDecorMenu(el('decorPanel').hidden));
 el('decorList').addEventListener('click', event => {
+  if (event.target.closest('[data-decor-add]')) {
+    el('decorNew').hidden = !el('decorNew').hidden;
+    renderDecorForm();
+    renderDecorMenu();
+    if (!el('decorNew').hidden) el('decorNewName').focus();
+    return;
+  }
   const option = event.target.closest('[data-decor]');
   if (!option) return;
   store.set('themePick', option.dataset.decor);
@@ -2195,8 +2247,41 @@ el('decorList').addEventListener('click', event => {
   openDecorMenu(false);
   wearDecor();
 });
+el('decorNew').addEventListener('submit', async event => {
+  event.preventDefault();
+  const status = el('decorNewStatus');
+  const fields = [el('decorNewName'), el('decorNewIcon'), el('decorNewDescription'), el('decorNewGo')];
+  for (const field of fields) field.disabled = true;
+  status.className = '';
+  status.textContent = t('decorGenerating');
+  try {
+    const response = await fetch('/api/themes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        label: el('decorNewName').value, icon: el('decorNewIcon').value, description: el('decorNewDescription').value,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error ?? response.statusText);
+    catalog = await (await fetch('/api/themes')).json();
+    catalog.themes ??= [];
+    el('decorNew').reset();
+    el('decorNew').hidden = true;
+    status.textContent = '';
+    store.set('themePick', body.name);
+    askedTheme = null;
+    await wearDecor();
+  } catch (error) {
+    status.className = 'failed';
+    status.textContent = t('decorFailed', { error: error.message });
+  } finally {
+    for (const field of fields) field.disabled = false;
+  }
+});
 document.addEventListener('click', event => {
-  if (!event.target.closest('#decorPicker')) openDecorMenu(false);
+  // The path, not closest(): a click that redraws the list has detached its own target by now.
+  if (!event.composedPath().includes(el('decorPicker'))) openDecorMenu(false);
 });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') openDecorMenu(false);

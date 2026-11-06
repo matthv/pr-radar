@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
-const { createTheme } = require('../new-theme');
+const { createTheme, generateTheme, parseGenerated } = require('../new-theme');
 const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
@@ -173,4 +173,35 @@ test('themes: custom-themes join the shipped ones, which keep their name', async
   assert.deepEqual(themes.map(theme => [theme.name, Boolean(theme.custom)]), [['alpha', true], ['zeta', false]]);
   assert.match(problems.join('\n'), /custom-themes\/zeta: a shipped theme has this name/);
   assert.deepEqual(await listAllThemes(shipped, path.join(root, 'missing')).then(r => r.problems), []);
+});
+
+test('new-theme: a generated theme is written where the server finds it, a failed one leaves nothing', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-generate-'));
+  const answer = '```css\n.cafe-x { color: red; }\n```\n```js\nPRRadarTheme.register({});\n```';
+  let prompt = '';
+  const name = await generateTheme(
+    { label: 'Café Noir', icon: '☕', description: 'a warm coffee shop' },
+    { dir, claude: async text => { prompt = text; return answer; } },
+  );
+  assert.equal(name, 'cafe-noir');
+  assert.match(prompt, /a warm coffee shop/);
+  assert.match(prompt, /"cafe-"/);
+  assert.equal(await fs.readFile(path.join(dir, name, 'theme.css'), 'utf8'), '.cafe-x { color: red; }\n');
+  const { themes, problems } = await listThemes(dir);
+  assert.deepEqual([problems, themes.map(theme => [theme.name, theme.label, theme.icon])], [[], [['cafe-noir', 'Café Noir', '☕']]]);
+
+  await assert.rejects(
+    generateTheme({ label: 'Broken', description: 'x' }, { dir, claude: async () => '```css\na{}\n```\n```js\nfunction (\n```' }),
+    /does not parse/,
+  );
+  await assert.rejects(fs.access(path.join(dir, 'broken')), 'a failed generation removes its folder');
+  await assert.rejects(generateTheme({ label: '', description: 'x' }, { dir, claude: async () => answer }), /name/);
+});
+
+test('new-theme: a generated theme reaching the network is refused', () => {
+  const wrap = (css, js) => `\`\`\`css\n${css}\n\`\`\`\n\`\`\`js\n${js}\n\`\`\``;
+  assert.throws(() => parseGenerated(wrap('a{}', 'fetch("https://x")')), /network/);
+  assert.throws(() => parseGenerated(wrap('@import "x.css";', '1')), /network/);
+  assert.throws(() => parseGenerated(wrap('a{background:url(//x/y.png)}', '1')), /network/);
+  assert.throws(() => parseGenerated('just prose'), /css and a js block/);
 });
