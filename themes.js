@@ -39,7 +39,7 @@ async function listThemes(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   const themes = [];
   const problems = [];
-  for (const entry of entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).sort((a, b) => a.name.localeCompare(b.name))) {
     try {
       themes.push(await readTheme(path.join(dir, entry.name), entry.name));
     } catch (error) {
@@ -84,7 +84,7 @@ function overlaps(themes) {
 }
 
 async function themeFiles(dir) {
-  const folders = (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory());
+  const folders = (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
   const files = await Promise.all(folders.map(async ({ name }) =>
     (await fs.readdir(path.join(dir, name)).catch(() => []))
       .filter(file => /^theme\.(json|css|js)$/.test(file))

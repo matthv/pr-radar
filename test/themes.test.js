@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
-const { createTheme, generateTheme, removeTheme, parseGenerated, prefixOf } = require('../new-theme');
+const { createTheme, generateTheme, removeTheme, parseGenerated, prefixOf, slugOf } = require('../new-theme');
 const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
@@ -210,6 +210,25 @@ test('new-theme: a generated theme reaching the network is refused', () => {
   assert.throws(() => parseGenerated(wrap('@import "x.css";', '1')), /network/);
   assert.throws(() => parseGenerated(wrap('a{background:url(//x/y.png)}', '1')), /network/);
   assert.throws(() => parseGenerated('just prose'), /css and a js block/);
+  for (const js of ['new XMLHttpRequest()', 'new WebSocket("ws://x")', 'new EventSource("/x")',
+    'navigator.sendBeacon("/x")', 'import("./x.js")', 'importScripts("x")', 'document.cookie', 'localStorage.x', '"<script>"']) {
+    assert.throws(() => parseGenerated(wrap('a{}', js)), error => error.reason === 'network' && js.includes(error.params.match), js);
+  }
+  assert.ok(parseGenerated('```CSS\na{}\n```\n```JavaScript\n1\n```'), 'fences in any case');
+});
+
+test('new-theme: a slug never ends with a dash', () => {
+  assert.equal(slugOf(`${'a'.repeat(39)} b`), 'a'.repeat(39));
+});
+
+test('new-theme: a generation stopped half way leaves nothing listed, and the name free', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-staging-'));
+  await createTheme('moon', { dir: path.join(dir, '.generating') });
+  assert.deepEqual(await listThemes(dir), { themes: [], problems: [] });
+  assert.deepEqual(await themeFiles(dir), []);
+  const answer = '```css\na{}\n```\n```js\n1\n```';
+  assert.equal(await generateTheme({ label: 'Moon', description: 'x' }, { dir, claude: async () => answer }), 'moon');
+  assert.equal(await fs.readFile(path.join(dir, 'moon', 'theme.css'), 'utf8'), 'a{}\n');
 });
 
 test('new-theme: removing a theme deletes its folder, and only a theme folder in that directory', async () => {

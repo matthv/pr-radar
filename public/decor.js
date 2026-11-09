@@ -16,7 +16,6 @@
       : compare(day, season.from) >= 0 && compare(day, season.to) <= 0;
   }
 
-  // `chosen` is the header menu's pick: '' (auto: the season, else the default), 'none', or a name.
   function pickDecor({ themes, fallback }, { asked = null, chosen = '', now = new Date() } = {}) {
     const named = name => themes.find(theme => theme.name === name);
     if (named(asked)) return named(asked);

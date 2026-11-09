@@ -44,18 +44,21 @@ const js = prefix => `'use strict';
 const prefixOf = name => name.replace(/-/g, '').replace(/^(?=\d)/, 't').slice(0, 4);
 
 const slugOf = label => label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 40).replace(/-+$/, '');
+
+// The page translates `reason`; the message is what the log and the CLI show.
+const fail = (reason, message, params = {}) => Object.assign(new Error(message), { reason, params });
 
 async function createTheme(name, { label, icon = '🎨', dir = THEMES_DIR, shippedDir = SHIPPED_DIR } = {}) {
-  if (!NAME_RE.test(name ?? '')) throw new Error('the name must be lowercase letters, digits and dashes');
-  if (name === 'none') throw new Error('"none" means no theme, pick another name');
+  if (!NAME_RE.test(name ?? '')) throw fail('badName', 'the name must be lowercase letters, digits and dashes');
+  if (name === 'none') throw fail('reserved', '"none" means no theme, pick another name');
   if (await fs.access(path.join(shippedDir, name)).then(() => true, () => false)) {
-    throw new Error(`${name} is a shipped theme, pick another name`);
+    throw fail('shipped', `${name} is a shipped theme, pick another name`, { name });
   }
   const folder = path.join(dir, name);
   await fs.mkdir(dir, { recursive: true });
   await fs.mkdir(folder).catch(error => {
-    throw new Error(error.code === 'EEXIST' ? `${folder} already exists` : error.message);
+    throw error.code === 'EEXIST' ? fail('exists', `${folder} already exists`, { name }) : error;
   });
   const prefix = prefixOf(name);
   const title = label || name.replace(/(^|-)(\w)/g, (_, dash, c) => (dash ? ' ' : '') + c.toUpperCase());
@@ -70,15 +73,16 @@ async function createTheme(name, { label, icon = '🎨', dir = THEMES_DIR, shipp
 const NETWORK = /\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|\bimport\s*\(|importScripts|@import|url\(\s*['"]?(https?:)?\/\/|<script|document\.cookie|localStorage/i;
 
 function parseGenerated(text) {
-  const block = lang => new RegExp('```' + lang + '\\s*\\n([\\s\\S]*?)```').exec(text)?.[1].trim();
+  const block = lang => new RegExp('```' + lang + '\\s*\\n([\\s\\S]*?)```', 'i').exec(text)?.[1].trim();
   const css = block('css');
   const js = block('(?:js|javascript)');
-  if (!css || !js) throw new Error('Claude did not answer with a css and a js block');
-  if (NETWORK.test(css) || NETWORK.test(js)) throw new Error('the generated theme reaches the network or the page storage, refused');
+  if (!css || !js) throw fail('noBlocks', 'Claude did not answer with a css and a js block');
+  const found = NETWORK.exec(css) ?? NETWORK.exec(js);
+  if (found) throw fail('network', `the generated theme reaches the network or the page storage (${found[0]}), refused`, { match: found[0] });
   try {
     new vm.Script(js);
   } catch (error) {
-    throw new Error(`the generated theme.js does not parse (${error.message})`);
+    throw fail('parse', `the generated theme.js does not parse (${error.message})`, { error: error.message });
   }
   return { css: `${css}\n`, js: `${js}\n` };
 }
@@ -114,32 +118,43 @@ ${exampleCss}
 ${exampleJs}`;
 }
 
+const exists = file => fs.access(file).then(() => true, () => false);
+
+// Drawn in a dot folder the theme list skips, then moved in whole: a server stopped mid-way
+// leaves no half theme in the menu, nor a name taken by one.
 async function generateTheme({ label, icon, description }, { dir = THEMES_DIR, claude = require('./digest').claude } = {}) {
   const cleanLabel = String(label ?? '').trim().slice(0, 40);
   const cleanIcon = String(icon ?? '').trim().slice(0, 8) || '🎨';
   const cleanDescription = String(description ?? '').trim().slice(0, 1000);
   const name = slugOf(cleanLabel);
-  if (!name) throw new Error('give the theme a name');
-  if (!cleanDescription) throw new Error('describe the theme');
-  const folder = await createTheme(name, { label: cleanLabel, icon: cleanIcon, dir });
+  if (!name) throw fail('noName', 'give the theme a name');
+  if (!cleanDescription) throw fail('noDescription', 'describe the theme');
+  const target = path.join(dir, name);
+  if (await exists(target)) throw fail('exists', `${target} already exists`, { name });
+  const staging = path.join(dir, '.generating');
+  await fs.rm(path.join(staging, name), { recursive: true, force: true });
+  const folder = await createTheme(name, { label: cleanLabel, icon: cleanIcon, dir: staging });
   try {
     const prompt = await generationPrompt({ label: cleanLabel, icon: cleanIcon, description: cleanDescription, prefix: prefixOf(name) });
-    const { css, js } = parseGenerated(await claude(prompt, GENERATE_ARGS));
+    const { css, js } = parseGenerated(await claude(prompt, GENERATE_ARGS, undefined, GENERATE_TIMEOUT_MS));
     await fs.writeFile(path.join(folder, 'theme.css'), css);
     await fs.writeFile(path.join(folder, 'theme.js'), js);
-  } catch (error) {
+    if (await exists(target)) throw fail('exists', `${target} already exists`, { name });
+    await fs.rename(folder, target);
+  } finally {
     await fs.rm(folder, { recursive: true, force: true });
-    throw error;
   }
   return name;
 }
 
 async function removeTheme(name, { dir = THEMES_DIR } = {}) {
-  if (!NAME_RE.test(name ?? '')) throw new Error('no such theme');
+  if (!NAME_RE.test(name ?? '')) throw fail('missing', 'no such theme');
   const folder = path.join(dir, name);
-  if (!(await fs.stat(folder).then(stat => stat.isDirectory(), () => false))) throw new Error('no such theme');
+  if (!(await fs.stat(folder).then(stat => stat.isDirectory(), () => false))) throw fail('missing', 'no such theme');
   await fs.rm(folder, { recursive: true });
 }
+
+const GENERATE_TIMEOUT_MS = 300_000;
 
 const GENERATE_ARGS = [
   '-p', '--model', 'sonnet',

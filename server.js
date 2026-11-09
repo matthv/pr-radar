@@ -87,7 +87,7 @@ const SOUND_TYPES = {
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const THEMES_DIR = path.join(PUBLIC_DIR, 'themes');
-const CUSTOM_THEMES_DIR = path.join(__dirname, 'custom-themes');
+const CUSTOM_THEMES_DIR = process.env.PR_RADAR_CUSTOM_THEMES_DIR || path.join(__dirname, 'custom-themes');
 // A radar run by launchd or pm2 is restarted by them: relaunching itself would start a second one.
 const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
@@ -527,6 +527,14 @@ async function digestFor(body) {
   return digest.standupNotes(shaped, body.lang === 'fr' ? 'fr' : 'en');
 }
 
+const themeCatalog = async () => {
+  const { themes } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
+  return { default: THEME || null, themes, canGenerate: digestAvailable && !DEMO };
+};
+
+const themeFailure = (res, status, error) =>
+  json(res, status, { error: error.message, reason: error.reason, params: error.params });
+
 async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
@@ -534,7 +542,8 @@ async function serveStatic(res, urlPath) {
   const custom = target.startsWith(THEMES_DIR + path.sep) ? path.join(CUSTOM_THEMES_DIR, path.relative(THEMES_DIR, target)) : null;
 
   try {
-    const file = await fs.readFile(target).catch(error => (custom ? fs.readFile(custom) : Promise.reject(error)));
+    const file = await fs.readFile(target)
+      .catch(error => (custom && error.code === 'ENOENT' ? fs.readFile(custom) : Promise.reject(error)));
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(target)] || 'application/octet-stream',
       ...(path.extname(target) === '.html' ? { 'Content-Security-Policy': CSP } : {}),
@@ -604,15 +613,15 @@ const server = http.createServer(async (req, res) => {
       contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
     });
     if (refused) return json(res, 403, { error: refused });
-    if (DEMO) return json(res, 409, { error: 'not in the demo' });
-    if (!digestAvailable) return json(res, 409, { error: 'the claude CLI is not installed' });
+    if (DEMO) return json(res, 409, { error: 'not in the demo', reason: 'demo' });
+    if (!digestAvailable) return json(res, 409, { error: 'the claude CLI is not installed', reason: 'noClaude' });
     try {
       const name = await generateTheme(await readJsonBody(req), { dir: CUSTOM_THEMES_DIR });
       logger.info('theme', `generated custom-themes/${name}`);
-      return json(res, 200, { name });
+      return json(res, 200, { name, catalog: await themeCatalog() });
     } catch (error) {
       logger.fail('theme', `generation failed, ${error.message}`);
-      return json(res, 422, { error: error.message });
+      return themeFailure(res, 422, error);
     }
   }
 
@@ -621,22 +630,19 @@ const server = http.createServer(async (req, res) => {
       contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
     });
     if (refused) return json(res, 403, { error: refused });
-    if (DEMO) return json(res, 409, { error: 'not in the demo' });
+    if (DEMO) return json(res, 409, { error: 'not in the demo', reason: 'demo' });
     let name;
     try {
       name = decodeURIComponent(url.pathname.slice('/api/themes/'.length));
       await removeTheme(name, { dir: CUSTOM_THEMES_DIR });
       logger.info('theme', `removed custom-themes/${name}`);
-      return json(res, 200, { ok: true });
+      return json(res, 200, { ok: true, catalog: await themeCatalog() });
     } catch (error) {
-      return json(res, 404, { error: error.message });
+      return themeFailure(res, 404, error);
     }
   }
 
-  if (url.pathname === '/api/themes') {
-    const { themes } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
-    return json(res, 200, { default: THEME || null, themes, canGenerate: digestAvailable && !DEMO });
-  }
+  if (url.pathname === '/api/themes') return json(res, 200, await themeCatalog());
 
   if (url.pathname === '/sound') {
     try {

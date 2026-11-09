@@ -1632,6 +1632,18 @@ const I18N = {
     decorRemoveTitle: 'Supprimer ce thème (son dossier dans custom-themes/)',
     decorRemoveConfirm: 'Supprimer ?',
     decorRestart: 'le serveur tourne une version plus ancienne, relance-le',
+    decorReason_demo: 'pas dans la démo',
+    decorReason_noClaude: 'la CLI claude n’est pas installée',
+    decorReason_noName: 'donne un nom au thème',
+    decorReason_noDescription: 'décris le thème',
+    decorReason_reserved: '« None » veut déjà dire aucun thème, choisis un autre nom',
+    decorReason_shipped: '{name} est un thème livré, choisis un autre nom',
+    decorReason_exists: 'un thème nommé {name} existe déjà',
+    decorReason_noBlocks: 'Claude n’a pas répondu avec un bloc CSS et un bloc JS, réessaie',
+    decorReason_network: 'le thème tentait d’atteindre le réseau ou le stockage de la page ({match}), rien n’a été écrit',
+    decorReason_parse: 'le theme.js généré ne se lit pas ({error})',
+    decorReason_timeout: 'Claude n’a pas répondu en {seconds} s',
+    decorReason_missing: 'ce thème n’existe pas',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -1866,6 +1878,18 @@ const I18N = {
     decorRemoveTitle: 'Remove this theme (its folder in custom-themes/)',
     decorRemoveConfirm: 'Remove?',
     decorRestart: 'the server runs an older version, restart it',
+    decorReason_demo: 'not in the demo',
+    decorReason_noClaude: 'the claude CLI is not installed',
+    decorReason_noName: 'give the theme a name',
+    decorReason_noDescription: 'describe the theme',
+    decorReason_reserved: '"None" already means no theme, pick another name',
+    decorReason_shipped: '{name} is a shipped theme, pick another name',
+    decorReason_exists: 'a theme named {name} already exists',
+    decorReason_noBlocks: 'Claude did not answer with a CSS and a JS block, try again',
+    decorReason_network: 'the theme tried to reach the network or the page storage ({match}), nothing was written',
+    decorReason_parse: 'the generated theme.js does not parse ({error})',
+    decorReason_timeout: 'Claude gave no answer within {seconds} s',
+    decorReason_missing: 'no such theme',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2262,11 +2286,14 @@ let removeError = null;
 // A server started before this page's code has no such route: its static 404 is plain text.
 const themeError = async response => {
   const text = await response.text();
+  let body;
   try {
-    return JSON.parse(text).error ?? response.statusText;
+    body = JSON.parse(text);
   } catch {
     return response.status === 404 ? t('decorRestart') : text || response.statusText;
   }
+  const key = `decorReason_${body.reason}`;
+  return key in I18N[lang] ? t(key, body.params) : body.error ?? response.statusText;
 };
 
 async function removeCustomTheme(name) {
@@ -2274,11 +2301,9 @@ async function removeCustomTheme(name) {
     method: 'DELETE', headers: { 'Content-Type': 'application/json' },
   });
   if (!response.ok) throw new Error(await themeError(response));
+  ({ catalog } = await response.json());
   if (store.get('themePick', '') === name) store.set('themePick', '');
   definitions.delete(name);
-  catalog = await (await fetch('/api/themes')).json();
-  catalog.themes ??= [];
-  await wearDecor();
 }
 
 function renderDecorForm() {
@@ -2317,6 +2342,7 @@ el('decorList').addEventListener('click', async event => {
       removeError = error.message;
     }
     renderDecorMenu();
+    wearDecor();
     return;
   }
   removing = null;
@@ -2356,6 +2382,7 @@ el('decorNew').addEventListener('submit', async event => {
   for (const field of fields) field.disabled = true;
   status.className = '';
   status.textContent = t('decorGenerating');
+  let body;
   try {
     const response = await fetch('/api/themes', {
       method: 'POST',
@@ -2365,21 +2392,21 @@ el('decorNew').addEventListener('submit', async event => {
       }),
     });
     if (!response.ok) throw new Error(await themeError(response));
-    const body = await response.json();
-    catalog = await (await fetch('/api/themes')).json();
-    catalog.themes ??= [];
-    el('decorNew').reset();
-    el('decorNew').hidden = true;
-    status.textContent = '';
-    store.set('themePick', body.name);
-    askedTheme = null;
-    await wearDecor();
+    body = await response.json();
   } catch (error) {
     status.className = 'failed';
     status.textContent = t('decorFailed', { error: error.message });
+    return;
   } finally {
     for (const field of fields) field.disabled = false;
   }
+  catalog = body.catalog;
+  el('decorNew').reset();
+  el('decorNew').hidden = true;
+  status.textContent = '';
+  store.set('themePick', body.name);
+  askedTheme = null;
+  wearDecor();
 });
 document.addEventListener('click', event => {
   // The path, not closest(): a click that redraws the list has detached its own target by now.
