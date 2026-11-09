@@ -41,13 +41,14 @@ const js = prefix => `'use strict';
 })();
 `;
 
-const prefixOf = name => name.replace(/-/g, '').slice(0, 4);
+const prefixOf = name => name.replace(/-/g, '').replace(/^(?=\d)/, 't').slice(0, 4);
 
 const slugOf = label => label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 async function createTheme(name, { label, icon = '🎨', dir = THEMES_DIR, shippedDir = SHIPPED_DIR } = {}) {
   if (!NAME_RE.test(name ?? '')) throw new Error('the name must be lowercase letters, digits and dashes');
+  if (name === 'none') throw new Error('"none" means no theme, pick another name');
   if (await fs.access(path.join(shippedDir, name)).then(() => true, () => false)) {
     throw new Error(`${name} is a shipped theme, pick another name`);
   }
@@ -64,8 +65,8 @@ async function createTheme(name, { label, icon = '🎨', dir = THEMES_DIR, shipp
   return folder;
 }
 
-// The page runs theme.js and loads theme.css as they are: whatever the model wrote must stay
-// on this machine, so anything reaching the network is refused rather than written.
+// A lint for the obvious slips, not the boundary: the page's Content-Security-Policy is what keeps
+// a theme from reaching the network.
 const NETWORK = /\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|\bimport\s*\(|importScripts|@import|url\(\s*['"]?(https?:)?\/\/|<script|document\.cookie|localStorage/i;
 
 function parseGenerated(text) {
@@ -159,4 +160,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createTheme, generateTheme, removeTheme, parseGenerated, slugOf };
+module.exports = { createTheme, generateTheme, removeTheme, parseGenerated, slugOf, prefixOf };

@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
-const { createTheme, generateTheme, removeTheme, parseGenerated } = require('../new-theme');
+const { createTheme, generateTheme, removeTheme, parseGenerated, prefixOf } = require('../new-theme');
 const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
@@ -160,6 +160,12 @@ test('new-theme: scaffolds a folder the server accepts, and never overwrites one
   await assert.rejects(createTheme('deep-sea', { dir }), /already exists/);
   await assert.rejects(createTheme('Bad Name', { dir }), /lowercase/);
   await assert.rejects(createTheme('halloween', { dir }), /shipped theme/);
+  await assert.rejects(createTheme('none', { dir }), /no theme/);
+});
+
+test('new-theme: the CSS prefix is a valid identifier even when the name starts with a digit', () => {
+  assert.equal(prefixOf('2077-cyberpunk'), 't207');
+  assert.equal(prefixOf('deep-sea'), 'deep');
 });
 
 test('themes: custom-themes join the shipped ones, which keep their name', async () => {

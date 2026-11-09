@@ -100,13 +100,26 @@ async function assetVersion() {
   const files = [
     ...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)).map(name => path.join(PUBLIC_DIR, name)),
     ...(await themeFiles(THEMES_DIR)).map(file => path.join(THEMES_DIR, file)),
-    ...(await themeFiles(CUSTOM_THEMES_DIR)).map(file => path.join(CUSTOM_THEMES_DIR, file)),
   ].sort();
   const stamps = await Promise.all(
     files.map(async file => `${path.relative(__dirname, file)}:${await fs.stat(file).then(stat => stat.mtimeMs, () => 0)}`),
   );
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }
+
+// Generated themes run unreviewed on this origin: whatever they do, nothing leaves the machine.
+// Scripts stay 'unsafe-inline' because theme.js already runs as 'self'; the boundary is where data can go.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https://github.com https://avatars.githubusercontent.com https://private-avatars.githubusercontent.com",
+  "connect-src 'self'",
+  "media-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -522,7 +535,10 @@ async function serveStatic(res, urlPath) {
 
   try {
     const file = await fs.readFile(target).catch(error => (custom ? fs.readFile(custom) : Promise.reject(error)));
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(target)] || 'application/octet-stream',
+      ...(path.extname(target) === '.html' ? { 'Content-Security-Policy': CSP } : {}),
+    });
     res.end(file);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -606,8 +622,9 @@ const server = http.createServer(async (req, res) => {
     });
     if (refused) return json(res, 403, { error: refused });
     if (DEMO) return json(res, 409, { error: 'not in the demo' });
-    const name = decodeURIComponent(url.pathname.slice('/api/themes/'.length));
+    let name;
     try {
+      name = decodeURIComponent(url.pathname.slice('/api/themes/'.length));
       await removeTheme(name, { dir: CUSTOM_THEMES_DIR });
       logger.info('theme', `removed custom-themes/${name}`);
       return json(res, 200, { ok: true });

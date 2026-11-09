@@ -1255,8 +1255,11 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
   and Halloween still takes over from October 26 to 31.
 - **Have Claude draw one**: **+ New theme** at the bottom of the menu takes a name, an icon and
   a description; **Generate** asks the `claude` CLI (Sonnet, no tools) for its CSS and script, a
-  minute or two, then wears it. It lands in `custom-themes/<name>/`, yours to tweak. Anything in
-  the answer reaching the network or the page's storage is refused, and nothing is written.
+  minute or two, then wears it. It lands in `custom-themes/<name>/`, yours to tweak. The page's
+  Content-Security-Policy keeps any theme from loading or sending anything outside this machine
+  (avatars from GitHub aside); an answer that obviously tries is refused, and nothing is written.
+  A theme still runs on the radar's own page, so read a generated `theme.js` as you would any
+  script you install.
 - **Remove one** with the ✕ on its row, under My themes, clicked twice: it deletes its folder in
   `custom-themes/`. Shipped themes have no ✕.
 - **Or write it yourself**: `npm run new-theme -- <name> ["Label"] [icon]` creates a working
