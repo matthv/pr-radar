@@ -1,5 +1,14 @@
 'use strict';
 
+// Before .env is read: on a Node without process.loadEnvFile the catch below swallows it, and
+// the user is told PR_RADAR_ORG is missing instead. engines.node is only read by npm, and the
+// README starts the server with `node server.js`.
+const nodeVersion = require('./node-version');
+if (nodeVersion.tooOld(process.versions.node)) {
+  console.error(`PR Radar needs Node ${nodeVersion.MINIMUM} or newer, this is ${process.versions.node}.`);
+  process.exit(1);
+}
+
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');

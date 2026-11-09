@@ -3,11 +3,17 @@
 set -e
 cd "$(dirname "$0")"
 PORT="${PORT:-4321}"
-if curl -sf -o /dev/null "http://localhost:$PORT/api/prs"; then
+# /api/boot answers at once and only a PR Radar answers it, unlike / on a port taken by another app.
+radar_up() { curl -sf "http://localhost:$PORT/api/boot" 2>/dev/null | grep -q '"boot"'; }
+if radar_up; then
   echo "PR Radar tourne déjà sur le port $PORT."
 else
   node server.js &
-  until curl -sf -o /dev/null "http://localhost:$PORT/"; do sleep 0.3; done
+  SERVER=$!
+  until radar_up; do
+    kill -0 "$SERVER" 2>/dev/null || exit 1
+    sleep 0.3
+  done
 fi
 open "http://localhost:$PORT/"
 wait
