@@ -1,7 +1,8 @@
 'use strict';
 
-// First, before any require: an older Node would otherwise die further down on an unrelated
-// error. engines.node alone is only read by npm, and the README starts with `node server.js`.
+// Before .env is read: on a Node without process.loadEnvFile the catch below swallows it, and
+// the user is told PR_RADAR_ORG is missing instead. engines.node is only read by npm, and the
+// README starts the server with `node server.js`.
 const nodeVersion = require('./node-version');
 if (nodeVersion.tooOld(process.versions.node)) {
   console.error(`PR Radar needs Node ${nodeVersion.MINIMUM} or newer, this is ${process.versions.node}.`);
