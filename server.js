@@ -4,7 +4,7 @@
 // error. engines.node alone is only read by npm, and the README starts with `node server.js`.
 const nodeVersion = require('./node-version');
 if (nodeVersion.tooOld(process.versions.node)) {
-  console.error(`PR Radar needs Node ${nodeVersion.MINIMUM} or newer, this is ${process.versions.node}: run \`nvm use\` in this folder (it reads .nvmrc) or install a newer Node.`);
+  console.error(`PR Radar needs Node ${nodeVersion.MINIMUM} or newer, this is ${process.versions.node}.`);
   process.exit(1);
 }
 

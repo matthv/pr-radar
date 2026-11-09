@@ -59,8 +59,7 @@ cd pr-radar
 # or: node server.js
 ```
 
-**Node 22.4 or newer**: the server refuses to start on an older one and says so. `.nvmrc`
-pins the version the Forest front uses, so `nvm use` in the folder picks it up.
+**Node 22.4 or newer**: the server refuses to start on an older one and says so.
 
 No dependencies to install, and nothing to install them with: **use `node`, not
 `yarn`**. Yarn 4 refuses to run a script without a lockfile, so `yarn start` would
