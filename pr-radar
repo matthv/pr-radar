@@ -7,7 +7,11 @@ if curl -sf -o /dev/null "http://localhost:$PORT/api/prs"; then
   echo "PR Radar tourne déjà sur le port $PORT."
 else
   node server.js &
-  until curl -sf -o /dev/null "http://localhost:$PORT/"; do sleep 0.3; done
+  SERVER=$!
+  until curl -sf -o /dev/null "http://localhost:$PORT/"; do
+    kill -0 "$SERVER" 2>/dev/null || exit 1
+    sleep 0.3
+  done
 fi
 open "http://localhost:$PORT/"
 wait

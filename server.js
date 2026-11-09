@@ -1,5 +1,13 @@
 'use strict';
 
+// First, before any require: an older Node would otherwise die further down on an unrelated
+// error. engines.node alone is only read by npm, and the README starts with `node server.js`.
+const nodeVersion = require('./node-version');
+if (nodeVersion.tooOld(process.versions.node)) {
+  console.error(`PR Radar needs Node ${nodeVersion.MINIMUM} or newer, this is ${process.versions.node}: run \`nvm use\` in this folder (it reads .nvmrc) or install a newer Node.`);
+  process.exit(1);
+}
+
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
