@@ -38,7 +38,8 @@ const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
-const { listThemes, overlaps, themeFiles } = require('./themes');
+const { listAllThemes, overlaps, themeFiles } = require('./themes');
+const { generateTheme, removeTheme } = require('./new-theme');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -95,6 +96,7 @@ const SOUND_TYPES = {
 const CACHE_TTL_MS = Math.max(15, REFRESH_SECONDS / 2) * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const THEMES_DIR = path.join(PUBLIC_DIR, 'themes');
+const CUSTOM_THEMES_DIR = process.env.PR_RADAR_CUSTOM_THEMES_DIR || path.join(__dirname, 'custom-themes');
 // A radar run by launchd or pm2 is restarted by them: relaunching itself would start a second one.
 const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
@@ -104,13 +106,30 @@ const BOOT_ID = randomUUID().slice(0, 8);
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
 async function assetVersion() {
-  const themed = (await themeFiles(THEMES_DIR)).map(file => path.join('themes', file));
-  const names = [...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)), ...themed].sort();
+  const files = [
+    ...(await fs.readdir(PUBLIC_DIR)).filter(name => /\.(js|css|html)$/.test(name)).map(name => path.join(PUBLIC_DIR, name)),
+    ...(await themeFiles(THEMES_DIR)).map(file => path.join(THEMES_DIR, file)),
+  ].sort();
   const stamps = await Promise.all(
-    names.map(async name => `${name}:${await fs.stat(path.join(PUBLIC_DIR, name)).then(stat => stat.mtimeMs, () => 0)}`),
+    files.map(async file => `${path.relative(__dirname, file)}:${await fs.stat(file).then(stat => stat.mtimeMs, () => 0)}`),
   );
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }
+
+// Generated themes run unreviewed on this origin: this blocks their requests and loads, not a
+// navigation away or window.open, which no CSP directive covers.
+// Scripts stay 'unsafe-inline' because theme.js already runs as 'self'; the boundary is where data can go.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https://github.com https://avatars.githubusercontent.com https://private-avatars.githubusercontent.com",
+  "connect-src 'self'",
+  "media-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -518,14 +537,27 @@ async function digestFor(body) {
   return digest.standupNotes(shaped, body.lang === 'fr' ? 'fr' : 'en');
 }
 
+const themeCatalog = async () => {
+  const { themes } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
+  return { default: THEME || null, themes, canGenerate: digestAvailable && !DEMO };
+};
+
+const themeFailure = (res, status, error) =>
+  json(res, status, { error: error.message, reason: error.reason, params: error.params });
+
 async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
   if (!target.startsWith(PUBLIC_DIR)) return json(res, 403, { error: 'forbidden' });
+  const custom = target.startsWith(THEMES_DIR + path.sep) ? path.join(CUSTOM_THEMES_DIR, path.relative(THEMES_DIR, target)) : null;
 
   try {
-    const file = await fs.readFile(target);
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(target)] || 'application/octet-stream' });
+    const file = await fs.readFile(target)
+      .catch(error => (custom && error.code === 'ENOENT' ? fs.readFile(custom) : Promise.reject(error)));
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(target)] || 'application/octet-stream',
+      ...(path.extname(target) === '.html' ? { 'Content-Security-Policy': CSP } : {}),
+    });
     res.end(file);
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -586,10 +618,41 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/themes') {
-    const { themes } = await listThemes(THEMES_DIR);
-    return json(res, 200, { default: THEME || null, themes });
+  if (url.pathname === '/api/themes' && req.method === 'POST') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 409, { error: 'not in the demo', reason: 'demo' });
+    if (!digestAvailable) return json(res, 409, { error: 'the claude CLI is not installed', reason: 'noClaude' });
+    try {
+      const name = await generateTheme(await readJsonBody(req), { dir: CUSTOM_THEMES_DIR });
+      logger.info('theme', `generated custom-themes/${name}`);
+      return json(res, 200, { name, catalog: await themeCatalog() });
+    } catch (error) {
+      logger.fail('theme', `generation failed, ${error.message}`);
+      return themeFailure(res, 422, error);
+    }
   }
+
+  if (url.pathname.startsWith('/api/themes/') && req.method === 'DELETE') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 409, { error: 'not in the demo', reason: 'demo' });
+    let name;
+    try {
+      name = decodeURIComponent(url.pathname.slice('/api/themes/'.length));
+      await removeTheme(name, { dir: CUSTOM_THEMES_DIR });
+      logger.info('theme', `removed custom-themes/${name}`);
+      return json(res, 200, { ok: true, catalog: await themeCatalog() });
+    } catch (error) {
+      return themeFailure(res, 404, error);
+    }
+  }
+
+  if (url.pathname === '/api/themes') return json(res, 200, await themeCatalog());
 
   if (url.pathname === '/sound') {
     try {
@@ -608,7 +671,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (DEMO && url.pathname === '/intro') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': CSP });
     res.end(await fs.readFile(path.join(__dirname, 'demo-intro.html')));
     return;
   }
@@ -716,14 +779,15 @@ server.listen(PORT, async () => {
     });
     setInterval(() => readOrphansInBackground(false), 60_000).unref();
   }
-  const { themes, problems } = await listThemes(THEMES_DIR);
+  await fs.rm(path.join(CUSTOM_THEMES_DIR, '.generating'), { recursive: true, force: true });
+  const { themes, problems } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
   for (const problem of problems) logger.fail('theme', `left out, ${problem}`);
   for (const [first, second] of overlaps(themes)) {
     logger.fail('theme', `${first} and ${second} share days: ${first} wins, as it comes first by name`);
   }
   const seasonal = themes.filter(theme => theme.season).map(theme => theme.name);
   const THEME_LINE = (THEME
-    ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes, none`)
+    ? (themes.some(theme => theme.name === THEME) ? THEME : `${THEME} not found in public/themes or custom-themes, none`)
     : 'none (no PR_RADAR_THEME)') + (seasonal.length ? `, ${seasonal.join(', ')} within their dates` : '');
   const ORPHAN_LINE = orphanWatch
     ? `after ${ORPHAN_DAYS} working day${ORPHAN_DAYS > 1 ? 's' : ''} with no review, read every 30 min`

@@ -6,3 +6,4 @@ node_modules/
 .slack-links.json
 .slack-claims-debug.log
 .idea/
+custom-themes/

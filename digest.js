@@ -51,7 +51,7 @@ const CLAUDE_ARGS = [
 // The prompt goes through stdin rather than argv: `claude -p` waits three seconds for a
 // stdin that never comes otherwise, and a board of twenty PRs would push argv towards
 // its size limit.
-function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir()) {
+function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir(), timeoutMs = TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     // `-p` only waits for servers it already knows are pending, and the claude.ai connector
     // list is still being fetched when the first turn starts: without this, Slack is missed.
@@ -59,7 +59,11 @@ function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir()) {
     const child = spawn('claude', args, { cwd, env });
     let out = '';
     let err = '';
-    const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
 
     child.stdout.on('data', chunk => {
       out += chunk;
@@ -71,6 +75,7 @@ function claude(prompt, args = CLAUDE_ARGS, cwd = os.tmpdir()) {
     child.on('close', code => {
       clearTimeout(timer);
       if (code === 0 && out.trim()) return resolve(out.trim());
+      if (timedOut) return reject(Object.assign(new Error(`claude gave no answer within ${timeoutMs / 1000} s`), { reason: 'timeout', params: { seconds: timeoutMs / 1000 } }));
       reject(new Error(err.trim() || `claude exited with ${code}`));
     });
 

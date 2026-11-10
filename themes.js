@@ -39,7 +39,7 @@ async function listThemes(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   const themes = [];
   const problems = [];
-  for (const entry of entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of entries.filter(e => e.isDirectory() && !e.name.startsWith('.')).sort((a, b) => a.name.localeCompare(b.name))) {
     try {
       themes.push(await readTheme(path.join(dir, entry.name), entry.name));
     } catch (error) {
@@ -47,6 +47,22 @@ async function listThemes(dir) {
     }
   }
   return { themes, problems };
+}
+
+async function listAllThemes(shippedDir, customDir) {
+  const shipped = await listThemes(shippedDir);
+  const custom = await listThemes(customDir);
+  const taken = new Set(shipped.themes.map(theme => theme.name));
+  return {
+    themes: [...shipped.themes, ...custom.themes.filter(theme => !taken.has(theme.name)).map(theme => ({ ...theme, custom: true }))]
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    problems: [
+      ...shipped.problems,
+      ...custom.problems.map(problem => `custom-themes/${problem}`),
+      ...custom.themes.filter(theme => taken.has(theme.name))
+        .map(theme => `custom-themes/${theme.name}: a shipped theme has this name, rename the folder`),
+    ],
+  };
 }
 
 const dayKeys = ({ from, to }) => {
@@ -68,7 +84,7 @@ function overlaps(themes) {
 }
 
 async function themeFiles(dir) {
-  const folders = (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory());
+  const folders = (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
   const files = await Promise.all(folders.map(async ({ name }) =>
     (await fs.readdir(path.join(dir, name)).catch(() => []))
       .filter(file => /^theme\.(json|css|js)$/.test(file))
@@ -76,4 +92,4 @@ async function themeFiles(dir) {
   return files.flat();
 }
 
-module.exports = { listThemes, overlaps, themeFiles };
+module.exports = { NAME_RE, listThemes, listAllThemes, overlaps, themeFiles };

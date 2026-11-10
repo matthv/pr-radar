@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "demo": "PR_RADAR_DEMO=true PORT=${DEMO_PORT:-4322} node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "new-theme": "node new-theme.js"
   },
   "engines": {
     "node": ">=22.4"
