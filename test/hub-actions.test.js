@@ -116,3 +116,27 @@ test('hub route: an installed theme stays installed when the catalog cannot be r
   assert.equal(answer.catalog, undefined);
   assert.equal(answer.error, undefined);
 });
+
+test('hub route: a kudos or a wizz says whether it went out', async () => {
+  const t = setup();
+  assert.equal((await hubAction({ action: 'kudos', to: 'bexchauveto' }, t.deps)).sent, true);
+  assert.equal((await hubAction({ action: 'kudos', to: 'a b' }, t.deps)).sent, false);
+  assert.equal((await hubAction({ action: 'wizz', to: 'bexchauveto', pr: 'https://github.com/x/y/pull/1' }, t.deps)).sent, false);
+  t.deps.hub.sendWizz = () => false;
+  assert.equal((await hubAction({ action: 'wizz', to: 'bexchauveto' }, t.deps)).sent, false);
+});
+
+test('hub route: a second install of the same offer while the first runs does nothing', async () => {
+  const t = setup({ offers: [OFFER] });
+  let release;
+  t.deps.installTheme = () => new Promise(resolve => {
+    release = () => resolve('aurore');
+  });
+  const first = hubAction({ action: 'acceptOffer', id: 'o1' }, t.deps);
+  await new Promise(resolve => setImmediate(resolve));
+  const second = await hubAction({ action: 'acceptOffer', id: 'o1' }, t.deps);
+  assert.equal(second.installed, undefined);
+  assert.equal(second.error, undefined);
+  release();
+  assert.equal((await first).installed, 'aurore');
+});

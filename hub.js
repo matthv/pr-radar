@@ -78,6 +78,17 @@ function withPrUrls(state, prUrls, at = Date.now(), limits = WIZZ_LIMITS) {
   };
 }
 
+const DEVICE_PAGE = 'https://github.com/login/device';
+// The link comes from the hub and lands in an href: only GitHub over https may be shown.
+function verificationPage(uri) {
+  try {
+    const page = new URL(uri);
+    return page.protocol === 'https:' && page.hostname === 'github.com' ? page.href : DEVICE_PAGE;
+  } catch {
+    return DEVICE_PAGE;
+  }
+}
+
 const backoffDelay = (attempt, random = Math.random) => Math.floor(random() * Math.min(300_000, 2000 * 2 ** attempt));
 
 // Outside the clone: survives a `git clean`, never committed, shared by every clone on the machine.
@@ -116,6 +127,9 @@ function createHub({
   let socket = null;
   let attempt = 0;
   let hubError = null;
+  // Memory is the source, the file a copy: a token that cannot be saved still holds until the next start.
+  let token = files.read(TOKEN);
+  let lastLogged = null;
   let lastFailure = '';
   let retriedWithoutToken = false;
   let stopping = false;
@@ -176,10 +190,12 @@ function createHub({
     ws.addEventListener('open', () => {
       if (socket !== ws) return;
       inHello = { tabs, version, availability, acceptsWizz: acceptsWizz() };
-      // Availability belongs to the login on the hub: a null here would clear a focus set from
-      // another of the person's radars, so it only goes out once chosen. acceptsWizz always
-      // goes: the hub forgets a refusal once the person's last radar leaves.
-      send({ type: 'hello', protocol: PROTOCOL, hubToken: files.read(TOKEN) ?? undefined, instanceId, version, tabs, acceptsWizz: acceptsWizz(), ...(availability ? { availability } : {}) });
+      // Availability and the acceptsWizz derived from it belong to the login on the hub: sent
+      // before anything was chosen, they would undo a focus set from another of the person's radars.
+      send({
+        type: 'hello', protocol: PROTOCOL, hubToken: token ?? undefined, instanceId, version, tabs,
+        ...(availability ? { availability, acceptsWizz: acceptsWizz() } : {}),
+      });
     });
     ws.addEventListener('message', event => {
       if (socket === ws) received(event.data);
@@ -204,12 +220,16 @@ function createHub({
         view.status = 'auth';
         view.auth = {
           userCode: String(message.userCode ?? ''),
-          verificationUri: String(message.verificationUri ?? ''),
+          verificationUri: verificationPage(message.verificationUri),
           expiresAt: now() + Number(message.expiresIn ?? 0) * 1000,
         };
         break;
       case 'welcome':
-        if (message.hubToken) save(TOKEN, message.hubToken);
+        if (message.hubToken) {
+          token = message.hubToken;
+          save(TOKEN, token);
+        }
+        lastLogged = null;
         retriedWithoutToken = false;
         Object.assign(view, { status: 'online', auth: null, login: message.login ?? null, avatarUrl: message.avatarUrl ?? null });
         known = inHello;
@@ -270,7 +290,10 @@ function createHub({
     view.auth = null;
     if (stopping) return;
     const why = hubError ?? CLOSE_CODES[code] ?? (KNOWN.has(reason) ? reason : null);
-    if (FORGETS_TOKEN.has(why)) save(TOKEN, null);
+    if (FORGETS_TOKEN.has(why)) {
+      token = null;
+      save(TOKEN, null);
+    }
     if (why === 'bad_token' && !retriedWithoutToken) {
       retriedWithoutToken = true;
       connect();
@@ -283,8 +306,10 @@ function createHub({
     }
     if (code === 1009) log('fail', 'the hub closed the connection on a message over 16 KiB');
     const delay = Math.max(backoffDelay(attempt, random), why === 'rate_limited' ? RATE_LIMITED_MS : 0);
-    // Once per streak of retries, so a long outage says why without filling the log.
-    if (attempt === 0) log('fail', `connection lost (${why ?? code}${lastFailure ? `: ${lastFailure}` : ''}), retrying in ${Math.round(delay / 1000)} s`);
+    // Once per reason, so a long outage says why without filling the log.
+    const cause = `${why ?? code}${lastFailure ? `: ${lastFailure}` : ''}`;
+    if (cause !== lastLogged) log('fail', `connection lost (${cause}), retrying in ${Math.round(delay / 1000)} s`);
+    lastLogged = cause;
     lastFailure = '';
     attempt += 1;
     Object.assign(view, { status: 'waiting', nextTryAt: now() + delay });
@@ -384,13 +409,13 @@ function createHub({
     return true;
   }
 
-  // Focus is the one way to be left alone: it refuses plain wizzes too, so a sender sees the
-  // button greyed rather than shaking a page that will not shake.
+  // Focus already stops the shaking, so it refuses plain wizzes outright: the sender sees the
+  // button greyed rather than shaking a page that will not shake. Nudges still go through.
   function acceptsWizz() {
     return availability !== 'focus';
   }
 
-  // Unlike tabs, a status change is one deliberate click: it goes out at once.
+  // Unlike tabs, an availability change is one deliberate click: it goes out at once.
   function setAvailability(value) {
     if (!keepAvailability(value) || !known || !socket) return;
     send({ type: 'status', availability, acceptsWizz: acceptsWizz() });
@@ -403,7 +428,6 @@ function createHub({
     return wizzSent;
   };
 
-  // Plain without a ref, a nudge on a PR with one.
   function sendWizz(to, ref = null) {
     if (!online() || to.toLowerCase() === view.login?.toLowerCase()) return false;
     if (ref !== null && !WIZZ_REF.test(ref)) return false;

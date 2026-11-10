@@ -888,7 +888,8 @@ soft low notes, three for a wizz); it is not the board's chime, and the speaker 
 it alone. A kudos gets a single soft note, only once you are looking at the tab, with its confetti.
 
 **Focus is how you are left alone:** nobody can wizz you (their phone greys out on your row),
-and a nudge still arrives, as a notice and an outline, without shaking or sound.
+a nudge still arrives, as a notice and an outline, without shaking or sound, and a kudos shows
+without confetti or sound.
 
 **Sharing a theme.** With a theme of your own under `custom-themes/`, the palette on a
 teammate's row lists them; one click sends it, up to 15 KB, through the hub, which relays it
@@ -898,16 +899,20 @@ then checked like a generated one (no network or storage call, a `theme.js` that
 in "My themes" under its own name, or with the sender's login added when the name is taken,
 and **Wear it** puts it on. An offer left alone expires after an hour.
 
-**What leaves your machine:** your GitHub login, the commit PR Radar runs, how far behind
-`main` it is, how many board tabs are open, and whether you are available or in focus.
+**What leaves your machine:** your GitHub login, the commit and release PR Radar runs, how far
+behind `main` it is, how many board tabs are open, and whether you are available or in focus.
 Nothing about pull requests, repositories or titles, and never your `gh` token, which this
 feature does not even read. A nudge carries only a SHA-256 of the PR's URL, which the
 recipient's radar matches against its own board; the hub cannot read it back, though anyone
-who already knows the URL could recompute it.
+who already knows the URL could recompute it. A theme you share travels whole, its CSS and its
+JavaScript, relayed by the hub and kept nowhere.
 
 The rest:
-- The hub is `PR_RADAR_HUB_URL`. Empty, the feature is off and nothing is contacted; the demo
-  never connects either.
+- The hub is `PR_RADAR_HUB_URL`, a `wss://` address (`ws://` only for a hub on this machine).
+  Empty or anything else, the feature is off and nothing is contacted, the reason in the
+  startup lines; the demo never connects either.
+- `PR_RADAR_CONFIG_DIR` moves `~/.config/pr-radar`, to run a second radar under another
+  account on the same machine while trying the feature.
 - The board never waits on the hub: down or unreachable, the panel says when it tries again
   and everything else works as before.
 - Leaving the organisation, or a token revoked on the hub, stops the radar and deletes its

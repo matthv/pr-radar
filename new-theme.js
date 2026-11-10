@@ -178,6 +178,9 @@ async function readForOffer(name, { dir = THEMES_DIR } = {}) {
     if (error.reason) throw error;
     throw fail('unreadable', `${name}/theme.json is not valid JSON (${error.message})`, { name, file: 'theme.json' });
   }
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    throw fail('unreadable', `${name}/theme.json is not an object`, { name, file: 'theme.json' });
+  }
   const css = await read('theme.css');
   const js = await read('theme.js', { optional: true });
   const theme = {
@@ -198,7 +201,6 @@ const asLogin = login => String(login ?? '').toLowerCase().replace(/[^a-z0-9-]/g
 async function installTheme(theme, { from, dir = THEMES_DIR, shippedDir = SHIPPED_DIR } = {}) {
   const name = String(theme?.name ?? '');
   if (!NAME_RE.test(name) || name.length > 40 || name === 'none') throw fail('badOffer', 'the offered theme has no valid name');
-  // The protocol counts an absent js as null.
   const script = theme.js ?? null;
   if (typeof theme.css !== 'string' || (script !== null && typeof script !== 'string')) throw fail('badOffer', 'the offered theme is malformed');
   const label = String(theme.label ?? '').trim().slice(0, LABEL_MAX) || name;

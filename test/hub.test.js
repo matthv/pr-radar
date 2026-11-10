@@ -95,7 +95,7 @@ test('the first hello has no token, and carries the instance, the version and th
   t.hub.start();
   assert.equal(t.last().url, 'wss://hub.test/ws');
   assert.deepEqual(t.open(), {
-    type: 'hello', protocol: 1, instanceId: 'instance-1234', version: { commit: 'abc1234def', behind: 1, tag: null }, tabs: 2, acceptsWizz: true,
+    type: 'hello', protocol: 1, instanceId: 'instance-1234', version: { commit: 'abc1234def', behind: 1, tag: null }, tabs: 2,
   });
 });
 
@@ -451,10 +451,10 @@ test('the wizz ref is the SHA-256 of the PR URL, whatever its case or a trailing
   assert.notEqual(wizzRef('https://github.com/matthv/pr-radar/pull/34'), ref);
 });
 
-test('focus refuses plain wizzes: acceptsWizz follows availability, in hello and at once on a click', () => {
+test('focus refuses plain wizzes: acceptsWizz follows availability, in hello once chosen and at once on a click', () => {
   const t = setup({ token: 'rh_kept' });
   t.hub.start();
-  assert.equal(t.open().acceptsWizz, true);
+  assert.equal('acceptsWizz' in t.open(), false);
   t.say(welcome());
   t.hub.setAvailability('focus');
   assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: 'focus', acceptsWizz: false });
@@ -546,4 +546,29 @@ test('the release tag goes with commit and behind, a malformed one as null, a ne
   t.hub.setVersion({ commit: 'abc', behind: 0, tag: 'v1.3.0' });
   t.timers.fire(2500);
   assert.deepEqual(t.last().sent.at(-1), { type: 'status', version: { commit: 'abc', behind: 0, tag: 'v1.3.0' } });
+});
+
+test('the sign-in link shown is GitHub over https, whatever the hub sends', () => {
+  const t = setup();
+  t.hub.start();
+  t.open();
+  t.say({ type: 'auth_required', userCode: 'ABCD-1234', verificationUri: 'javascript:alert(1)', expiresIn: 900 });
+  assert.equal(t.hub.state().auth.verificationUri, 'https://github.com/login/device');
+  t.say({ type: 'auth_required', userCode: 'ABCD-1234', verificationUri: 'https://github.com/login/device?x=1', expiresIn: 900 });
+  assert.equal(t.hub.state().auth.verificationUri, 'https://github.com/login/device?x=1');
+});
+
+test('a token that cannot be saved still holds for the next connection', () => {
+  const t = setup();
+  const write = t.store.set.bind(t.store);
+  t.store.set = (name, value) => {
+    if (name === 'hub-token') throw new Error('EROFS');
+    return write(name, value);
+  };
+  t.hub.start();
+  t.open();
+  t.say(welcome({ hubToken: 'rh_new' }));
+  t.closeWith(1006);
+  t.timers.fire();
+  assert.equal(t.open().hubToken, 'rh_new');
 });

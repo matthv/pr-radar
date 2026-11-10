@@ -73,10 +73,12 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
 const HUB_URL_SET = DEMO ? '' : (process.env.PR_RADAR_HUB_URL ?? '').trim();
-// A value without its wss:// would make the client retry forever: it is turned off instead, and said.
+// Anything but wss:// would make the client retry forever or carry the hub token in clear: it is
+// turned off instead, and said. Plain ws:// is for a hub on this machine.
 const HUB_URL = (() => {
   try {
-    return ['ws:', 'wss:'].includes(new URL(HUB_URL_SET).protocol) ? HUB_URL_SET : '';
+    const { protocol, hostname } = new URL(HUB_URL_SET);
+    return protocol === 'wss:' || (protocol === 'ws:' && ['localhost', '127.0.0.1', '[::1]'].includes(hostname)) ? HUB_URL_SET : '';
   } catch {
     return '';
   }
@@ -596,16 +598,17 @@ async function demoHubAction(body) {
   const to = login(body.to) ?? '';
   const pr = typeof body.pr === 'string' ? body.pr : null;
   if (body.action === 'availability') demo.setAvailability(body.value);
-  if (body.action === 'kudos') demo.kudosBack(to);
-  if (body.action === 'wizz' && (body.pr == null || urls.includes(pr))) demo.wizzBack(to, pr);
-  if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
   let shared = body.action === 'acceptOffer' ? { error: { reason: 'demo' } } : {};
+  if (body.action === 'kudos') shared = { sent: demo.kudosBack(to) };
+  if (body.action === 'wizz') shared = { sent: (body.pr == null || urls.includes(pr)) && demo.wizzBack(to, pr) };
+  if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
   if (body.action === 'offerTheme') {
     try {
       const theme = await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR });
       demo.themeBack(to, { ...theme, hasScript: Boolean(theme.js?.trim()) });
       shared = { sent: theme.name };
     } catch (error) {
+      if (!error.reason) logger.fail('theme', `offer not sent, ${error.message}`);
       shared = { error: { reason: error.reason, params: error.params } };
     }
   }
@@ -929,7 +932,7 @@ server.listen(PORT, async () => {
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}\n` +
       `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}`
-        : HUB_URL_SET ? `off (PR_RADAR_HUB_URL is not a ws:// or wss:// address: ${HUB_URL_SET})` : 'off (no PR_RADAR_HUB_URL)'}`,
+        : HUB_URL_SET ? `off (PR_RADAR_HUB_URL must be a wss:// address, or ws:// on this machine: ${HUB_URL_SET})` : 'off (no PR_RADAR_HUB_URL)'}`,
   );
   update.start();
   if (HUB_URL) {

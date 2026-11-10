@@ -1809,7 +1809,7 @@ const I18N = {
     decorReason_exists: 'un thème nommé {name} existe déjà',
     decorReason_noBlocks: 'Claude n’a pas répondu avec un bloc CSS et un bloc JS, réessaie',
     decorReason_network: 'le thème tentait d’atteindre le réseau ou le stockage de la page ({match}), rien n’a été écrit',
-    decorReason_parse: 'le theme.js généré ne se lit pas ({error})',
+    decorReason_parse: 'le theme.js ne se lit pas ({error})',
     decorReason_timeout: 'Claude n’a pas répondu en {seconds} s',
     decorReason_missing: 'ce thème n’existe pas',
     decorReason_tooBig: '{name} est trop gros pour passer par le hub (plus de 15 Ko)',
@@ -2131,7 +2131,7 @@ const I18N = {
     decorReason_exists: 'a theme named {name} already exists',
     decorReason_noBlocks: 'Claude did not answer with a CSS and a JS block, try again',
     decorReason_network: 'the theme tried to reach the network or the page storage ({match}), nothing was written',
-    decorReason_parse: 'the generated theme.js does not parse ({error})',
+    decorReason_parse: 'theme.js does not parse ({error})',
     decorReason_timeout: 'Claude gave no answer within {seconds} s',
     decorReason_missing: 'no such theme',
     decorReason_tooBig: '{name} is too big to go through the hub (over 15 KB)',
@@ -2524,11 +2524,13 @@ async function wearDecor() {
 
 async function loadDecor() {
   try {
-    catalog = await (await fetch('/api/themes')).json();
+    const response = await fetch('/api/themes');
+    const next = response.ok ? await response.json() : null;
+    if (!Array.isArray(next?.themes)) return;
+    catalog = next;
   } catch {
     return;
   }
-  catalog.themes ??= [];
   catalogChanged();
   await wearDecor();
 }
@@ -2831,17 +2833,21 @@ function beep() {
 
 // A teammate's call, or a kudos, sounds apart from the board's chime, and is not muted with it: someone who
 // silenced the PR chime still hears a nudge. Focus is what quiets it.
-function wizzSound(nudge, style = WIZZ_SOUND) {
+// The sound is claimed only once audio really runs: a tab nobody clicked yet stays muted by the
+// browser, and must not take the sound from one that can play it.
+function wizzSound(nudge, style = WIZZ_SOUND, key = null) {
   try {
     audio ??= new (window.AudioContext || window.webkitAudioContext)();
-    audio.resume().catch(() => {});
-    WIZZ_SOUNDS[style](audio, audio.currentTime, nudge);
+    audio.resume().then(() => {
+      if (audio.state !== 'running' || (key && !claimSound(key))) return;
+      WIZZ_SOUNDS[style](audio, audio.currentTime, nudge);
+    }, () => {});
   } catch (error) {
     console.warn('PR Radar: no sound', error);
   }
 }
 
-// Every open tab hears the same wizz on its own beat: the first one to claim it plays it.
+// Every open tab sees the same wizz or kudos on its own beat: the first one to claim it plays the sound.
 function claimSound(key) {
   try {
     const played = JSON.parse(localStorage.getItem('pr-radar:soundsPlayed') ?? '[]');
@@ -2854,7 +2860,6 @@ function claimSound(key) {
 }
 
 const WIZZ_SOUNDS = {
-  // One soft note a step above the others, ringing a little longer: nobody needs to answer it.
   kudos(ctx, now) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -2867,7 +2872,6 @@ const WIZZ_SOUNDS = {
     osc.start(now);
     osc.stop(now + 0.82);
   },
-  // Two warm low notes laid one after the other, held a moment; a third under them for a wizz.
   warm(ctx, now, nudge) {
     const notes = nudge ? [[0, 262], [0.12, 330]] : [[0, 196], [0.1, 262], [0.2, 330]];
     for (const [at, freq] of notes) {
@@ -4336,16 +4340,20 @@ document.addEventListener('click', event => {
     const prUrl = nudge.closest('.card')?.dataset.prUrl;
     const targets = nudgeTargets(nudge).filter(login => !nudgeWait(login, prUrl));
     if (!prUrl || !targets.length) return;
-    nudge.classList.add('sent');
     nudge.disabled = true;
-    nudge.innerHTML = CHECK_ICON;
-    nudge.title = t('hubNudgeSent');
-    targets.reduce((sent, to) => sent.then(() => hubBeat('wizz', { to, pr: prUrl })), Promise.resolve());
-    setTimeout(() => {
-      nudge.classList.remove('sent');
-      nudge.innerHTML = ICONS.bell;
-      refreshNudges();
-    }, 2000);
+    targets.reduce((done, to) => done.then(async any => Boolean((await hubBeat('wizz', { to, pr: prUrl }))?.sent) || any), Promise.resolve(false))
+      .then(any => {
+        if (!any) return refreshNudges();
+        nudge.classList.add('sent');
+        nudge.innerHTML = CHECK_ICON;
+        nudge.title = t('hubNudgeSent');
+        setTimeout(() => {
+          nudge.classList.remove('sent');
+          nudge.innerHTML = ICONS.bell;
+          refreshNudges();
+        }, 2000);
+        return undefined;
+      });
     return;
   }
 
@@ -5132,8 +5140,13 @@ async function hubBeat(action, extra = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tabId: HUB_TAB, hidden: document.hidden, action, ...extra }),
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    body = await response.json();
+    body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      // The server answered: whatever failed, it is not down.
+      hubMissed = 0;
+      console.error(`PR Radar: /api/hub answered ${response.status}`, body?.error ?? '');
+      return undefined;
+    }
   } catch {
     // The page outlived its server: a presence frozen at the last answer would lie.
     hubMissed += 1;
@@ -5192,6 +5205,7 @@ function shareList(person) {
 }
 
 let hubInstalled = null;
+let hubAccepting = null;
 
 // A theme runs its own code in the page: installing one is the recipient's call, made knowingly.
 function hubOffersHtml(data) {
@@ -5200,7 +5214,7 @@ function hubOffersHtml(data) {
     + `<span>${escapeHtml(t('hubOfferFrom', { who: offer.from }))}</span></div>`
     + `<b class="hub-offer-theme">${escapeHtml(offer.icon)} ${escapeHtml(offer.label)}</b>`
     + `<p class="hub-offer-warn">${escapeHtml(t(offer.hasScript ? 'hubOfferWarnScript' : 'hubOfferWarnCss', { who: offer.from }))}</p>`
-    + `<div class="hub-actions"><button type="button" class="hub-btn" data-hub-accept="${escapeHtml(offer.id)}">${t('hubOfferInstall')}</button>`
+    + `<div class="hub-actions"><button type="button" class="hub-btn" data-hub-accept="${escapeHtml(offer.id)}"${hubAccepting === offer.id ? ' disabled' : ''}>${t('hubOfferInstall')}</button>`
     + `<button type="button" class="hub-btn quiet" data-hub-decline="${escapeHtml(offer.id)}">${t('hubOfferDecline')}</button></div></div>`);
   const installed = hubInstalled
     ? `<div class="hub-box">${hubInstalled.error
@@ -5241,8 +5255,7 @@ function hubPersonHtml(person) {
     + `<small>${availability}${escapeHtml(t('hubSince', { v: ago(person.since) }))}</small>${flag}</span><span class="hub-acts">${kudos}${wizz}${shareButton(person)}</span>${shareList(person)}</li>`;
 }
 
-// Me apart from the list: what I set for the others, and what they see of my radar.
-// Nobody is neither: someone who never chose, on this radar or an older one, counts as available.
+// No third state: someone who never chose, on this radar or an older one, counts as available.
 const hubStatus = availability => (availability === 'focus' ? 'focus' : 'available');
 const hubFace = (src, status) => `<span class="hub-face"><img src="${escapeHtml(src)}" alt="">`
   + `<span class="hub-badge ${status}" aria-hidden="true">${status === 'focus' ? ICONS.focus : ICONS.hand}</span></span>`;
@@ -5297,7 +5310,7 @@ function toastKudos(fresh = []) {
   if (!hubKudosBatch.length || document.hidden) return;
   // Only with the confetti, never into a background tab: a kudos is no reason to call anyone back.
   const lastKudos = hubKudosBatch.at(-1);
-  if (hubKudosSoundOwed && hubData?.availability !== 'focus' && claimSound(`kudos|${lastKudos.from}|${lastKudos.at}`)) wizzSound(false, 'kudos');
+  if (hubKudosSoundOwed && hubData?.availability !== 'focus') wizzSound(false, 'kudos', `kudos|${lastKudos.from}|${lastKudos.at}`);
   hubKudosSoundOwed = false;
   const counts = new Map();
   for (const k of hubKudosBatch) counts.set(k.from, { ...k, n: (counts.get(k.from)?.n ?? 0) + 1 });
@@ -5376,13 +5389,12 @@ function showWizz(data) {
     /* a wizz shown twice is fine */
   }
   // On arrival, hidden tab or not: the sound is what reaches someone working elsewhere.
-  if (fresh.length && data?.availability !== 'focus' && claimSound(`wizz|${fresh.at(-1).from}|${fresh.at(-1).at}`)) wizzSound(fresh.some(w => w.nudge));
+  if (fresh.length && data?.availability !== 'focus') wizzSound(fresh.some(w => w.nudge), WIZZ_SOUND, `wizz|${fresh.at(-1).from}|${fresh.at(-1).at}`);
   if (fresh.length) playWizz(fresh);
 }
 
 const nudgedCards = prUrl => [...document.querySelectorAll(`.card[data-pr-url="${CSS.escape(prUrl)}"]`)];
 
-// Focus mode and reduced motion keep the toast and the outline, never the shaking.
 let hubWizzQueue = [];
 // A hidden tab cannot shake, so it says so in its title until someone looks.
 function paintTitle() {
@@ -5401,7 +5413,8 @@ function playWizz(fresh = []) {
   paintTitle();
   const last = queue.at(-1);
   const age = Date.now() - new Date(last.at);
-  // Shaking for a wizz sent long before anyone came back would only startle.
+  // Focus and reduced motion keep the toast and the outline, never the shaking; nor does a wizz
+  // sent long before anyone came back, which would only startle.
   const still = hubCalm() || age > WIZZ_STALE_MS;
   for (const wizz of queue.filter(w => w.prUrl)) {
     const until = Date.now() + 60_000;
@@ -5572,10 +5585,12 @@ el('hubPanel').addEventListener('click', async event => {
   if (availability && availability.getAttribute('aria-pressed') !== 'true') return hubBeat('availability', { value: availability.dataset.hubAvailability });
   const kudos = event.target.closest('[data-hub-kudos]')?.dataset.hubKudos;
   if (kudos) {
+    const body = await hubBeat('kudos', { to: kudos });
+    if (!body?.sent) return undefined;
     hubKudosSent.set(kudos, Date.now());
     setTimeout(() => renderHub(hubData, { force: true }), 2100);
     setTimeout(() => renderHub(hubData, { force: true }), 60_100);
-    return hubBeat('kudos', { to: kudos }).then(() => renderHub(hubData, { force: true }));
+    return renderHub(hubData, { force: true });
   }
   const share = event.target.closest('[data-hub-share]')?.dataset.hubShare;
   if (share) {
@@ -5605,8 +5620,12 @@ el('hubPanel').addEventListener('click', async event => {
   }
   const accept = event.target.closest('[data-hub-accept]')?.dataset.hubAccept;
   if (accept) {
+    if (hubAccepting) return undefined;
+    hubAccepting = accept;
+    renderHub(hubData, { force: true });
     const label = hubData?.offers?.find(offer => offer.id === accept)?.label ?? '';
     const body = await hubBeat('acceptOffer', { id: accept });
+    hubAccepting = null;
     if (body?.installed) {
       if (body.catalog) {
         catalog = body.catalog;
@@ -5633,9 +5652,11 @@ el('hubPanel').addEventListener('click', async event => {
   }
   const wizz = event.target.closest('[data-hub-wizz]')?.dataset.hubWizz;
   if (wizz) {
+    const body = await hubBeat('wizz', { to: wizz });
+    if (!body?.sent) return undefined;
     hubWizzSent.set(wizz, Date.now());
     setTimeout(() => renderHub(hubData, { force: true }), 2100);
-    return hubBeat('wizz', { to: wizz }).then(() => renderHub(hubData, { force: true }));
+    return renderHub(hubData, { force: true });
   }
   if (!event.target.closest('[data-hub-copy]')) return;
   try {

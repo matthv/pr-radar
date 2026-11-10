@@ -3,11 +3,12 @@
 const { wizzRef, withPrUrls } = require('./hub');
 
 const GITHUB_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
-// Strings only: String(["x"]) passes a pattern a raw array then breaks further on.
+// typeof first: String(['x']) would pass the pattern, and the array would then break whatever reads it as a login.
 const login = value => (typeof value === 'string' && GITHUB_LOGIN.test(value) ? value : null);
 const text = value => (typeof value === 'string' ? value : '');
-// A retry would fail the same way: the offer goes with these, and stays for the others.
+// These failures would repeat on a retry, so the offer is dropped; any other failure keeps it for another try.
 const OFFER_REFUSED = new Set(['badOffer', 'network', 'parse']);
+const installing = new Set();
 
 async function hubAction(body, { hub, tabCounter, boardUrls, readForOffer, installTheme, themeCatalog, log = () => {} }) {
   if (body.action === 'bye') tabCounter.bye(text(body.tabId));
@@ -26,12 +27,12 @@ async function hubAction(body, { hub, tabCounter, boardUrls, readForOffer, insta
       hub.setAvailability(body.value);
       break;
     case 'kudos':
-      if (to) hub.sendKudos(to);
+      shared.sent = Boolean(to) && hub.sendKudos(to);
       break;
     case 'wizz': {
       const pr = body.pr == null ? null : text(body.pr);
       // A nudge only for a PR of this board, which the recipient's radar can find too.
-      if (to && (pr === null || urls.includes(pr))) hub.sendWizz(to, pr === null ? null : wizzRef(pr));
+      shared.sent = Boolean(to) && (pr === null || urls.includes(pr)) && hub.sendWizz(to, pr === null ? null : wizzRef(pr));
       break;
     }
     case 'offerTheme':
@@ -41,6 +42,7 @@ async function hubAction(body, { hub, tabCounter, boardUrls, readForOffer, insta
         if (hub.offerTheme(to, theme)) shared.sent = theme.name;
         else shared.error = { reason: 'offline' };
       } catch (error) {
+        if (!error.reason) log('fail', `offer to ${to} not sent, ${error.message}`);
         shared.error = { reason: error.reason, params: error.params };
       }
       break;
@@ -51,6 +53,9 @@ async function hubAction(body, { hub, tabCounter, boardUrls, readForOffer, insta
         shared.error = { reason: 'gone' };
         break;
       }
+      // A second click while the first install runs would race it to the same folder.
+      if (installing.has(id)) break;
+      installing.add(id);
       try {
         shared.installed = await installTheme(offer.theme, { from: offer.from });
         hub.takeOffer(id);
@@ -59,8 +64,15 @@ async function hubAction(body, { hub, tabCounter, boardUrls, readForOffer, insta
         if (OFFER_REFUSED.has(error.reason)) hub.takeOffer(id);
         shared.error = { reason: error.reason, params: error.params };
         log('fail', `offer from ${offer.from} not installed, ${error.message}`);
+      } finally {
+        installing.delete(id);
       }
-      if (shared.installed) shared.catalog = await themeCatalog().catch(() => undefined);
+      if (shared.installed) {
+        shared.catalog = await themeCatalog().catch(error => {
+          log('fail', `theme list not read back after installing ${shared.installed}, ${error.message}`);
+          return undefined;
+        });
+      }
       break;
     }
     case 'declineOffer':

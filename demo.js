@@ -438,7 +438,7 @@ const online = (login, radars, availability = null, acceptsWizz = true) => ({
   radars,
 });
 
-// What the hub would have sent: three online, one of them behind, one with no tab open.
+// What the hub would have sent: three online, one behind and in focus, and me on two radars, one with no tab open.
 const hub = {
   status: 'online',
   login: ME,
@@ -480,8 +480,9 @@ function setAvailability(value) {
 // A kudos sent in the demo comes straight back from that teammate, so both ends can be seen.
 function kudosBack(login) {
   const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
-  if (!person) return;
+  if (!person) return false;
   hub.kudos = [...hub.kudos, { id: hub.kudos.length + 1, from: login, avatarUrl: person.avatarUrl, at: new Date().toISOString() }].slice(-10);
+  return true;
 }
 
 // A theme sent in the demo comes straight back from that teammate, so the offer can be seen too.
@@ -499,16 +500,17 @@ function takeOffer(id) {
 // Seconds rather than the hub's minutes, so a nudge can be tried again right away.
 const WIZZ_LIMITS = { nudgeMs: 20_000, nudgesPerPair: 3, plainMs: 20_000 };
 
-// Same as kudos: the teammate answers in kind, plain or on the same PR, within the hub's limits.
+// Same as kudos: the teammate answers in kind, plain or on the same PR, within the demo's limits above.
 function wizzBack(login, prUrl) {
   const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
-  if (!person || (!prUrl && !person.acceptsWizz)) return;
+  if (!person || (!prUrl && !person.acceptsWizz)) return false;
   const ref = prUrl ? wizzRef(prUrl) : null;
   const at = Date.now();
   const waits = wizzWaits(hub.wizzSent, login, at, WIZZ_LIMITS);
-  if (ref ? waits.nudgesUntil || waits.refsUntil[ref] : waits.plainUntil) return;
+  if (ref ? waits.nudgesUntil || waits.refsUntil[ref] : waits.plainUntil) return false;
   hub.wizzSent = [...hub.wizzSent.filter(entry => at - entry.at < WIZZ_LIMITS.nudgeMs), { to: login.toLowerCase(), ref, at }];
   hub.wizzes = [...hub.wizzes, { id: hub.wizzes.length + 1, from: login, avatarUrl: person.avatarUrl, at: new Date(at).toISOString(), ref }].slice(-10);
+  return true;
 }
 
 // One line per PR the page asks about, the way the model answers: numbers first, then what
