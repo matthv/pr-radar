@@ -16,7 +16,6 @@ const TOKEN = 'hub-token';
 const DECLINED = 'hub-declined';
 const AVAILABILITY = 'hub-availability';
 const AVAILABILITIES = new Set(['available', 'focus']);
-const REFUSES_WIZZ = 'hub-refuses-wizz';
 const WIZZ_KEPT = 10;
 const WIZZ_LIMITS = { nudgeMs: 10 * 60_000, nudgesPerPair: 3, plainMs: 5 * 60_000 };
 const NUDGE_MS = WIZZ_LIMITS.nudgeMs;
@@ -122,7 +121,6 @@ function createHub({
   let tabs = 0;
   let version = { commit: null, behind: null, tag: null };
   let availability = AVAILABILITIES.has(files.read(AVAILABILITY)) ? files.read(AVAILABILITY) : null;
-  let acceptsWizz = !files.read(REFUSES_WIZZ);
   let wizzSeen = 0;
   let wizzes = [];
   let wizzSent = [];
@@ -164,11 +162,11 @@ function createHub({
     socket = ws;
     ws.addEventListener('open', () => {
       if (socket !== ws) return;
-      inHello = { tabs, version, availability, acceptsWizz };
+      inHello = { tabs, version, availability, acceptsWizz: acceptsWizz() };
       // Availability belongs to the login on the hub: a null here would clear a focus set from
       // another of the person's radars, so it only goes out once chosen. acceptsWizz always
       // goes: the hub forgets a refusal once the person's last radar leaves.
-      send({ type: 'hello', protocol: PROTOCOL, hubToken: files.read(TOKEN) ?? undefined, instanceId, version, tabs, acceptsWizz, ...(availability ? { availability } : {}) });
+      send({ type: 'hello', protocol: PROTOCOL, hubToken: files.read(TOKEN) ?? undefined, instanceId, version, tabs, acceptsWizz: acceptsWizz(), ...(availability ? { availability } : {}) });
     });
     ws.addEventListener('message', event => {
       if (socket === ws) received(event.data);
@@ -213,7 +211,6 @@ function createHub({
         };
         const mine = view.presence.online.find(person => person.login?.toLowerCase() === view.login?.toLowerCase());
         if (mine && 'availability' in mine) keepAvailability(mine.availability);
-        if (typeof mine?.acceptsWizz === 'boolean') keepAcceptsWizz(mine.acceptsWizz);
         break;
       }
       case 'wizz':
@@ -286,10 +283,10 @@ function createHub({
     if (tabs !== known.tabs) message.tabs = tabs;
     if (['commit', 'behind', 'tag'].some(field => version[field] !== known.version[field])) message.version = version;
     if (availability !== known.availability) message.availability = availability;
-    if (acceptsWizz !== known.acceptsWizz) message.acceptsWizz = acceptsWizz;
+    if (acceptsWizz() !== known.acceptsWizz) message.acceptsWizz = acceptsWizz();
     if (Object.keys(message).length === 1) return;
     send(message);
-    known = { tabs, version, availability, acceptsWizz };
+    known = { tabs, version, availability, acceptsWizz: acceptsWizz() };
   }
 
   function start() {
@@ -364,28 +361,20 @@ function createHub({
     availability = next;
     if (next) files.write(AVAILABILITY, next);
     else files.remove(AVAILABILITY);
-    if (known) known = { ...known, availability };
+    if (known) known = { ...known, availability, acceptsWizz: acceptsWizz() };
     return true;
+  }
+
+  // Focus is the one way to be left alone: it refuses plain wizzes too, so a sender sees the
+  // button greyed rather than shaking a page that will not shake.
+  function acceptsWizz() {
+    return availability !== 'focus';
   }
 
   // Unlike tabs, a status change is one deliberate click: it goes out at once.
   function setAvailability(value) {
     if (!keepAvailability(value) || !known || !socket) return;
-    send({ type: 'status', availability });
-  }
-
-  function keepAcceptsWizz(value) {
-    if (value === acceptsWizz) return false;
-    acceptsWizz = value;
-    if (value) files.remove(REFUSES_WIZZ);
-    else files.write(REFUSES_WIZZ, new Date(now()).toISOString());
-    if (known) known = { ...known, acceptsWizz };
-    return true;
-  }
-
-  function setAcceptsWizz(value) {
-    if (!keepAcceptsWizz(Boolean(value)) || !known || !socket) return;
-    send({ type: 'status', acceptsWizz });
+    send({ type: 'status', availability, acceptsWizz: acceptsWizz() });
   }
 
   const online = () => view.status === 'online' && Boolean(socket);
@@ -400,7 +389,7 @@ function createHub({
     if (!online() || to.toLowerCase() === view.login?.toLowerCase()) return false;
     if (ref !== null && !WIZZ_REF.test(ref)) return false;
     const recipient = view.presence?.online.find(person => person.login?.toLowerCase() === to.toLowerCase());
-    if (!ref && recipient?.acceptsWizz === false) return false;
+    if (!ref && (recipient?.acceptsWizz === false || recipient?.availability === 'focus')) return false;
     const waits = wizzWaits(recentWizzSent(), to, now());
     if (ref ? waits.nudgesUntil || waits.refsUntil[ref] : waits.plainUntil) return false;
     send({ type: 'wizz', to, ...(ref ? { ref } : {}) });
@@ -436,7 +425,7 @@ function createHub({
     ...view,
     declined,
     availability,
-    acceptsWizz,
+    acceptsWizz: acceptsWizz(),
     kudos,
     wizzes,
     wizzSent: recentWizzSent(),
@@ -447,7 +436,7 @@ function createHub({
     })),
   });
 
-  return { start, stop, decline, signIn, setTabs, setVersion, setAvailability, setAcceptsWizz, sendKudos, sendWizz, offerTheme, takeOffer, state };
+  return { start, stop, decline, signIn, setTabs, setVersion, setAvailability, sendKudos, sendWizz, offerTheme, takeOffer, state };
 }
 
 const TAB_ID = /^[A-Za-z0-9_-]{8,64}$/;

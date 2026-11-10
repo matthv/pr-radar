@@ -738,7 +738,6 @@ const server = http.createServer(async (req, res) => {
       const urls = [...mine, ...reviews].map(pr => pr.url);
       if (body.action === 'availability') demo.setAvailability(body.value);
       if (body.action === 'kudos') demo.kudosBack(body.to);
-      if (body.action === 'acceptsWizz') demo.setAcceptsWizz(body.value === true);
       if (body.action === 'wizz' && (body.pr == null || urls.includes(body.pr))) demo.wizzBack(String(body.to ?? ''), body.pr ?? null);
       if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
       let shared = body.action === 'acceptOffer' ? { error: { reason: 'demo' } } : {};
@@ -760,7 +759,6 @@ const server = http.createServer(async (req, res) => {
     if (body.action === 'availability') hub.setAvailability(body.value);
     if (body.action === 'kudos' && GITHUB_LOGIN.test(String(body.to ?? ''))) hub.sendKudos(body.to);
     if (body.action === 'declineOffer') hub.takeOffer(String(body.id ?? ''));
-    if (body.action === 'acceptsWizz') hub.setAcceptsWizz(body.value === true);
     const urls = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews].map(pr => pr.url) : [];
     // A nudge only for a PR of this board, which the recipient's radar can find too.
     if (body.action === 'wizz' && GITHUB_LOGIN.test(String(body.to ?? '')) && (body.pr == null || urls.includes(body.pr))) {

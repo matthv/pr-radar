@@ -28,7 +28,7 @@ function fakeTimers() {
   };
 }
 
-function setup({ token = null, declined = false, availability = null, refusesWizz = false, random = () => 0.5, clock = { now: 1_000_000 } } = {}) {
+function setup({ token = null, declined = false, availability = null, random = () => 0.5, clock = { now: 1_000_000 } } = {}) {
   const sockets = [];
   class FakeSocket extends EventTarget {
     constructor(url) {
@@ -55,7 +55,6 @@ function setup({ token = null, declined = false, availability = null, refusesWiz
   if (token) store.set('hub-token', token);
   if (declined) store.set('hub-declined', '2026-11-09T10:00:00.000Z');
   if (availability) store.set('hub-availability', availability);
-  if (refusesWizz) store.set('hub-refuses-wizz', '2026-11-10T10:00:00.000Z');
   const files = {
     read: name => store.get(name) ?? null,
     write: (name, value) => store.set(name, value),
@@ -365,10 +364,10 @@ test('availability: sent in hello only once chosen, at once on a click, and kept
   assert.equal(t.open().availability, 'focus');
   t.say(welcome());
   t.hub.setAvailability('available');
-  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: 'available' });
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: 'available', acceptsWizz: true });
   assert.equal(t.store.get('hub-availability'), 'available');
   t.hub.setAvailability('nonsense');
-  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: null });
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: null, acceptsWizz: true });
   assert.equal(t.store.has('hub-availability'), false);
   const sent = t.last().sent.length;
   t.timers.fire(2500);
@@ -452,21 +451,19 @@ test('the wizz ref is the SHA-256 of the PR URL, whatever its case or a trailing
   assert.notEqual(wizzRef('https://github.com/matthv/pr-radar/pull/34'), ref);
 });
 
-test('acceptsWizz: sent in every hello, at once on a click, and a refusal kept across restarts', () => {
+test('focus refuses plain wizzes: acceptsWizz follows availability, in hello and at once on a click', () => {
   const t = setup({ token: 'rh_kept' });
   t.hub.start();
   assert.equal(t.open().acceptsWizz, true);
   t.say(welcome());
-  t.hub.setAcceptsWizz(false);
-  assert.deepEqual(t.last().sent.at(-1), { type: 'status', acceptsWizz: false });
-  assert.ok(t.store.has('hub-refuses-wizz'));
-  const restarted = setup({ token: 'rh_kept', refusesWizz: true });
+  t.hub.setAvailability('focus');
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: 'focus', acceptsWizz: false });
+  assert.equal(t.hub.state().acceptsWizz, false);
+  t.hub.setAvailability('available');
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', availability: 'available', acceptsWizz: true });
+  const restarted = setup({ token: 'rh_kept', availability: 'focus' });
   restarted.hub.start();
   assert.equal(restarted.open().acceptsWizz, false);
-  restarted.say(welcome());
-  restarted.say({ type: 'presence', online: [{ login: 'matthv', acceptsWizz: true }], recent: [] });
-  assert.equal(restarted.hub.state().acceptsWizz, true);
-  assert.ok(!restarted.store.has('hub-refuses-wizz'));
 });
 
 test('a wizz goes out plain or with a ref, never to oneself nor with a malformed ref', () => {
@@ -479,10 +476,11 @@ test('a wizz goes out plain or with a ref, never to oneself nor with a malformed
   assert.equal(t.hub.sendWizz('Scra3', 'A'.repeat(64)), false);
 });
 
-test('a plain wizz is held back toward someone who refuses them, a nudge is not', () => {
+test('a plain wizz is held back toward someone in focus, a nudge is not', () => {
   const t = online();
-  t.say({ type: 'presence', online: [{ login: 'bexchauveto', acceptsWizz: false }], recent: [] });
+  t.say({ type: 'presence', online: [{ login: 'bexchauveto', acceptsWizz: false }, { login: 'Scra3', availability: 'focus' }], recent: [] });
   assert.equal(t.hub.sendWizz('bexchauveto'), false);
+  assert.equal(t.hub.sendWizz('Scra3'), false);
   assert.equal(t.hub.sendWizz('bexchauveto', REF), true);
 });
 

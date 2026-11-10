@@ -332,9 +332,6 @@
   .hub-toggle:hover { color: var(--indigo); }
   .hub-toggle.on { color: var(--indigo); background: var(--indigo-soft); box-shadow: inset 0 0 0 1px var(--indigo); padding: 0 10px 0 8px; }
   .hub-toggle-label::first-letter { text-transform: uppercase; }
-  .hub-sep { width: 1px; height: 18px; background: var(--border); }
-  .hub-toggle.wizz:hover { background: var(--sunken); }
-  .hub-toggle.wizz.off { color: var(--text-faint); }
   :is(.hub-kudos, .hub-wizz) { flex: none; display: flex; color: var(--text-soft); cursor: pointer; background: none; border: 0; border-radius: 8px; padding: 5px; opacity: 0; transition: opacity .15s, transform .15s, color .15s; }
   :is(.hub-kudos, .hub-wizz) svg { width: 15px; height: 15px; }
   .hub-person:hover :is(.hub-kudos, .hub-wizz), :is(.hub-kudos, .hub-wizz):focus-visible, :is(.hub-kudos, .hub-wizz).sent { opacity: 1; }
@@ -2007,7 +2004,7 @@ const I18N = {
     hubFocus: 'focus',
     hubAvailabilityLabel: 'Ton état pour les autres',
     hubAvailableTitle: 'Dispo pour une review : les autres le voient',
-    hubFocusTitle: 'En focus : mieux vaut ne pas te solliciter',
+    hubFocusTitle: 'En focus : ni wizz ni son, les relances arrivent sans bruit',
     hubUpToDate: 'à jour',
     hubKudosTitle: 'Envoyer un kudos à {who}',
     hubKudosSent: 'Kudos envoyé à {who}',
@@ -2021,10 +2018,8 @@ const I18N = {
     hubWizzTitle: 'Envoyer un wizz à {who}',
     hubWizzSent: 'Wizz envoyé à {who}',
     hubWizzCooldown: 'Déjà un wizz pour {who} il y a moins de 5 minutes',
-    hubWizzRefused: '{who} a coupé les wizz',
+    hubWizzRefused: '{who} est en focus, pas de wizz',
     hubWizzReceived: '{who} t’envoie un wizz',
-    hubWizzAccepting: 'Wizz acceptés, avec leur son : clique pour les couper (les relances sur une PR passent toujours)',
-    hubWizzRefusing: 'Wizz coupés : clique pour les accepter de nouveau',
     hubNudgeTitle: 'Relancer {who} sur cette PR',
     hubNudgeCooldown: 'Relance déjà envoyée à {who} il y a peu : réessaie dans quelques minutes',
     hubNudgeSent: 'Relance envoyée',
@@ -2328,7 +2323,7 @@ const I18N = {
     hubFocus: 'focus',
     hubAvailabilityLabel: 'Your status for the others',
     hubAvailableTitle: 'Available for a review: the others see it',
-    hubFocusTitle: 'In focus: better not to ask you now',
+    hubFocusTitle: 'In focus: no wizz and no sound, nudges arrive quietly',
     hubUpToDate: 'up to date',
     hubKudosTitle: 'Send {who} a kudos',
     hubKudosSent: 'Kudos sent to {who}',
@@ -2342,10 +2337,8 @@ const I18N = {
     hubWizzTitle: 'Send {who} a wizz',
     hubWizzSent: 'Wizz sent to {who}',
     hubWizzCooldown: 'You sent {who} a wizz less than 5 minutes ago',
-    hubWizzRefused: '{who} has turned wizzes off',
+    hubWizzRefused: '{who} is in focus, no wizz',
     hubWizzReceived: '{who} sends you a wizz',
-    hubWizzAccepting: 'Wizzes on, with their sound: click to turn them off (nudges on a PR still come through)',
-    hubWizzRefusing: 'Wizzes off: click to accept them again',
     hubNudgeTitle: 'Nudge {who} about this PR',
     hubNudgeCooldown: 'You nudged {who} a moment ago: try again in a few minutes',
     hubNudgeSent: 'Nudge sent',
@@ -2827,7 +2820,7 @@ function beep() {
 }
 
 // A teammate's call sounds apart from the board's chime, and is not muted with it: someone who
-// silenced the PR chime still hears a nudge. Focus and refusing wizzes are what quiet it.
+// silenced the PR chime still hears a nudge. Focus is what quiets it.
 function wizzSound(nudge, style = WIZZ_SOUND) {
   audio ??= new (window.AudioContext || window.webkitAudioContext)();
   audio.resume().catch(() => {});
@@ -4650,7 +4643,6 @@ const ICONS = {
   kudos: icon('<path d="M6.5 2c.4 2.8 1.5 3.9 4.3 4.3-2.8.4-3.9 1.5-4.3 4.3-.4-2.8-1.5-3.9-4.3-4.3 2.8-.4 3.9-1.5 4.3-4.3Z"/>'
     + '<path d="M12.3 9.6c.2 1.3.7 1.8 2 2-1.3.2-1.8.7-2 2-.2-1.3-.7-1.8-2-2 1.3-.2 1.8-.7 2-2Z"/>'),
   wizz: icon('<rect x="5" y="2.5" width="6" height="11" rx="1.5"/><path d="M7.3 11h1.4M2.5 5.5l-1 1.2 1 1.3 -1 1.3 1 1.2M13.5 5.5l1 1.2-1 1.3 1 1.3-1 1.2"/>'),
-  wizzOff: icon('<rect x="5" y="2.5" width="6" height="11" rx="1.5"/><path d="M7.3 11h1.4M2 2l12 12"/>'),
   bell: icon('<path d="M4 10.4v-4a4 4 0 0 1 8 0v4l1 1.2H3z"/><path d="M6.6 13.2a1.5 1.5 0 0 0 2.8 0"/>'),
   take: icon('<circle cx="6.5" cy="5" r="2.5"/><path d="M2 13.5c.5-2.3 2.3-3.7 4.5-3.7s4 1.4 4.5 3.7M12.5 4.5v4M10.5 6.5h4"/>'),
   see: icon('<path d="M2.5 3.5h11v7.5h-6l-3 2.5V11h-2z"/>'),
@@ -5230,7 +5222,7 @@ function hubPersonHtml(person) {
     + ` title="${escapeHtml(t(sent ? 'hubKudosSent' : cooling ? 'hubKudosCooldown' : 'hubKudosTitle', { who: person.login }))}" aria-label="${escapeHtml(t('hubKudosTitle', { who: person.login }))}">${sent ? CHECK_ICON : ICONS.kudos}</button>`;
   const wizzSince = Date.now() - (hubWizzSent.get(person.login) ?? 0);
   const wizzSent = wizzSince < 2000;
-  const refuses = person.acceptsWizz === false;
+  const refuses = person.acceptsWizz === false || person.availability === 'focus';
   const wizzCooling = !wizzSent && (hubData?.wizzWaits?.[person.login.toLowerCase()]?.plainUntil ?? 0) > Date.now();
   const wizzTitle = wizzSent ? 'hubWizzSent' : refuses ? 'hubWizzRefused' : wizzCooling ? 'hubWizzCooldown' : 'hubWizzTitle';
   const wizz = `<button type="button" class="hub-wizz${wizzSent ? ' sent' : ''}${refuses || wizzCooling ? ' cooldown' : ''}" data-hub-wizz="${escapeHtml(person.login)}"${wizzSent || refuses || wizzCooling ? ' disabled' : ''}`
@@ -5248,7 +5240,6 @@ const hubFace = (src, status) => `<span class="hub-face"><img src="${escapeHtml(
 
 function hubMeHtml(data, me) {
   const mine = hubStatus(data.availability);
-  const refusing = data.acceptsWizz === false;
   const toggle = (value, icon, label, title) => {
     const on = mine === value;
     return `<button type="button" class="hub-toggle${on ? ' on' : ''}" data-hub-availability="${value}" aria-pressed="${on}"`
@@ -5264,10 +5255,7 @@ function hubMeHtml(data, me) {
     + `<span class="hub-segment" role="group" aria-label="${t('hubAvailabilityLabel')}">`
     + toggle('available', ICONS.hand, t('hubAvailable'), t('hubAvailableTitle'))
     + toggle('focus', ICONS.focus, t('hubFocus'), t('hubFocusTitle'))
-    + '</span><span class="hub-sep" aria-hidden="true"></span>'
-    + `<button type="button" class="hub-toggle wizz${refusing ? ' off' : ''}" data-hub-accepts-wizz="${refusing}" aria-pressed="${refusing}"`
-    + ` title="${escapeHtml(t(refusing ? 'hubWizzRefusing' : 'hubWizzAccepting'))}" aria-label="${escapeHtml(t(refusing ? 'hubWizzRefusing' : 'hubWizzAccepting'))}">`
-    + `${refusing ? ICONS.wizzOff : ICONS.wizz}</button>`
+    + '</span>'
     + '</span></div>';
 }
 
@@ -5359,8 +5347,7 @@ function showWizz(data) {
     /* a wizz shown twice is fine */
   }
   // On arrival, hidden tab or not: the sound is what reaches someone working elsewhere.
-  const nudged = fresh.some(w => w.nudge);
-  if (fresh.length && data?.availability !== 'focus' && (nudged || data?.acceptsWizz !== false)) wizzSound(nudged);
+  if (fresh.length && data?.availability !== 'focus') wizzSound(fresh.some(w => w.nudge));
   if (fresh.length) playWizz(fresh);
 }
 
@@ -5613,8 +5600,6 @@ el('hubPanel').addEventListener('click', async event => {
     setTimeout(() => renderHub(hubData, { force: true }), 2100);
     return hubBeat('wizz', { to: wizz }).then(() => renderHub(hubData, { force: true }));
   }
-  const acceptsWizz = event.target.closest('[data-hub-accepts-wizz]');
-  if (acceptsWizz) return hubBeat('acceptsWizz', { value: acceptsWizz.dataset.hubAcceptsWizz === 'true' });
   if (!event.target.closest('[data-hub-copy]')) return;
   try {
     await navigator.clipboard.writeText(hubData?.auth?.userCode ?? '');

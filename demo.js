@@ -472,8 +472,9 @@ const hub = {
 function setAvailability(value) {
   const next = ['available', 'focus'].includes(value) ? value : null;
   hub.availability = next;
+  hub.acceptsWizz = next !== 'focus';
   const me = hub.presence.online.find(person => person.login === ME);
-  if (me) me.availability = next;
+  if (me) Object.assign(me, { availability: next, acceptsWizz: hub.acceptsWizz });
 }
 
 // A kudos sent in the demo comes straight back from that teammate, so both ends can be seen.
@@ -493,12 +494,6 @@ function themeBack(login, { name, label, icon, hasScript }) {
 
 function takeOffer(id) {
   hub.offers = hub.offers.filter(offer => offer.id !== id);
-}
-
-function setAcceptsWizz(value) {
-  hub.acceptsWizz = Boolean(value);
-  const me = hub.presence.online.find(person => person.login === ME);
-  if (me) me.acceptsWizz = hub.acceptsWizz;
 }
 
 // Seconds rather than the hub's minutes, so a nudge can be tried again right away.
@@ -589,4 +584,4 @@ async function notes(body) {
   };
 }
 
-module.exports = { payload, update, hub, setAvailability, kudosBack, setAcceptsWizz, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };
+module.exports = { payload, update, hub, setAvailability, kudosBack, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };

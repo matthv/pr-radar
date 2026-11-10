@@ -880,14 +880,15 @@ now** stops the radar from connecting at all, until you click **Sign in**.
 **Between teammates.** At the top of the panel, you are either available for a review, the
 default, or in focus behind the headphones; the others see it as a small badge on your face. On a
 teammate's row, the sparkles send a kudos and the vibrating phone a wizz that shakes their
-page, at most once every 5 minutes; the same phone next to your own name turns wizzes off,
-nudges still come through. On a card, the bell nudges whoever the PR waits on, its author or
-the reviewers yet to approve, once one of them is online: their card shakes and is outlined,
-at most once per PR every 10 minutes and 3 nudges per person every 10 minutes. In focus,
-nothing shakes: only the notice shows. A nudge or a wizz also makes a short, quiet sound as it
-arrives, even in a background tab (two soft low notes, three for a wizz). It is not the board's
-chime and the speaker button leaves it alone: turning wizzes off silences them, nudges keep
-theirs, and focus silences both. Kudos stay silent.
+page, at most once every 5 minutes. On a card, the bell nudges whoever the PR waits on, its
+author or the reviewers yet to approve, once one of them is online: their card shakes and is
+outlined, at most once per PR every 10 minutes and 3 nudges per person every 10 minutes. A
+nudge or a wizz also makes a short, quiet sound as it arrives, even in a background tab (two
+soft low notes, three for a wizz); it is not the board's chime, and the speaker button leaves
+it alone. Kudos stay silent.
+
+**Focus is how you are left alone:** nobody can wizz you (their phone greys out on your row),
+and a nudge still arrives, as a notice and an outline, without shaking or sound.
 
 **Sharing a theme.** With a theme of your own under `custom-themes/`, the palette on a
 teammate's row lists them; one click sends it, up to 15 KB, through the hub, which relays it
