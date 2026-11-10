@@ -892,7 +892,7 @@ a nudge still arrives, as a notice and an outline, without shaking or sound, and
 without confetti or sound.
 
 **Sharing a theme.** With a theme of your own under `custom-themes/`, the palette on a
-teammate's row lists them; one click sends it, up to 15 KB, through the hub, which relays it
+teammate's row lists them; one click sends it, up to 100 KB, through the hub, which relays it
 and keeps nothing. The other side sees who offers what and, for a theme with a `theme.js`, that
 its code will run in their radar: nothing is written until they click **Install**. The theme is
 then checked like a generated one (no network or storage call, a `theme.js` that parses), lands

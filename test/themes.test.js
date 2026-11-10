@@ -273,7 +273,9 @@ test('share: a custom theme is read whole to be offered, a missing or oversized 
   assert.equal(typeof theme.js, 'string');
   await assert.rejects(readForOffer('nope', { dir }), error => error.reason === 'missing');
   await assert.rejects(readForOffer('../etc', { dir }), error => error.reason === 'missing');
-  await fs.writeFile(path.join(dir, 'deep-sea', 'theme.css'), 'a{}'.repeat(6000));
+  await fs.writeFile(path.join(dir, 'deep-sea', 'theme.css'), 'a{}'.repeat(10_000));
+  assert.equal((await readForOffer('deep-sea', { dir })).name, 'deep-sea');
+  await fs.writeFile(path.join(dir, 'deep-sea', 'theme.css'), 'a{}'.repeat(35_000));
   await assert.rejects(readForOffer('deep-sea', { dir }), error => error.reason === 'tooBig');
 });
 
