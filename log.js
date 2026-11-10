@@ -10,6 +10,7 @@ const EMOJI = {
   notes: '📝',
   orphans: '🧭',
   theme: '🎨',
+  hub: '🛰️',
 };
 const FAILED = '⚠️';
 

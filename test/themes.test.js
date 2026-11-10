@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const { listThemes, listAllThemes, overlaps, themeFiles } = require('../themes');
-const { createTheme, generateTheme, removeTheme, parseGenerated, prefixOf, slugOf } = require('../new-theme');
+const { createTheme, generateTheme, removeTheme, readForOffer, installTheme, parseGenerated, prefixOf, slugOf } = require('../new-theme');
 const { inSeason, pickDecor, stars } = require('../public/decor');
 
 const day = (month, date) => new Date(2026, month - 1, date, 12);
@@ -255,4 +255,53 @@ test('new-theme: removing a theme deletes its folder, and only a theme folder in
   await assert.rejects(removeTheme('..', { dir }), /no such theme/);
   await assert.rejects(removeTheme('../keep.txt', { dir }), /no such theme/);
   await fs.access(path.join(root, 'keep.txt'));
+});
+
+const SHIPPED = path.join(__dirname, '..', 'public', 'themes');
+const offerDir = async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-offer-'));
+  test.after(() => fs.rm(dir, { recursive: true, force: true }));
+  return dir;
+};
+
+test('share: a custom theme is read whole to be offered, a missing or oversized one refused', async () => {
+  const dir = await offerDir();
+  await createTheme('deep-sea', { label: 'Deep Sea', icon: '🐙', dir, shippedDir: SHIPPED });
+  const theme = await readForOffer('deep-sea', { dir });
+  assert.deepEqual([theme.name, theme.label, theme.icon], ['deep-sea', 'Deep Sea', '🐙']);
+  assert.match(theme.css, /deep|:root/i);
+  assert.equal(typeof theme.js, 'string');
+  await assert.rejects(readForOffer('nope', { dir }), error => error.reason === 'missing');
+  await assert.rejects(readForOffer('../etc', { dir }), error => error.reason === 'missing');
+  await fs.writeFile(path.join(dir, 'deep-sea', 'theme.css'), 'a{}'.repeat(6000));
+  await assert.rejects(readForOffer('deep-sea', { dir }), error => error.reason === 'tooBig');
+});
+
+test('share: an offered theme installs where the menu finds it, under a name of its own when taken', async () => {
+  const dir = await offerDir();
+  const offer = { name: 'aurore', label: 'Aurore', icon: '🌌', css: ':root { --x: 1; }\n', js: '(() => {})();\n' };
+  assert.equal(await installTheme(offer, { from: 'BexChauveto', dir, shippedDir: SHIPPED }), 'aurore');
+  assert.equal(await installTheme(offer, { from: 'BexChauveto', dir, shippedDir: SHIPPED }), 'aurore-bexchauveto');
+  assert.equal(await installTheme(offer, { from: 'BexChauveto', dir, shippedDir: SHIPPED }), 'aurore-bexchauveto-2');
+  assert.equal(await installTheme({ ...offer, name: 'halloween', js: null }, { from: 'scra3', dir, shippedDir: SHIPPED }), 'halloween-scra3');
+  const { themes, problems } = await listThemes(dir);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(themes.map(theme => [theme.name, theme.script]), [
+    ['aurore', true], ['aurore-bexchauveto', true], ['aurore-bexchauveto-2', true], ['halloween-scra3', false],
+  ]);
+  assert.equal(JSON.parse(await fs.readFile(path.join(dir, 'aurore', 'theme.json'), 'utf8')).from, 'BexChauveto');
+  assert.deepEqual(await fs.readdir(path.join(dir, '.generating')), []);
+});
+
+test('share: an offered theme that reaches out, does not parse or is malformed is refused, nothing written', async () => {
+  const dir = await offerDir();
+  const offer = { name: 'aurore', label: 'Aurore', icon: '🌌', css: 'a{}', js: null };
+  const reason = async (theme, expected) => assert.rejects(installTheme(theme, { from: 'x', dir, shippedDir: SHIPPED }), error => error.reason === expected);
+  await reason({ ...offer, js: 'fetch("https://evil.example")' }, 'network');
+  await reason({ ...offer, css: '@import url(https://evil.example/a.css);' }, 'network');
+  await reason({ ...offer, js: 'function (' }, 'parse');
+  await reason({ ...offer, name: '../escape' }, 'badOffer');
+  await reason({ ...offer, name: 'none' }, 'badOffer');
+  await reason({ ...offer, css: 42 }, 'badOffer');
+  assert.deepEqual((await fs.readdir(dir)).filter(entry => !entry.startsWith('.')), []);
 });

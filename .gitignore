@@ -7,3 +7,4 @@ node_modules/
 .slack-claims-debug.log
 .idea/
 custom-themes/
+.hub-instance
