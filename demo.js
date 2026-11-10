@@ -5,6 +5,7 @@
 // through the real classification, so the demo cannot drift from what the board does.
 
 const { baseShape, decorateMine, decorateReview, byActionThenFreshness, mergedSince } = require('./github');
+const { wizzRef, wizzWaits } = require('./hub');
 const { snapshotOf } = require('./public/since');
 const { boardTwins } = require('./ticket');
 const { businessDaysSince } = require('./orphans');
@@ -60,7 +61,8 @@ function node({
   changedFiles = (number % 11) + 2,
   coAuthors = [],
 }) {
-  const url = `https://github.com/${repo}/pulls`;
+  // Made-up numbers lead nowhere, hence the PR list; still one URL per card, since a nudge finds its card by URL.
+  const url = `https://github.com/${repo}/pulls?q=${number}`;
   const id = `DEMO_${repo.split('/')[1]}_${number}`;
   return {
     id,
@@ -423,6 +425,85 @@ const update = {
   titles: ['feat(board): ready to merge, a group of its own', 'feat(sound): your own notification sound'],
 };
 
+const HEAD = '9ad5e5a0c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6';
+const OLD = '129a21f8756b7fdce29b6ef8cffad921c0ae64cb';
+const radar = (commit, behind, tabs, minutes, tag = null) => ({ commit, behind, tag, tabs, since: ago(minutes) });
+const online = (login, radars, availability = null, acceptsWizz = true) => ({
+  login,
+  availability,
+  acceptsWizz,
+  avatarUrl: avatarOf(login),
+  since: radars[0].since,
+  tabs: radars.reduce((sum, r) => sum + r.tabs, 0),
+  radars,
+});
+
+// What the hub would have sent: three online, one of them behind, one with no tab open.
+const hub = {
+  status: 'online',
+  login: ME,
+  avatarUrl: avatarOf(ME),
+  presence: {
+    online: [
+      online('bexchauveto', [radar(HEAD, 0, 1, 95, 'v1.4.0')], 'available'),
+      online('christophebrun-forest', [radar(OLD, 3, 2, 40, 'v1.2.0')], 'focus', false),
+      online(ME, [radar(HEAD, 0, 2, 180, 'v1.4.0'), radar(null, null, 0, 25)], 'available'),
+    ],
+    recent: [
+      { login: 'hercemer42', avatarUrl: avatarOf('hercemer42'), lastSeen: ago(60 * 5) },
+      { login: 'Scra3', avatarUrl: avatarOf('Scra3'), lastSeen: ago(60 * 26) },
+    ],
+    at: STARTED_AT,
+  },
+  auth: null,
+  stopped: null,
+  nextTryAt: null,
+  declined: false,
+  availability: 'available',
+  acceptsWizz: true,
+  wizzes: [],
+  wizzSent: [],
+  kudos: [{ id: 1, from: 'bexchauveto', avatarUrl: avatarOf('bexchauveto'), at: ago(0) }],
+  undelivered: null,
+  offers: [],
+};
+
+// The demo's own status follows the picker, so it can be tried without a hub.
+function setAvailability(value) {
+  const next = ['available', 'focus'].includes(value) ? value : null;
+  hub.availability = next;
+  const me = hub.presence.online.find(person => person.login === ME);
+  if (me) me.availability = next;
+}
+
+// A kudos sent in the demo comes straight back from that teammate, so both ends can be seen.
+function kudosBack(login) {
+  const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
+  if (!person) return;
+  hub.kudos = [...hub.kudos, { id: hub.kudos.length + 1, from: login, avatarUrl: person.avatarUrl, at: new Date().toISOString() }].slice(-10);
+}
+
+function setAcceptsWizz(value) {
+  hub.acceptsWizz = Boolean(value);
+  const me = hub.presence.online.find(person => person.login === ME);
+  if (me) me.acceptsWizz = hub.acceptsWizz;
+}
+
+// Seconds rather than the hub's minutes, so a nudge can be tried again right away.
+const WIZZ_LIMITS = { nudgeMs: 20_000, nudgesPerPair: 3, plainMs: 20_000 };
+
+// Same as kudos: the teammate answers in kind, plain or on the same PR, within the hub's limits.
+function wizzBack(login, prUrl) {
+  const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
+  if (!person || (!prUrl && !person.acceptsWizz)) return;
+  const ref = prUrl ? wizzRef(prUrl) : null;
+  const at = Date.now();
+  const waits = wizzWaits(hub.wizzSent, login, at, WIZZ_LIMITS);
+  if (ref ? waits.nudgesUntil || waits.refsUntil[ref] : waits.plainUntil) return;
+  hub.wizzSent = [...hub.wizzSent.filter(entry => at - entry.at < WIZZ_LIMITS.nudgeMs), { to: login.toLowerCase(), ref, at }];
+  hub.wizzes = [...hub.wizzes, { id: hub.wizzes.length + 1, from: login, avatarUrl: person.avatarUrl, at: new Date(at).toISOString(), ref }].slice(-10);
+}
+
 // One line per PR the page asks about, the way the model answers: numbers first, then what
 // the change does and what it changes. PRD-812 spans two repos and PRD-845 three PRs,
 // each sharing one line, as a ticket does in real notes.
@@ -496,4 +577,4 @@ async function notes(body) {
   };
 }
 
-module.exports = { payload, update, notes, ORG, LINEAR_URL };
+module.exports = { payload, update, hub, setAvailability, kudosBack, setAcceptsWizz, wizzBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };

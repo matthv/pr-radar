@@ -126,6 +126,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SLACK_WORKSPACE` | `https://forestadmin.slack.com/` | Workspace URL the message links are built on (Claude path) |
 | `PR_RADAR_SELF_RESTART` | `1` | `0` for a radar run by `launchd`, `pm2` or the like: **Update & restart** pulls and leaves the restart to them — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_ORPHAN_DAYS` | `2` | Working days an announced PR may wait with no review before the banner offers it; `0` turns it off — see [Unreviewed announcements](#unreviewed-announcements) |
+| `PR_RADAR_HUB_URL` | — | The presence hub, `wss://radar-hub.matthv.com/ws` in `.env.example`: shows who on the team has their radar open. Empty, off — see [Who is online](#who-is-online) |
 | `PR_RADAR_UPDATE_HOURS` | `2` | How often the server checks `origin/main` for newer commits; `0` turns it off — see [When the tool itself is behind](#when-the-tool-itself-is-behind) |
 | `PR_RADAR_DAILY_NOTES_FROM` / `_UNTIL` | `07:30` / `09:30` | Window in which the standup notes get re-warmed; read fresh on every run, see [Warming them before you look](#warming-them-before-you-look) |
 | `PR_RADAR_DAILY_NOTES_INTERVAL_MINUTES` | `10` | How often within that window; baked into the `launchd` job by `daily-notes-install.sh` |
@@ -860,6 +861,47 @@ if it was.
   every search already. A failed GitHub read keeps the last list, says so in the warning
   banner, and tries again in 10 minutes.
 - **Only announced PRs**: one never posted in the channel is not seen.
+
+## Who is online
+
+The header button with faces on it opens a side panel: who on the team has their radar
+running right now, and on which version of PR Radar. A teammate **behind `main`** is marked
+"3 commits behind", the one thing worth telling them. Below, the people seen in the last two
+weeks, greyed out. Each person counts as online as long as their radar runs, even with no
+tab open.
+
+**Signing in, once per machine.** The first time, the panel shows a code: open
+github.com/login/device and enter it. The GitHub app behind it, *PR Radar*, asks for **no
+permission at all**: the hub only learns your public login, checks you belong to the
+ForestAdmin organisation, and hands your radar a token of its own, kept in
+`~/.config/pr-radar/hub-token` (readable by you only). Later starts sign in silently. **Not
+now** stops the radar from connecting at all, until you click **Sign in**.
+
+**Between teammates.** At the top of the panel, you are either available for a review, the
+default, or in focus behind the headphones; the others see it as a small badge on your face. On a
+teammate's row, the sparkles send a kudos and the vibrating phone a wizz that shakes their
+page, at most once every 5 minutes; the same phone next to your own name turns wizzes off,
+nudges still come through. On a card, the bell nudges whoever the PR waits on, its author or
+the reviewers yet to approve, once one of them is online: their card shakes and is outlined,
+at most once per PR every 10 minutes and 3 nudges per person every 10 minutes. In focus,
+nothing shakes: only the notice shows.
+
+**What leaves your machine:** your GitHub login, the commit PR Radar runs, how far behind
+`main` it is, how many board tabs are open, and whether you are available or in focus.
+Nothing about pull requests, repositories or titles, and never your `gh` token, which this
+feature does not even read. A nudge carries only a SHA-256 of the PR's URL, which the
+recipient's radar matches against its own board; the hub cannot read it back, though anyone
+who already knows the URL could recompute it.
+
+The rest:
+- The hub is `PR_RADAR_HUB_URL`. Empty, the feature is off and nothing is contacted; the demo
+  never connects either.
+- The board never waits on the hub: down or unreachable, the panel says when it tries again
+  and everything else works as before.
+- Leaving the organisation, or a token revoked on the hub, stops the radar and deletes its
+  token; it does not retry on its own.
+- Each clone has its own id in `.hub-instance` (git-ignored), so a second clone on another
+  port does not push the first one off the hub.
 
 ## Standup notes
 

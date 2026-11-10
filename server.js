@@ -11,6 +11,7 @@ if (nodeVersion.tooOld(process.versions.node)) {
 
 const http = require('node:http');
 const fs = require('node:fs/promises');
+const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { createHash, randomUUID } = require('node:crypto');
@@ -40,6 +41,7 @@ const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
 const { listAllThemes, overlaps, themeFiles } = require('./themes');
 const { generateTheme, removeTheme } = require('./new-theme');
+const { createHub, createTabCounter, realFiles, wizzRef, withPrUrls, CONFIG_DIR } = require('./hub');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -69,6 +71,8 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
+const HUB_URL = DEMO ? '' : (process.env.PR_RADAR_HUB_URL ?? '').trim();
+const GITHUB_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
 const THEME = (process.env.PR_RADAR_THEME ?? '').trim();
 const ORPHAN_DAYS = Math.max(0, Number(process.env.PR_RADAR_ORPHAN_DAYS ?? 2) || 0);
 const TERMINAL = (process.env.PR_RADAR_TERMINAL ?? '').trim() || 'Terminal';
@@ -161,6 +165,37 @@ let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
 let webhookNotifier = null;
+
+// One per clone, not per machine: a second clone running on another port would otherwise
+// close this one on the hub as "replaced".
+function hubInstanceId() {
+  const file = path.join(__dirname, '.hub-instance');
+  try {
+    const id = readFileSync(file, 'utf8').trim();
+    if (/^[A-Za-z0-9_-]{8,64}$/.test(id)) return id;
+  } catch {
+    /* first start: created below */
+  }
+  const id = randomUUID();
+  writeFileSync(file, `${id}\n`);
+  return id;
+}
+
+const hub = createHub({
+  url: HUB_URL,
+  instanceId: HUB_URL ? hubInstanceId() : null,
+  // Another folder for a second radar under another account on the same machine, to try
+  // kudos and theme sharing between two people.
+  files: realFiles(process.env.PR_RADAR_CONFIG_DIR || CONFIG_DIR),
+  log: (level, message) => logger[level]('hub', message),
+});
+const tabCounter = createTabCounter();
+
+async function syncHub() {
+  const checked = update.status();
+  hub.setVersion({ commit: await update.head(), behind: checked && !checked.pending ? checked.behind : null, tag: checked?.version ?? null });
+  hub.setTabs(tabCounter.count());
+}
 
 function withClaudeSessions(payload) {
   const withSession = pr => ({ ...pr, claudeSession: Boolean(claudeSessions.sessionFor(pr.url)) });
@@ -687,6 +722,43 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID });
 
+  if (url.pathname === '/api/hub' && req.method === 'POST') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      return json(res, 400, { error: 'invalid JSON body' });
+    }
+    if (DEMO) {
+      const { mine, reviews } = demo.payload(false);
+      const urls = [...mine, ...reviews].map(pr => pr.url);
+      if (body.action === 'availability') demo.setAvailability(body.value);
+      if (body.action === 'kudos') demo.kudosBack(body.to);
+      if (body.action === 'acceptsWizz') demo.setAcceptsWizz(body.value === true);
+      if (body.action === 'wizz' && (body.pr == null || urls.includes(body.pr))) demo.wizzBack(String(body.to ?? ''), body.pr ?? null);
+      return json(res, 200, { hub: withPrUrls(demo.hub, urls, Date.now(), demo.WIZZ_LIMITS) });
+    }
+    if (body.action === 'bye') tabCounter.bye(body.tabId);
+    else tabCounter.beat(body.tabId, body.hidden);
+    if (body.action === 'signIn') hub.signIn();
+    if (body.action === 'decline') await hub.decline();
+    if (body.action === 'availability') hub.setAvailability(body.value);
+    if (body.action === 'kudos' && GITHUB_LOGIN.test(String(body.to ?? ''))) hub.sendKudos(body.to);
+    if (body.action === 'declineOffer') hub.takeOffer(String(body.id ?? ''));
+    if (body.action === 'acceptsWizz') hub.setAcceptsWizz(body.value === true);
+    const urls = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews].map(pr => pr.url) : [];
+    // A nudge only for a PR of this board, which the recipient's radar can find too.
+    if (body.action === 'wizz' && GITHUB_LOGIN.test(String(body.to ?? '')) && (body.pr == null || urls.includes(body.pr))) {
+      hub.sendWizz(body.to, body.pr == null ? null : wizzRef(body.pr));
+    }
+    hub.setTabs(tabCounter.count());
+    return json(res, 200, { hub: withPrUrls(hub.state(), urls) });
+  }
+
   if (url.pathname === '/api/update' && req.method === 'POST') {
     const refused = claudeSessions.refusal({
       contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
@@ -731,8 +803,10 @@ const server = http.createServer(async (req, res) => {
 // the new server outlives this one; the same streams, so its log goes where this one's went.
 // This process only exits once the new one is running; if it cannot start (node moved by
 // an upgrade, say), this one takes the port back and keeps serving the old code.
-function relaunch(result) {
+// The hub hears this radar leave before the new process says hello with the same instance id.
+async function relaunch(result) {
   logger.info('update', 'restarting on the new code');
+  await hub.stop();
   server.close(() => {
     const child = spawn(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
       cwd: __dirname, env: LAUNCH_ENV, detached: true, stdio: 'inherit',
@@ -744,7 +818,10 @@ function relaunch(result) {
         logger.fail('update', `could not take port ${PORT} back either (${listenError.message}); the radar is down, start it with: node server.js`);
         process.exit(1);
       });
-      server.listen(PORT, () => logger.info('update', `back on the old code, port ${PORT}`));
+      server.listen(PORT, () => {
+        logger.info('update', `back on the old code, port ${PORT}`);
+        hub.start();
+      });
     });
     child.once('spawn', () => {
       logger.info('update', `new server started (pid ${child.pid}), detached from this terminal; stop it with kill ${child.pid}`);
@@ -753,6 +830,12 @@ function relaunch(result) {
     });
   });
   server.closeAllConnections();
+}
+
+// Ctrl+C included: closing with 1000 shows the radar offline at once, not after the hub's
+// 75 s without a pong.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => hub.stop().finally(() => process.exit(0)));
 }
 
 server.listen(PORT, async () => {
@@ -815,9 +898,15 @@ server.listen(PORT, async () => {
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
-      `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}`,
+      `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}\n` +
+      `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}` : 'off (no PR_RADAR_HUB_URL)'}`,
   );
   update.start();
+  if (HUB_URL) {
+    await syncHub();
+    hub.start();
+    setInterval(syncHub, 30_000).unref();
+  }
   if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => logger.fail('search', `first search: ${error.message}`));
   // Webhooks go out with no tab open. Live, the checks never stop; otherwise the server runs

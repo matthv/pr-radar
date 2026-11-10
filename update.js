@@ -96,6 +96,13 @@ async function check(exec = git) {
 
 let latest = null;
 
+// The code this process runs, read once: a pull without a restart does not change it.
+let headSha = null;
+function head(exec = git) {
+  headSha ??= exec('rev-parse', 'HEAD').then(out => String(out).trim() || null, () => null);
+  return headSha;
+}
+
 // A failed check is not board data: no git, a folder downloaded as a zip, no network —
 // the page simply shows nothing about versions, and the next tick tries again.
 async function refresh() {
@@ -232,4 +239,4 @@ async function apply(exec = git, { pulled = settle } = {}) {
   };
 }
 
-module.exports = { HOURS, start, status, check, releasesUrl, summarize, refusal, blockers, newEnvVars, apply, reasonOf, markPending };
+module.exports = { HOURS, start, status, head, check, releasesUrl, summarize, refusal, blockers, newEnvVars, apply, reasonOf, markPending };

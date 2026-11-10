@@ -248,6 +248,141 @@
   #settings { width: 32px; padding: 0; justify-content: center; }
   #settings svg { width: 15px; height: 15px; }
   #settings.on { color: var(--indigo); border-color: var(--indigo); }
+  #hub { padding: 0 10px 0 6px; }
+  #hub.on { color: var(--indigo); border-color: var(--indigo); }
+  #hub svg { width: 15px; height: 15px; }
+  .hub-stack { display: inline-flex; }
+  .hub-stack img { width: 20px; height: 20px; border-radius: 50%; margin-left: -6px; background: var(--hairline); box-shadow: 0 0 0 2px var(--surface); }
+  .hub-stack img:first-child { margin-left: 0; }
+  .hub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--indigo); }
+
+  /* Fixed under the sticky header, whose height changes as its controls wrap: --header-h
+     follows it. Wide screens make room for it; narrow ones and the kanban, already at full
+     height, let it cover the board. */
+  .hub-panel {
+    position: fixed; right: 0; top: var(--header-h, 64px); bottom: 0; z-index: 20;
+    width: 300px; max-width: 100vw; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 18px;
+    padding: 16px 18px 24px; font-size: 13px;
+    background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-md);
+  }
+  /* The macOS rubber band drags the sticky header down while the fixed panel stays put,
+     sliding the header under it. */
+  html:has(body[data-hub-open]) { overscroll-behavior-y: none; }
+  @media (min-width: 1100px) {
+    body[data-hub-open]:not(:has(> #kanban:not([hidden]))) :is(main, .summary, .notes-panel, #orbits) { margin-right: 300px; }
+    body[data-hub-open]:not(:has(> #kanban:not([hidden]))) :is(.error, .warning, .update, .orphans) { margin-right: 328px; }
+  }
+  .hub-head { display: flex; align-items: center; justify-content: space-between; }
+  .hub-head b { font-size: 14px; font-weight: 650; }
+  .hub-close { font: inherit; border: 0; background: none; color: var(--text-faint); cursor: pointer; padding: 4px; }
+  .hub-close:hover { color: var(--indigo); }
+  .hub-section { display: flex; flex-direction: column; gap: 8px; }
+  .hub-section h3 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .hub-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .hub-person { display: flex; align-items: flex-start; gap: 10px; }
+  .hub-person img { width: 28px; height: 28px; border-radius: 50%; flex: none; background: var(--hairline); margin-top: 1px; }
+  .hub-who { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; flex: 1; }
+  .hub-who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hub-who em { font-style: normal; font-weight: 450; color: var(--text-faint); }
+  .hub-who small { color: var(--text-faint); font-size: 11.5px; }
+  .hub-person.recent img { filter: grayscale(.6); opacity: .7; }
+  .hub-person.recent b { font-weight: 500; color: var(--text-soft); }
+  .hub-behind { margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--indigo); background: var(--indigo-soft); border-radius: 999px; padding: 1px 8px; }
+  .hub-unknown { margin-top: 3px; font-size: 11px; color: var(--text-faint); }
+  .hub-box { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--indigo-soft); color: var(--indigo); }
+  .hub-box p { margin: 0; line-height: 1.45; }
+  .hub-box a { text-decoration: underline; }
+  .hub-code { display: flex; align-items: center; gap: 8px; }
+  .hub-code code { font-size: 17px; font-weight: 650; letter-spacing: .08em; }
+  .hub-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hub-btn { font: inherit; font-size: 12px; font-weight: 560; cursor: pointer; color: var(--indigo); background: var(--surface); border: 1px solid var(--indigo); border-radius: 8px; padding: 4px 10px; }
+  .hub-btn.quiet { border-color: transparent; background: none; color: var(--text-soft); }
+  .hub-btn:hover { transform: translateY(-1px); }
+  .hub-foot { margin-top: auto; color: var(--text-faint); font-size: 12px; }
+  .hub-nobody { margin: 0; color: var(--text-faint); }
+  .hub-avail.available { color: var(--indigo); font-weight: 600; }
+  .hub-avail.focus { color: var(--text-soft); }
+  .hub-face { position: relative; flex: none; display: flex; }
+  .hub-badge {
+    position: absolute; right: -4px; bottom: -3px; display: grid; place-items: center; width: 15px; height: 15px;
+    border-radius: 50%; color: #fff; background: var(--indigo); box-shadow: 0 0 0 2px var(--surface);
+  }
+  .hub-badge.focus { color: var(--surface); background: var(--text-soft); }
+  .hub-badge svg { width: 9px; height: 9px; stroke-width: 2; }
+  .hub-me {
+    display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "face name set" "face line line";
+    align-items: center; column-gap: 10px; row-gap: 2px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+  }
+  .hub-me .hub-face { grid-area: face; align-self: start; }
+  .hub-me img { width: 32px; height: 32px; border-radius: 50%; background: var(--hairline); }
+  .hub-me .hub-who { display: contents; }
+  .hub-me .hub-who b { grid-area: name; }
+  .hub-me .hub-who :is(small, .hub-behind) { grid-area: line; justify-self: start; }
+  .hub-me .hub-toggles { grid-area: set; }
+  .hub-toggles { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+  .hub-segment { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
+  .hub-toggle {
+    display: inline-flex; align-items: center; gap: 4px; height: 26px; min-width: 26px; justify-content: center;
+    font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--text-soft);
+    background: none; border: 0; border-radius: 999px; padding: 0 6px;
+    transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .hub-toggle svg { width: 15px; height: 15px; flex: none; }
+  .hub-toggle:hover { color: var(--indigo); }
+  .hub-toggle.on { color: var(--indigo); background: var(--indigo-soft); box-shadow: inset 0 0 0 1px var(--indigo); padding: 0 10px 0 8px; }
+  .hub-toggle-label::first-letter { text-transform: uppercase; }
+  .hub-sep { width: 1px; height: 18px; background: var(--border); }
+  .hub-toggle.wizz:hover { background: var(--sunken); }
+  .hub-toggle.wizz.off { color: var(--text-faint); }
+  :is(.hub-kudos, .hub-wizz) { flex: none; display: flex; color: var(--text-soft); cursor: pointer; background: none; border: 0; border-radius: 8px; padding: 5px; opacity: 0; transition: opacity .15s, transform .15s, color .15s; }
+  :is(.hub-kudos, .hub-wizz) svg { width: 15px; height: 15px; }
+  .hub-person:hover :is(.hub-kudos, .hub-wizz), :is(.hub-kudos, .hub-wizz):focus-visible, :is(.hub-kudos, .hub-wizz).sent { opacity: 1; }
+  :is(.hub-kudos, .hub-wizz):hover { transform: scale(1.1); color: var(--indigo); background: var(--indigo-soft); }
+  :is(.hub-kudos, .hub-wizz).sent { color: var(--indigo); cursor: default; }
+  :is(.hub-kudos, .hub-wizz).cooldown { cursor: default; }
+  .hub-person:hover :is(.hub-kudos, .hub-wizz).cooldown { opacity: .35; }
+  :is(.hub-kudos, .hub-wizz).cooldown:hover { transform: none; background: none; color: var(--text-soft); }
+  .hub-note { margin: 0; font-size: 12px; color: var(--text-faint); }
+  .hub-acts { display: flex; flex: none; margin-left: auto; }
+  .hub-toast .hub-btn { flex: none; }
+  .card.wizzed { outline: 2px solid var(--indigo); outline-offset: 2px; transition: outline-color .3s; }
+  .hub-toast {
+    /* Bottom right, where a notification is expected, so it never hides the banners at the top. */
+    position: fixed; right: 28px; bottom: 24px; z-index: 30;
+    display: flex; align-items: center; gap: 10px; max-width: min(340px, calc(100vw - 32px));
+    padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 560;
+    background: var(--indigo-soft); color: var(--text);
+    border: 1px solid color-mix(in srgb, var(--indigo) 45%, transparent); box-shadow: var(--shadow-md);
+  }
+  .hub-toast .hub-stack img { width: 26px; height: 26px; box-shadow: 0 0 0 2px var(--indigo-soft); }
+  @media (min-width: 1100px) { body[data-hub-open] .hub-toast { right: 328px; } }
+  @media (prefers-reduced-motion: no-preference) {
+    .hub-toast { animation: hub-toast-in .22s ease-out; }
+    .hub-toast.leaving { animation: hub-toast-out .2s ease-in forwards; }
+    @keyframes hub-toast-in { from { opacity: 0; transform: translateY(10px); } }
+    @keyframes hub-toast-out { to { opacity: 0; transform: translateY(8px); } }
+  }
+  .hub-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+  .hub-burst i { position: absolute; left: -3px; top: -5px; width: 6px; height: 10px; border-radius: 2px; background: var(--c); opacity: 0; }
+  .hub-burst i.dot { width: 7px; height: 7px; border-radius: 50%; }
+  .hub-burst i.star { left: -8px; top: -8px; width: 16px; height: 16px; background: none; color: var(--c); }
+  .hub-burst i.star svg { display: block; width: 16px; height: 16px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hub-burst i { animation: hub-burst 1.7s cubic-bezier(.15, .7, .3, 1) var(--d) both; }
+    @keyframes hub-burst {
+      0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.4); }
+      55% { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(calc(var(--r) * .6)) scale(1); }
+      100% { opacity: 0; transform: translate(calc(var(--dx) * 1.15), calc(var(--dy) + 70px)) rotate(var(--r)) scale(.9); }
+    }
+    .hub-toast.cheer { animation: hub-toast-in .22s ease-out, hub-cheer 1.3s ease-out .1s; }
+    @keyframes hub-cheer {
+      0% { box-shadow: var(--shadow-md), 0 0 0 0 color-mix(in srgb, var(--indigo) 55%, transparent); }
+      100% { box-shadow: var(--shadow-md), 0 0 0 20px transparent; }
+    }
+  }
+  .hub-panel.stale :is(.hub-section, .hub-box) { opacity: .4; filter: grayscale(1); }
+  #hub.stale .hub-stack { opacity: .4; filter: grayscale(1); }
 
   /* A repo's own colour: its hue and intensity are the user's, the lightness the theme's,
      so whatever was picked stays readable on both. */
@@ -851,7 +986,7 @@
   button.pill { border: 0; font: inherit; font-size: 11.5px; font-weight: 580; line-height: inherit; cursor: pointer; transition: box-shadow .15s; }
   button.pill:hover { box-shadow: inset 0 0 0 1px currentColor; }
   button.pill:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
-  .pill.twins::before { content: "🔗"; margin-right: 4px; font-size: .9em; }
+  .pill.twins svg { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1.5px; }
 
   /* One bar for the whole block, however many lines it holds: a bar per line broke at each gap. */
   .reasons {
@@ -930,18 +1065,23 @@
   .card-actions { display: flex; align-items: center; gap: 4px; flex: none; }
   /* Neutral, deliberately: this is an annotation, not a state — none of the five hues
      (indigo/amber/emerald/rose/cyan) mean "you wrote something here". */
-  .note-btn, .copy-btn {
+  .note-btn, .copy-btn, .nudge-btn {
     display: flex; align-items: center; justify-content: center;
     flex: none; width: 26px; height: 26px; margin-top: 11px; padding: 0;
     font: inherit; color: var(--text-faint);
     background: none; border: 0; border-radius: 7px;
     cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
   }
-  .note-btn svg, .copy-btn svg { width: 13px; height: 13px; display: block; }
+  .note-btn svg, .copy-btn svg, .nudge-btn svg { width: 13px; height: 13px; display: block; }
   .card:hover .note-btn, .note-btn:focus-visible, .note-btn.has-note,
-  .card.editing-note .note-btn, .card:hover .copy-btn, .copy-btn:focus-visible, .copy-btn.done { opacity: 1; }
-  .note-btn:hover, .copy-btn:hover { background: var(--hairline); color: var(--text-soft); }
-  .note-btn:focus-visible, .copy-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .card.editing-note .note-btn, .card:hover .copy-btn, .copy-btn:focus-visible, .copy-btn.done,
+  .card:hover .nudge-btn, .nudge-btn:focus-visible, .nudge-btn.sent { opacity: 1; }
+  .note-btn:hover, .copy-btn:hover, .nudge-btn:hover { background: var(--hairline); color: var(--text-soft); }
+  .note-btn:focus-visible, .copy-btn:focus-visible, .nudge-btn:focus-visible { outline: 2px solid var(--indigo); outline-offset: 1px; }
+  .nudge-btn.sent { color: var(--indigo); }
+  .nudge-btn:disabled { cursor: default; }
+  .card:hover .nudge-btn:disabled { opacity: .35; }
+  .nudge-btn:disabled:hover { background: none; }
   .copy-btn.done { color: var(--emerald); }
   .note-btn.has-note { color: var(--text-soft); }
 
@@ -1109,6 +1249,7 @@
     font: inherit; color: inherit; cursor: pointer; text-align: left;
   }
   .orphans-head b { color: var(--amber); font-weight: 560; }
+  .orphans-head svg { width: 15px; height: 15px; flex: none; color: var(--text-soft); }
   .orphans-head .gdot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); flex: none; }
   .orphans-head .chev { margin-left: auto; color: var(--text-soft); font-size: 14px; line-height: 1; transition: transform .15s; }
   .orphans.folded .chev { transform: rotate(-90deg); }
@@ -1126,6 +1267,7 @@
     display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 7px;
     font: inherit; font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;
   }
+  .orphans-list .acts svg { width: 14px; height: 14px; flex: none; }
   .orphans-list .take {
     border: 0; color: var(--indigo); background: var(--indigo-soft);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 28%, transparent);
@@ -1257,6 +1399,7 @@
     </div>
     <button id="theme">☾</button>
     <button type="button" id="settings" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 4h3.5M8.5 4H14M2 8h7.5M12.5 8H14M2 12h1.5M6.5 12H14"/><circle cx="7" cy="4" r="1.5"/><circle cx="11" cy="8" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg></button>
+    <button type="button" id="hub" aria-controls="hubPanel" aria-expanded="false" hidden></button>
     <button id="reload" hidden></button>
     <span id="stamp"></span>
     <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
@@ -1280,6 +1423,8 @@
   <!-- Outside .controls, whose button style would dress every swatch. -->
   <div class="settings-panel" id="settingsPanel" role="dialog" aria-labelledby="settingsHead" hidden></div>
 </header>
+<aside class="hub-panel" id="hubPanel" aria-labelledby="hubHead" hidden></aside>
+<div class="hub-toast" id="hubToast" role="status" hidden></div>
 <div id="decorBack" aria-hidden="true"></div>
 <div id="decorFront" aria-hidden="true"></div>
 <div id="error" class="error" hidden></div>
@@ -1780,10 +1925,10 @@ const I18N = {
     orphansDays_one: '{n} jour ouvré',
     orphansDays_many: '{n} jours ouvrés',
     orphansAsked: 'demandée à {who}',
-    orphansTake: '🙋 Prendre',
+    orphansTake: 'Prendre',
     orphansTakeHint: 'ouvre l’annonce : pose ta réaction :{emoji}: pour la prendre',
-    orphansSee: '💬 Voir l’annonce',
-    orphansDismiss: '🙈 Ignorer',
+    orphansSee: 'Voir l’annonce',
+    orphansDismiss: 'Ignorer',
     orphansDismissHint: 'la retirer de ce bandeau, chez toi seulement',
     orphansFold: 'replier',
     orphansFailed: 'Les PRs sans review n’ont pas pu être relues ({message}) : nouvel essai dans 10 min.',
@@ -1808,6 +1953,65 @@ const I18N = {
     readRest: 'lire la suite',
     notes: 'Notes de daily',
     notesTitle: 'résumer mes PRs affichées en une phrase chacune',
+    hubTitle: 'Qui est en ligne',
+    hubButton: 'qui a son radar ouvert dans l’équipe',
+    hubOnline: 'En ligne',
+    hubRecent: 'Vus récemment',
+    hubNobody: 'Personne pour l’instant.',
+    hubSince: 'en ligne depuis {v}',
+    hubTabs_one: '{n} onglet',
+    hubTabs_many: '{n} onglets',
+    hubRadars_one: '{n} radar',
+    hubRadars_many: '{n} radars',
+    hubBehind_one: '{n} commit de retard',
+    hubBehind_many: '{n} commits de retard',
+    hubUnknownVersion: 'version inconnue',
+    hubLate: 'en retard',
+    hubSignInHint: 'Pour voir qui est en ligne, ouvre {link} et tape ce code :',
+    hubCopy: 'Copier',
+    hubCopied: 'Copié',
+    hubNotNow: 'Pas maintenant',
+    hubSignIn: 'Se connecter',
+    hubDeclined: 'Tu n’apparais pas et tu ne vois pas qui est en ligne.',
+    hubConnecting: 'Connexion au hub…',
+    hubRetry: 'Hub injoignable, nouvel essai vers {at}.',
+    hubStopped_not_member: 'Ce compte GitHub n’est pas membre de l’organisation.',
+    hubStopped_revoked: 'L’accès au hub de ce radar a été retiré.',
+    hubStopped_replaced: 'Ce radar s’est connecté ailleurs : relance-le pour reprendre ici.',
+    hubStopped_protocol_unsupported: 'Le hub demande une version plus récente de PR Radar.',
+    hubStopped_auth_expired: 'Le code a expiré.',
+    hubStopped_auth_denied: 'Connexion annulée sur GitHub.',
+    hubClose: 'Fermer',
+    hubLocalDown: 'Le serveur PR Radar ne répond plus : cette liste n’est plus à jour.',
+    hubAvailable: 'dispo',
+    hubFocus: 'focus',
+    hubAvailabilityLabel: 'Ton état pour les autres',
+    hubAvailableTitle: 'Dispo pour une review : les autres le voient',
+    hubFocusTitle: 'En focus : mieux vaut ne pas te solliciter',
+    hubUpToDate: 'à jour',
+    hubKudosTitle: 'Envoyer un kudos à {who}',
+    hubKudosSent: 'Kudos envoyé à {who}',
+    hubKudosCooldown: 'Déjà un kudos pour {who} il y a moins d’une minute',
+    hubKudosReceived: '{who} t’envoie un kudos',
+    hubKudosReceivedMany: '{who} t’envoie {n} kudos',
+    hubKudosReceivedTwo: '{a} et {b} t’envoient un kudos',
+    hubKudosReceivedMore_one: '{a}, {b} et 1 autre t’envoient un kudos',
+    hubKudosReceivedMore_many: '{a}, {b} et {n} autres t’envoient un kudos',
+    hubUndelivered: '{who} n’est plus en ligne : rien n’a été envoyé.',
+    hubWizzTitle: 'Envoyer un wizz à {who}',
+    hubWizzSent: 'Wizz envoyé à {who}',
+    hubWizzCooldown: 'Déjà un wizz pour {who} il y a moins de 5 minutes',
+    hubWizzRefused: '{who} a coupé les wizz',
+    hubWizzReceived: '{who} t’envoie un wizz',
+    hubWizzAccepting: 'Wizz acceptés : clique pour les couper (les relances sur une PR passent toujours)',
+    hubWizzRefusing: 'Wizz coupés : clique pour les accepter de nouveau',
+    hubNudgeTitle: 'Relancer {who} sur cette PR',
+    hubNudgeCooldown: 'Relance déjà envoyée à {who} il y a peu : réessaie dans quelques minutes',
+    hubNudgeSent: 'Relance envoyée',
+    hubNudgeReceived: '{who} te relance sur « {title} »',
+    hubNudgeReceivedUnknown: '{who} te relance sur une PR',
+    hubNudgeShow: 'Voir',
+    hubSentAgo: 'il y a {v}',
     notesBusy: 'Rédaction…',
     notesMine: 'mes PRs ({n})',
     notesSameWork: 'même chantier : ces PR sont résumées ensemble',
@@ -2029,10 +2233,10 @@ const I18N = {
     orphansDays_one: '{n} working day',
     orphansDays_many: '{n} working days',
     orphansAsked: 'asked of {who}',
-    orphansTake: '🙋 Take it',
+    orphansTake: 'Take it',
     orphansTakeHint: 'opens the announcement: put your :{emoji}: reaction on it to take it',
-    orphansSee: '💬 See the announcement',
-    orphansDismiss: '🙈 Dismiss',
+    orphansSee: 'See the announcement',
+    orphansDismiss: 'Dismiss',
     orphansDismissHint: 'remove it from this banner, for you only',
     orphansFold: 'fold',
     orphansFailed: 'The PRs waiting for a review could not be read again ({message}): trying again in 10 min.',
@@ -2057,6 +2261,65 @@ const I18N = {
     readRest: 'read the rest',
     notes: 'Standup notes',
     notesTitle: 'summarise the PRs on screen, one sentence each',
+    hubTitle: 'Who is online',
+    hubButton: 'who on the team has their radar open',
+    hubOnline: 'Online',
+    hubRecent: 'Seen recently',
+    hubNobody: 'Nobody yet.',
+    hubSince: 'online for {v}',
+    hubTabs_one: '{n} tab',
+    hubTabs_many: '{n} tabs',
+    hubRadars_one: '{n} radar',
+    hubRadars_many: '{n} radars',
+    hubBehind_one: '{n} commit behind',
+    hubBehind_many: '{n} commits behind',
+    hubUnknownVersion: 'unknown version',
+    hubLate: 'behind',
+    hubSignInHint: 'To see who is online, open {link} and enter this code:',
+    hubCopy: 'Copy',
+    hubCopied: 'Copied',
+    hubNotNow: 'Not now',
+    hubSignIn: 'Sign in',
+    hubDeclined: 'You are not shown and do not see who is online.',
+    hubConnecting: 'Connecting to the hub…',
+    hubRetry: 'Hub unreachable, trying again around {at}.',
+    hubStopped_not_member: 'This GitHub account is not a member of the organisation.',
+    hubStopped_revoked: 'This radar’s access to the hub was withdrawn.',
+    hubStopped_replaced: 'This radar connected from elsewhere: restart it to pick up here.',
+    hubStopped_protocol_unsupported: 'The hub needs a newer PR Radar.',
+    hubStopped_auth_expired: 'The code expired.',
+    hubStopped_auth_denied: 'Sign-in cancelled on GitHub.',
+    hubClose: 'Close',
+    hubLocalDown: 'The PR Radar server no longer answers: this list is out of date.',
+    hubAvailable: 'available',
+    hubFocus: 'focus',
+    hubAvailabilityLabel: 'Your status for the others',
+    hubAvailableTitle: 'Available for a review: the others see it',
+    hubFocusTitle: 'In focus: better not to ask you now',
+    hubUpToDate: 'up to date',
+    hubKudosTitle: 'Send {who} a kudos',
+    hubKudosSent: 'Kudos sent to {who}',
+    hubKudosCooldown: 'You sent {who} a kudos less than a minute ago',
+    hubKudosReceived: '{who} sends you a kudos',
+    hubKudosReceivedMany: '{who} sends you {n} kudos',
+    hubKudosReceivedTwo: '{a} and {b} send you a kudos',
+    hubKudosReceivedMore_one: '{a}, {b} and 1 other send you a kudos',
+    hubKudosReceivedMore_many: '{a}, {b} and {n} others send you a kudos',
+    hubUndelivered: '{who} is no longer online: nothing was sent.',
+    hubWizzTitle: 'Send {who} a wizz',
+    hubWizzSent: 'Wizz sent to {who}',
+    hubWizzCooldown: 'You sent {who} a wizz less than 5 minutes ago',
+    hubWizzRefused: '{who} has turned wizzes off',
+    hubWizzReceived: '{who} sends you a wizz',
+    hubWizzAccepting: 'Wizzes on: click to turn them off (nudges on a PR still come through)',
+    hubWizzRefusing: 'Wizzes off: click to accept them again',
+    hubNudgeTitle: 'Nudge {who} about this PR',
+    hubNudgeCooldown: 'You nudged {who} a moment ago: try again in a few minutes',
+    hubNudgeSent: 'Nudge sent',
+    hubNudgeReceived: '{who} is nudging you about “{title}”',
+    hubNudgeReceivedUnknown: '{who} is nudging you about a PR',
+    hubNudgeShow: 'Show',
+    hubSentAgo: '{v} ago',
     notesBusy: 'Writing…',
     notesMine: 'my PRs ({n})',
     notesSameWork: 'same piece of work: these PRs are summarised together',
@@ -2438,6 +2701,7 @@ function applyLang(next) {
   decorTitle();
   el('settings').title = t('settingsTitle');
   if (state.settingsOpen) renderSettings();
+  renderHub(hubData, { force: true });
   el('gitdeck').title = t('gitdeckTitle');
   applyStampTitle();
   el('refreshLabel').textContent = t('refresh');
@@ -2858,7 +3122,7 @@ function twinsPill(pr) {
   if (!pr.twins?.length) return '';
   const list = pr.twins.map(twin => `${twin.repo.split('/')[1]}#${twin.number}`).join(', ');
   return `<button type="button" class="pill twins" data-twins="${escapeHtml(pr.id)}"`
-    + ` title="${escapeHtml(t('pillTwinsTitle', { list }))}">${escapeHtml(tn('pillTwins', pr.twins.length))}</button>`;
+    + ` title="${escapeHtml(t('pillTwinsTitle', { list }))}">${ICONS.link}${escapeHtml(tn('pillTwins', pr.twins.length))}</button>`;
 }
 
 // The twins blink where they are, like a card that just arrived: no scroll, so the board
@@ -2909,6 +3173,18 @@ function reviewersHtml(pr) {
     + `<span class="reviewers-faces">${faces}</span>${more}</span>`;
 }
 
+// Whoever the PR waits on: its author from the review side, the reviewers yet to approve from mine.
+// Shown only once one of them is online, by refreshNudges().
+function nudgeButton(pr) {
+  if (pr.state !== 'OPEN') return '';
+  const who = pr.side === 'mine'
+    ? (pr.reviewers ?? []).filter(person => !['approved', 'dismissed'].includes(person.state)).map(person => person.login)
+    : [pr.author];
+  const others = who.filter(login => login && login.toLowerCase() !== String(state.data?.me ?? '').toLowerCase());
+  if (!others.length) return '';
+  return `<button type="button" class="nudge-btn" data-nudge-who="${escapeHtml(others.join(','))}" hidden>${ICONS.bell}</button>`;
+}
+
 function cardHtml(pr, threadsToShow, extraPills) {
   const open = state.open.has(pr.id) ? ' open' : '';
   const count = threadsToShow.length;
@@ -2918,7 +3194,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
   const expander = extra => `<button type="button" class="expander${extra}">${open ? '▾' : '▸'} ${tn('threads', count)}</button>`;
 
   return `
-    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${glow.cls}${open}" data-id="${pr.id}"${glow.style}>
+    <div class="card ${pr.bucket}${pipelineClass(pr)}${pr.approved ? ' approved' : ''}${state.snoozed.has(pr.id) ? ' snoozed' : ''}${editingNote ? ' editing-note' : ''}${(hubNudged.get(pr.url) ?? 0) > Date.now() ? ' wizzed' : ''}${glow.cls}${open}" data-id="${pr.id}" data-pr-url="${escapeHtml(pr.url)}"${glow.style}>
       <div class="card-top">
         ${repoChip(pr)}
         <a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>
@@ -2946,6 +3222,7 @@ function cardHtml(pr, threadsToShow, extraPills) {
           <button type="button" class="note-btn${note ? ' has-note' : ''}"
             title="${escapeHtml(t(note ? 'noteTitleEdit' : 'noteTitleAdd'))}" data-note="${pr.id}">${NOTE_ICON}</button>
           <button type="button" class="copy-btn" title="${escapeHtml(t('copyLinkTitle'))}" data-copy-link="${pr.id}">${COPY_ICON}</button>
+          ${nudgeButton(pr)}
           <button type="button" class="snooze" title="${t('snooze')}" data-snooze="${pr.id}">${state.snoozed.has(pr.id) ? `${PAUSE} ${t('snoozedBadge')}` : PAUSE}</button>
           ${linearLink(pr)}
           ${pr.claudeSession
@@ -3544,7 +3821,8 @@ function render() {
   const hidden = data.counts.hiddenStale;
   el('stale').textContent = hidden ? tn('stale', hidden, { days: data.maxAgeDays }) : '';
 
-  document.title = total ? `(${total}) PR Radar` : 'PR Radar';
+  state.titleBase = total ? `(${total}) PR Radar` : 'PR Radar';
+  paintTitle();
   applyStampTitle();
   renderStamp();
 
@@ -3578,6 +3856,7 @@ function render() {
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
   state.lastActionCount = total;
+  refreshNudges();
 
   // `autofocus` on a freshly injected textarea is not reliable enough across browsers to
   // depend on alone for landing the cursor at the end rather than the start.
@@ -3686,7 +3965,7 @@ function renderOrphans(orphans) {
   const take = pr => (pr.slackUrl
     ? `<a class="take" href="${escapeHtml(pr.slackUrl)}" target="_blank" rel="noopener"`
       + ` title="${escapeHtml(orphans.claimEmoji ? t('orphansTakeHint', { emoji: orphans.claimEmoji }) : t('orphansSee'))}">`
-      + `${escapeHtml(orphans.claimEmoji ? t('orphansTake') : t('orphansSee'))}</a>`
+      + `${orphans.claimEmoji ? ICONS.take : ICONS.see}${escapeHtml(orphans.claimEmoji ? t('orphansTake') : t('orphansSee'))}</a>`
     : '');
   const row = pr => `<li>${repoChip(pr)}`
     + `<a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title)}</a>`
@@ -3695,10 +3974,10 @@ function renderOrphans(orphans) {
     + (pr.requested.length ? `<span class="asked">${escapeHtml(t('orphansAsked', { who: pr.requested.join(', ') }))}</span>` : '')
     + `<span class="acts">${take(pr)}`
     + `<button type="button" class="skip" data-orphan-dismiss="${escapeHtml(orphanKey(pr))}"`
-    + ` title="${escapeHtml(t('orphansDismissHint'))}">${escapeHtml(t('orphansDismiss'))}</button></span></li>`;
+    + ` title="${escapeHtml(t('orphansDismissHint'))}">${ICONS.dismiss}${escapeHtml(t('orphansDismiss'))}</button></span></li>`;
   box.classList.toggle('folded', orphansFolded);
   box.innerHTML = `<button type="button" class="orphans-head" data-orphans-fold aria-expanded="${!orphansFolded}" title="${escapeHtml(t('orphansFold'))}">`
-    + `<span aria-hidden="true">🧭</span><span class="gdot"></span>`
+    + `${ICONS.compass}<span class="gdot"></span>`
     + `<b>${escapeHtml(tn('orphansTitle', prs.length, { span: tn('orphansDays', orphans.days) }))}</b>`
     + `<span class="chev" aria-hidden="true">▾</span></button>`
     + `<ul class="orphans-list">${prs.map(row).join('')}</ul>`;
@@ -3943,6 +4222,24 @@ document.addEventListener('click', event => {
     return;
   }
 
+  const nudge = event.target.closest('[data-nudge-who]');
+  if (nudge) {
+    const prUrl = nudge.closest('.card')?.dataset.prUrl;
+    const targets = nudgeTargets(nudge).filter(login => !nudgeWait(login, prUrl));
+    if (!prUrl || !targets.length) return;
+    nudge.classList.add('sent');
+    nudge.disabled = true;
+    nudge.innerHTML = CHECK_ICON;
+    nudge.title = t('hubNudgeSent');
+    targets.reduce((sent, to) => sent.then(() => hubBeat('wizz', { to, pr: prUrl })), Promise.resolve());
+    setTimeout(() => {
+      nudge.classList.remove('sent');
+      nudge.innerHTML = ICONS.bell;
+      refreshNudges();
+    }, 2000);
+    return;
+  }
+
   const copyButton = event.target.closest('.copy-btn');
   if (copyButton) {
     const pr = prById(copyButton.dataset.copyLink);
@@ -4136,6 +4433,11 @@ document.addEventListener('keydown', event => {
     el('settings').focus();
     return;
   }
+  if (hubOpen && !el('hubPanel').hidden) {
+    openHub(false);
+    el('hub').focus();
+    return;
+  }
   if (!state.focus) return;
   state.focus = null;
   render();
@@ -4156,6 +4458,12 @@ document.addEventListener('change', event => {
 // forty-minute-old data believing it is fresh. The server cache absorbs the extra call.
 let hiddenSince = null;
 document.addEventListener('visibilitychange', () => {
+  hubBeat();
+  if (document.visibilityState === 'visible') {
+    toastKudos();
+    playWizz();
+  }
+  paintTitle();
   if (document.visibilityState !== 'visible') {
     hiddenSince = Date.now();
     return;
@@ -4215,6 +4523,24 @@ const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" st
 const CHECK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"'
   + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
   + '<path d="M3 8.4l3.1 3.1L13 4.6"/></svg>';
+
+const icon = paths => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"'
+  + ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ICONS = {
+  hand: icon('<path d="M5.5 8.6V4.2a1 1 0 0 1 2 0v3.6M7.5 7.6V3a1 1 0 0 1 2 0v4.6M9.5 7.6V3.8a1 1 0 0 1 2 0v4.4"/>'
+    + '<path d="M11.5 8.2V6.4a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5h-.7a4 4 0 0 1-3.1-1.5L3.1 10.4a1.05 1.05 0 0 1 1.6-1.4l.8.9"/>'),
+  focus: icon('<path d="M2.5 11.5V8.5a5.5 5.5 0 0 1 11 0v3"/><rect x="2" y="9.5" width="3" height="4.5" rx="1.2"/><rect x="11" y="9.5" width="3" height="4.5" rx="1.2"/>'),
+  kudos: icon('<path d="M6.5 2c.4 2.8 1.5 3.9 4.3 4.3-2.8.4-3.9 1.5-4.3 4.3-.4-2.8-1.5-3.9-4.3-4.3 2.8-.4 3.9-1.5 4.3-4.3Z"/>'
+    + '<path d="M12.3 9.6c.2 1.3.7 1.8 2 2-1.3.2-1.8.7-2 2-.2-1.3-.7-1.8-2-2 1.3-.2 1.8-.7 2-2Z"/>'),
+  wizz: icon('<rect x="5" y="2.5" width="6" height="11" rx="1.5"/><path d="M7.3 11h1.4M2.5 5.5l-1 1.2 1 1.3 -1 1.3 1 1.2M13.5 5.5l1 1.2-1 1.3 1 1.3-1 1.2"/>'),
+  wizzOff: icon('<rect x="5" y="2.5" width="6" height="11" rx="1.5"/><path d="M7.3 11h1.4M2 2l12 12"/>'),
+  bell: icon('<path d="M4 11.5v-4a4 4 0 0 1 8 0v4l1 1.2H3z"/><path d="M6.6 14.3a1.5 1.5 0 0 0 2.8 0"/>'),
+  take: icon('<circle cx="6.5" cy="5" r="2.5"/><path d="M2 13.5c.5-2.3 2.3-3.7 4.5-3.7s4 1.4 4.5 3.7M12.5 4.5v4M10.5 6.5h4"/>'),
+  see: icon('<path d="M2.5 3.5h11v7.5h-6l-3 2.5V11h-2z"/>'),
+  compass: icon('<circle cx="8" cy="8" r="6"/><path d="m10.4 5.6-1.3 3.5-3.5 1.3 1.3-3.5z"/>'),
+  link: icon('<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.8.8"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.8-.8"/>'),
+  dismiss: icon('<path d="M2 8s2.2-4.5 6-4.5S14 8 14 8s-2.2 4.5-6 4.5S2 8 2 8Z"/><circle cx="8" cy="8" r="1.8"/><path d="M2.5 2.5l11 11"/>'),
+};
 
 // A daily reports the previous working day, so Monday looks back to Friday rather than
 // to an empty Sunday.
@@ -4657,6 +4983,450 @@ el('notesCopy').addEventListener('click', async () => {
   }
 });
 el('refresh').addEventListener('click', () => load(true));
+
+// Who is online. Its own loop, apart from load(): the board never waits on the hub, and a
+// failed beat leaves the error and warning banners alone.
+let hubData = null;
+let hubShown = '';
+let hubOpen = store.get('hubOpen', '') === 'true';
+let hubCopied = false;
+let hubMissed = 0;
+const hubKudosSent = new Map();
+const hubWizzSent = new Map();
+const hubNudged = new Map();
+let hubSent = 0;
+let hubShownSeq = 0;
+const HUB_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">'
+  + '<circle cx="6" cy="5.5" r="2.5"/><path d="M1.5 13.5c.6-2.3 2.4-3.6 4.5-3.6s3.9 1.3 4.5 3.6"/><path d="M11 3.2a2.4 2.4 0 0 1 0 4.6M12.6 10.2c1 .6 1.6 1.8 1.9 3.3"/></svg>';
+const HUB_TAB = (() => {
+  try {
+    let id = sessionStorage.getItem('pr-radar:tabId');
+    if (!id) sessionStorage.setItem('pr-radar:tabId', (id = crypto.randomUUID()));
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+})();
+
+new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty('--header-h', `${Math.round(entry.target.getBoundingClientRect().height)}px`);
+}).observe(document.querySelector('header'));
+
+async function hubBeat(action, extra = {}) {
+  const seq = ++hubSent;
+  try {
+    const response = await fetch('/api/hub', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tabId: HUB_TAB, hidden: document.hidden, action, ...extra }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const wasDown = hubMissed >= 2;
+    hubMissed = 0;
+    const { hub } = await response.json();
+    // A periodic beat answered after a click would put the state from before the click back.
+    if (seq < hubShownSeq) return;
+    hubShownSeq = seq;
+    renderHub(hub, { force: wasDown });
+    refreshNudges();
+  } catch {
+    // The page outlived its server: a presence frozen at the last answer would lie.
+    hubMissed += 1;
+    if (hubMissed === 2) renderHub(hubData, { force: true });
+  }
+}
+
+const releaseParts = tag => tag.slice(1).split('.').map(Number);
+const byRelease = (a, b) => releaseParts(a).reduce((order, part, i) => order || part - releaseParts(b)[i], 0);
+
+// The flag names the release of the radar furthest behind, the one that needs the update.
+function hubVersion(person) {
+  const radars = Array.isArray(person.radars) ? person.radars : [];
+  const behind = Math.max(0, ...radars.map(radar => radar.behind ?? 0));
+  const unknown = radars.length > 0 && radars.every(radar => !radar.commit);
+  const lagging = radars.find(radar => (radar.behind ?? 0) === behind && behind > 0);
+  const tag = radars.map(radar => radar.tag).filter(Boolean).sort(byRelease).at(-1) ?? null;
+  return { behind, unknown, radars, tag, behindTag: lagging?.tag ?? null };
+}
+
+// With a release to name, the commit count moves to the tooltip: the pill has to fit on one line.
+const behindPill = ({ behind, behindTag }) => `<span class="hub-behind"${behindTag ? ` title="${escapeHtml(tn('hubBehind', behind))}"` : ''}>`
+  + `${escapeHtml(behindTag ? `${behindTag} · ${t('hubLate')}` : tn('hubBehind', behind))}</span>`;
+
+function hubPersonHtml(person) {
+  const { behind, unknown, radars } = hubVersion(person);
+  const tip = [tn('hubTabs', person.tabs ?? 0), radars.length > 1 ? tn('hubRadars', radars.length) : ''].filter(Boolean).join(' · ');
+  const flag = behind ? behindPill(hubVersion(person))
+    : unknown ? `<span class="hub-unknown">${t('hubUnknownVersion')}</span>` : '';
+  const status = hubStatus(person.availability);
+  const availability = `<span class="hub-avail ${status}">${t(status === 'focus' ? 'hubFocus' : 'hubAvailable')}</span> · `;
+  // The hub drops a second kudos to the same person within a minute: the button says so.
+  const since = Date.now() - (hubKudosSent.get(person.login) ?? 0);
+  const sent = since < 2000;
+  const cooling = !sent && since < 60_000;
+  const kudos = `<button type="button" class="hub-kudos${sent ? ' sent' : ''}${cooling ? ' cooldown' : ''}" data-hub-kudos="${escapeHtml(person.login)}"${sent || cooling ? ' disabled' : ''}`
+    + ` title="${escapeHtml(t(sent ? 'hubKudosSent' : cooling ? 'hubKudosCooldown' : 'hubKudosTitle', { who: person.login }))}" aria-label="${escapeHtml(t('hubKudosTitle', { who: person.login }))}">${sent ? CHECK_ICON : ICONS.kudos}</button>`;
+  const wizzSince = Date.now() - (hubWizzSent.get(person.login) ?? 0);
+  const wizzSent = wizzSince < 2000;
+  const refuses = person.acceptsWizz === false;
+  const wizzCooling = !wizzSent && (hubData?.wizzWaits?.[person.login.toLowerCase()]?.plainUntil ?? 0) > Date.now();
+  const wizzTitle = wizzSent ? 'hubWizzSent' : refuses ? 'hubWizzRefused' : wizzCooling ? 'hubWizzCooldown' : 'hubWizzTitle';
+  const wizz = `<button type="button" class="hub-wizz${wizzSent ? ' sent' : ''}${refuses || wizzCooling ? ' cooldown' : ''}" data-hub-wizz="${escapeHtml(person.login)}"${wizzSent || refuses || wizzCooling ? ' disabled' : ''}`
+    + ` title="${escapeHtml(t(wizzTitle, { who: person.login }))}" aria-label="${escapeHtml(t('hubWizzTitle', { who: person.login }))}">${wizzSent ? CHECK_ICON : ICONS.wizz}</button>`;
+  return `<li class="hub-person" title="${escapeHtml(tip)}">${hubFace(avatarSrc(person, 52), status)}`
+    + `<span class="hub-who"><b>${escapeHtml(person.login)}</b>`
+    + `<small>${availability}${escapeHtml(t('hubSince', { v: ago(person.since) }))}</small>${flag}</span><span class="hub-acts">${kudos}${wizz}</span></li>`;
+}
+
+// Me apart from the list: what I set for the others, and what they see of my radar.
+// Nobody is neither: someone who never chose, on this radar or an older one, counts as available.
+const hubStatus = availability => (availability === 'focus' ? 'focus' : 'available');
+const hubFace = (src, status) => `<span class="hub-face"><img src="${escapeHtml(src)}" alt="">`
+  + `<span class="hub-badge ${status}" aria-hidden="true">${status === 'focus' ? ICONS.focus : ICONS.hand}</span></span>`;
+
+function hubMeHtml(data, me) {
+  const mine = hubStatus(data.availability);
+  const refusing = data.acceptsWizz === false;
+  const toggle = (value, icon, label, title) => {
+    const on = mine === value;
+    return `<button type="button" class="hub-toggle${on ? ' on' : ''}" data-hub-availability="${value}" aria-pressed="${on}"`
+      + ` title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${icon}${on ? `<span class="hub-toggle-label">${label}</span>` : ''}</button>`;
+  };
+  const { behind, unknown } = me ? hubVersion(me) : { behind: 0, unknown: true };
+  const mineVersion = me ? hubVersion(me) : { tag: null, behindTag: null };
+  const version = behind ? behindPill({ behind, behindTag: mineVersion.behindTag })
+    : `<small>${mineVersion.tag ? `${escapeHtml(mineVersion.tag)} · ` : ''}${unknown ? t('hubUnknownVersion') : t('hubUpToDate')}${me ? ` · ${tn('hubTabs', me.tabs ?? 0)}` : ''}</small>`;
+  return `<div class="hub-me">${hubFace(avatarSrc({ login: data.login, avatarUrl: data.avatarUrl }, 64), mine)}`
+    + `<span class="hub-who"><b>${escapeHtml(data.login)}</b>${version}</span>`
+    + '<span class="hub-toggles">'
+    + `<span class="hub-segment" role="group" aria-label="${t('hubAvailabilityLabel')}">`
+    + toggle('available', ICONS.hand, t('hubAvailable'), t('hubAvailableTitle'))
+    + toggle('focus', ICONS.focus, t('hubFocus'), t('hubFocusTitle'))
+    + '</span><span class="hub-sep" aria-hidden="true"></span>'
+    + `<button type="button" class="hub-toggle wizz${refusing ? ' off' : ''}" data-hub-accepts-wizz="${refusing}" aria-pressed="${refusing}"`
+    + ` title="${escapeHtml(t(refusing ? 'hubWizzRefusing' : 'hubWizzAccepting'))}" aria-label="${escapeHtml(t(refusing ? 'hubWizzRefusing' : 'hubWizzAccepting'))}">`
+    + `${refusing ? ICONS.wizzOff : ICONS.wizz}</button>`
+    + '</span></div>';
+}
+
+// One toast per kudos and per tab, even across server restarts that reset the hub's ids.
+function showKudos(data) {
+  let seen;
+  try {
+    seen = new Set(JSON.parse(sessionStorage.getItem('pr-radar:kudosSeen') ?? '[]'));
+  } catch {
+    seen = new Set();
+  }
+  const fresh = (data?.kudos ?? []).filter(k => !seen.has(`${k.from}|${k.at}`) && Date.now() - new Date(k.at) < 10 * 60_000);
+  for (const k of data?.kudos ?? []) seen.add(`${k.from}|${k.at}`);
+  try {
+    sessionStorage.setItem('pr-radar:kudosSeen', JSON.stringify([...seen].slice(-30)));
+  } catch {
+    /* a toast shown twice is fine */
+  }
+  if (fresh.length) toastKudos(fresh);
+}
+
+// Kudos pile up in one toast: those that came while it was showing, or while the tab was in
+// the background, join it rather than replace it.
+let hubKudosBatch = [];
+function toastKudos(fresh = []) {
+  hubKudosBatch = [...hubKudosBatch, ...fresh];
+  paintTitle();
+  if (!hubKudosBatch.length || document.hidden) return;
+  const counts = new Map();
+  for (const k of hubKudosBatch) counts.set(k.from, { ...k, n: (counts.get(k.from)?.n ?? 0) + 1 });
+  const senders = [...counts.values()];
+  const [first, second] = senders;
+  const text = senders.length === 1
+    ? (first.n > 1 ? t('hubKudosReceivedMany', { who: first.from, n: first.n }) : t('hubKudosReceived', { who: first.from }))
+    : senders.length === 2 ? t('hubKudosReceivedTwo', { a: first.from, b: second.from })
+      : tn('hubKudosReceivedMore', senders.length - 2, { a: first.from, b: second.from });
+  const faces = senders.slice(0, 3).map(k => `<img src="${escapeHtml(avatarSrc(k, 40))}" alt="">`).join('');
+  const colors = ['--indigo', '--amber', '--emerald', '--rose', '--cyan'];
+  const burst = hubCalm() ? '' : Array.from({ length: 28 }, (_, i) => {
+    const angle = ((-168 + (156 * i) / 27 + (Math.random() * 10 - 5)) * Math.PI) / 180;
+    const distance = 90 + Math.random() * 90;
+    const shape = i % 5 === 0 ? 'star' : i % 3 === 0 ? 'dot' : 'strip';
+    return `<i class="${shape}" style="--dx:${Math.round(Math.cos(angle) * distance)}px;--dy:${Math.round(Math.sin(angle) * distance)}px;`
+      + `--r:${Math.round(Math.random() * 720 - 360)}deg;--d:${(i % 4) * 40}ms;--c:var(${colors[i % colors.length]})">${shape === 'star' ? ICONS.kudos : ''}</i>`;
+  }).join('');
+  popToast(`<span class="hub-stack">${faces}</span><span>${escapeHtml(text)}</span><span class="hub-burst" aria-hidden="true">${burst}</span>`, 6000, 'cheer');
+}
+
+// Kudos and wizzes share the one toast: the newest replaces what is showing.
+function popToast(html, ms = 6000, mood = '') {
+  const toast = el('hubToast');
+  toast.innerHTML = html;
+  toast.classList.remove('leaving', 'cheer');
+  if (mood) {
+    // A reflow between removing and adding the class replays the animation on a toast already showing.
+    void toast.offsetWidth;
+    toast.classList.add(mood);
+  }
+  toast.hidden = false;
+  clearTimeout(popToast.timer);
+  popToast.timer = setTimeout(() => {
+    toast.classList.add('leaving');
+    popToast.timer = setTimeout(() => {
+      toast.hidden = true;
+      toast.classList.remove('leaving');
+      hubKudosBatch = [];
+    }, 220);
+  }, ms);
+}
+
+const hubCalm = () => hubData?.availability === 'focus' || calm.matches;
+const shake = (node, px) => node.animate(
+  [0, -px, px, -px, px, -px / 2, 0].map(x => ({ transform: `translateX(${x}px)` })),
+  { duration: 520, iterations: 1 },
+);
+
+function showWizz(data) {
+  let seen;
+  try {
+    seen = new Set(JSON.parse(sessionStorage.getItem('pr-radar:wizzSeen') ?? '[]'));
+  } catch {
+    seen = new Set();
+  }
+  const fresh = (data?.wizzes ?? []).filter(w => !seen.has(`${w.from}|${w.at}`) && Date.now() - new Date(w.at) < 10 * 60_000);
+  for (const w of data?.wizzes ?? []) seen.add(`${w.from}|${w.at}`);
+  try {
+    sessionStorage.setItem('pr-radar:wizzSeen', JSON.stringify([...seen].slice(-30)));
+  } catch {
+    /* a wizz shown twice is fine */
+  }
+  if (fresh.length) playWizz(fresh);
+}
+
+const nudgedCards = prUrl => [...document.querySelectorAll(`.card[data-pr-url="${CSS.escape(prUrl)}"]`)];
+
+// Focus mode and reduced motion keep the toast and the outline, never the shaking.
+let hubWizzQueue = [];
+// A hidden tab cannot shake, so it says so in its title until someone looks.
+function paintTitle() {
+  const waiting = document.hidden && (hubWizzQueue.length > 0 || hubKudosBatch.length > 0);
+  document.title = `${waiting ? '● ' : ''}${state.titleBase ?? 'PR Radar'}`;
+}
+
+const WIZZ_STALE_MS = 10 * 60_000;
+
+function playWizz(fresh = []) {
+  hubWizzQueue = [...hubWizzQueue, ...fresh];
+  paintTitle();
+  if (!hubWizzQueue.length || document.hidden) return;
+  const queue = hubWizzQueue;
+  hubWizzQueue = [];
+  paintTitle();
+  const last = queue.at(-1);
+  const age = Date.now() - new Date(last.at);
+  // Shaking for a wizz sent long before anyone came back would only startle.
+  const still = hubCalm() || age > WIZZ_STALE_MS;
+  for (const wizz of queue.filter(w => w.prUrl)) {
+    const until = Date.now() + 60_000;
+    hubNudged.set(wizz.prUrl, until);
+    for (const card of nudgedCards(wizz.prUrl)) {
+      card.classList.add('wizzed');
+      if (!still) shake(card, 5);
+    }
+    setTimeout(() => {
+      if (hubNudged.get(wizz.prUrl) !== until) return;
+      hubNudged.delete(wizz.prUrl);
+      for (const card of nudgedCards(wizz.prUrl)) card.classList.remove('wizzed');
+    }, 60_000);
+  }
+  if (!last.nudge && !still) shake(document.body, 10);
+  const pr = last.prUrl ? [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].find(candidate => candidate.url === last.prUrl) : null;
+  const text = !last.nudge ? t('hubWizzReceived', { who: last.from })
+    : pr ? t('hubNudgeReceived', { who: last.from, title: pr.title })
+      : t('hubNudgeReceivedUnknown', { who: last.from });
+  const when = age > 60_000 ? ` · ${t('hubSentAgo', { v: ago(last.at) })}` : '';
+  hubKudosBatch = [];
+  popToast(`<span class="hub-stack"><img src="${escapeHtml(avatarSrc(last, 40))}" alt=""></span><span>${escapeHtml(text + when)}</span>`
+    + (pr ? `<button type="button" class="hub-btn" data-wizz-show="${escapeHtml(pr.url)}">${t('hubNudgeShow')}</button>` : ''), pr ? 9000 : 6000);
+}
+
+const nudgeTargets = button => {
+  const live = hubData?.status === 'online' ? hubData : null;
+  const online = new Set((live?.presence?.online ?? []).map(person => person.login.toLowerCase()));
+  return button.dataset.nudgeWho.split(',').filter(login => online.has(login.toLowerCase()));
+};
+
+// The hub drops a nudge over its limits without a word: the button greys out instead.
+function nudgeWait(login, prUrl) {
+  const waits = hubData?.wizzWaits?.[login.toLowerCase()];
+  const until = Math.max(waits?.nudgesUntil ?? 0, waits?.prsUntil?.[prUrl] ?? 0);
+  return until > Date.now() ? until : 0;
+}
+
+function refreshNudges() {
+  for (const button of document.querySelectorAll('[data-nudge-who]')) {
+    if (button.classList.contains('sent')) continue;
+    const prUrl = button.closest('.card')?.dataset.prUrl;
+    const targets = nudgeTargets(button);
+    button.hidden = !targets.length;
+    const free = targets.filter(login => !nudgeWait(login, prUrl));
+    button.disabled = !free.length;
+    button.title = free.length ? t('hubNudgeTitle', { who: free.join(', ') }) : t('hubNudgeCooldown', { who: targets.join(', ') });
+    button.setAttribute('aria-label', t('hubNudgeTitle', { who: targets.join(', ') }));
+  }
+}
+
+// A greyed button comes back on its own once the wait it mirrors is over.
+function scheduleWizzExpiry(data) {
+  clearTimeout(scheduleWizzExpiry.timer);
+  const ends = Object.values(data?.wizzWaits ?? {})
+    .flatMap(waits => [waits.plainUntil, waits.nudgesUntil, ...Object.values(waits.prsUntil ?? {})])
+    .filter(until => until && until > Date.now());
+  if (!ends.length) return;
+  scheduleWizzExpiry.timer = setTimeout(() => {
+    renderHub(hubData, { force: true });
+    refreshNudges();
+  }, Math.min(...ends) - Date.now() + 100);
+}
+
+function hubPanelHtml(data) {
+  const parts = [`<div class="hub-head"><b id="hubHead">${t('hubTitle')}</b>`
+    + `<button type="button" class="hub-close" data-hub-close title="${t('hubClose')}" aria-label="${t('hubClose')}">✕</button></div>`];
+  const code = data.stopped?.code;
+  if (data.status === 'auth' && data.auth) {
+    let host = data.auth.verificationUri;
+    try {
+      const uri = new URL(data.auth.verificationUri);
+      host = uri.host + uri.pathname;
+    } catch {
+      /* shown as given */
+    }
+    const link = `<a href="${escapeHtml(data.auth.verificationUri)}" target="_blank" rel="noreferrer">${escapeHtml(host)}</a>`;
+    parts.push(`<div class="hub-box"><p>${t('hubSignInHint', { link })}</p>`
+      + `<div class="hub-code"><code>${escapeHtml(data.auth.userCode)}</code>`
+      + `<button type="button" class="hub-btn" data-hub-copy>${t(hubCopied ? 'hubCopied' : 'hubCopy')}</button></div>`
+      + `<div class="hub-actions"><button type="button" class="hub-btn quiet" data-hub-action="decline">${t('hubNotNow')}</button></div></div>`);
+  } else if (data.status === 'declined' || (code && !['replaced', 'protocol_unsupported'].includes(code))) {
+    parts.push(`<div class="hub-box"><p>${data.status === 'declined' ? t('hubDeclined') : t(`hubStopped_${code}`)}</p>`
+      + `<div class="hub-actions"><button type="button" class="hub-btn" data-hub-action="signIn">${t('hubSignIn')}</button></div></div>`);
+  }
+  const online = data.presence?.online ?? [];
+  const recent = data.presence?.recent ?? [];
+  if (data.presence) {
+    if (data.login) parts.push(hubMeHtml(data, online.find(person => person.login === data.login)));
+    const people = online.filter(person => person.login !== data.login);
+    parts.push(`<section class="hub-section"><h3>${t('hubOnline')} · ${people.length}</h3>`
+      + (people.length ? `<ul class="hub-list">${people.map(person => hubPersonHtml(person)).join('')}</ul>`
+        : `<p class="hub-nobody">${t('hubNobody')}</p>`)
+      + '</section>');
+    if (recent.length) {
+      parts.push(`<section class="hub-section"><h3>${t('hubRecent')}</h3><ul class="hub-list">`
+        + recent.map(person => `<li class="hub-person recent"><img src="${escapeHtml(avatarSrc(person, 52))}" alt="">`
+          + `<span class="hub-who"><b>${escapeHtml(person.login)}</b><small>${escapeHtml(since(person.lastSeen))}</small></span></li>`).join('')
+        + '</ul></section>');
+    }
+  }
+  const foot = hubMissed >= 2 ? t('hubLocalDown')
+    : data.status === 'connecting' ? t('hubConnecting')
+    : data.status === 'waiting' && data.nextTryAt
+      ? t('hubRetry', { at: new Date(data.nextTryAt).toLocaleTimeString(LOCALE[lang], { hour: '2-digit', minute: '2-digit' }) })
+      : ['replaced', 'protocol_unsupported'].includes(code) ? t(`hubStopped_${code}`) : '';
+  if (data.undelivered && Date.now() - data.undelivered.at < 2 * 60_000) {
+    parts.push(`<p class="hub-note">${escapeHtml(t('hubUndelivered', { who: data.undelivered.to }))}</p>`);
+  }
+  if (foot) parts.push(`<p class="hub-foot">${escapeHtml(foot)}</p>`);
+  return parts.join('');
+}
+
+function renderHub(data, { force = false } = {}) {
+  const signature = JSON.stringify(data);
+  if (!force && signature === hubShown) return;
+  hubShown = signature;
+  hubData = data;
+  const button = el('hub');
+  const active = Boolean(data && data.status !== 'off');
+  button.hidden = !active;
+  if (!active) {
+    el('hubPanel').hidden = true;
+    document.body.removeAttribute('data-hub-open');
+    return;
+  }
+  // A first sign-in code shown only behind a header button nobody has clicked yet would go
+  // unseen: the panel opens on its own, once; after that it stays as the person leaves it.
+  if (data.status === 'auth' && !hubOpen && store.get('hubAutoOpened', '') !== 'true') {
+    store.set('hubAutoOpened', 'true');
+    hubOpen = true;
+    store.set('hubOpen', 'true');
+  }
+  const online = data.presence?.online ?? [];
+  const faces = online.slice(0, 3).map(person => `<img src="${escapeHtml(avatarSrc(person, 40))}" alt="">`).join('');
+  button.innerHTML = (faces ? `<span class="hub-stack">${faces}</span>` : HUB_ICON)
+    + (online.length ? `<span>${online.length}</span>` : '')
+    + (data.status === 'auth' ? '<span class="hub-dot" aria-hidden="true"></span>' : '');
+  button.title = t('hubButton');
+  button.classList.toggle('on', hubOpen);
+  button.classList.toggle('stale', hubMissed >= 2);
+  el('hubPanel').classList.toggle('stale', hubMissed >= 2);
+  button.setAttribute('aria-expanded', String(hubOpen));
+  el('hubPanel').hidden = !hubOpen;
+  document.body.toggleAttribute('data-hub-open', hubOpen);
+  if (hubOpen) el('hubPanel').innerHTML = hubPanelHtml(data);
+  showKudos(data);
+  showWizz(data);
+  scheduleWizzExpiry(data);
+}
+
+function openHub(open) {
+  hubOpen = open;
+  store.set('hubOpen', String(open));
+  renderHub(hubData, { force: true });
+}
+
+el('hub').addEventListener('click', () => openHub(!hubOpen));
+el('hubPanel').addEventListener('click', async event => {
+  if (event.target.closest('[data-hub-close]')) return openHub(false);
+  const action = event.target.closest('[data-hub-action]')?.dataset.hubAction;
+  if (action) return hubBeat(action);
+  const availability = event.target.closest('[data-hub-availability]');
+  if (availability && availability.getAttribute('aria-pressed') !== 'true') return hubBeat('availability', { value: availability.dataset.hubAvailability });
+  const kudos = event.target.closest('[data-hub-kudos]')?.dataset.hubKudos;
+  if (kudos) {
+    hubKudosSent.set(kudos, Date.now());
+    setTimeout(() => renderHub(hubData, { force: true }), 2100);
+    setTimeout(() => renderHub(hubData, { force: true }), 60_100);
+    return hubBeat('kudos', { to: kudos }).then(() => renderHub(hubData, { force: true }));
+  }
+  const wizz = event.target.closest('[data-hub-wizz]')?.dataset.hubWizz;
+  if (wizz) {
+    hubWizzSent.set(wizz, Date.now());
+    setTimeout(() => renderHub(hubData, { force: true }), 2100);
+    return hubBeat('wizz', { to: wizz }).then(() => renderHub(hubData, { force: true }));
+  }
+  const acceptsWizz = event.target.closest('[data-hub-accepts-wizz]');
+  if (acceptsWizz) return hubBeat('acceptsWizz', { value: acceptsWizz.dataset.hubAcceptsWizz === 'true' });
+  if (!event.target.closest('[data-hub-copy]')) return;
+  try {
+    await navigator.clipboard.writeText(hubData?.auth?.userCode ?? '');
+    hubCopied = true;
+    renderHub(hubData, { force: true });
+    setTimeout(() => {
+      hubCopied = false;
+      renderHub(hubData, { force: true });
+    }, 1600);
+  } catch {
+    /* the code stays on screen to type */
+  }
+});
+el('hubToast').addEventListener('click', event => {
+  const prUrl = event.target.closest('[data-wizz-show]')?.dataset.wizzShow;
+  if (!prUrl) return;
+  const card = nudgedCards(prUrl).find(candidate => candidate.offsetParent);
+  if (card) card.scrollIntoView({ block: 'center', behavior: calm.matches ? 'auto' : 'smooth' });
+  else window.open(prUrl, '_blank', 'noopener');
+});
+window.addEventListener('pagehide', () => {
+  const bye = new Blob([JSON.stringify({ tabId: HUB_TAB, action: 'bye' })], { type: 'application/json' });
+  navigator.sendBeacon('/api/hub', bye);
+});
+setInterval(() => hubBeat(), 25_000);
+hubBeat();
+
 applyLang(lang);
 renderSkeleton();
 load(false);

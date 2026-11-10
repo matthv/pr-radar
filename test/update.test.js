@@ -263,3 +263,21 @@ test('releasesUrl: GitHub over ssh or https, nothing for another host', () => {
   assert.equal(releasesUrl('https://user:token@github.com/matthv/pr-radar.git'), 'https://github.com/matthv/pr-radar/releases');
   assert.equal(releasesUrl(''), null);
 });
+
+test('head is the full SHA this process runs, read once, and null without git', async () => {
+  const fresh = () => {
+    delete require.cache[require.resolve('../update')];
+    return require('../update');
+  };
+  let calls = 0;
+  const { head } = fresh();
+  const sha = 'f00dbabe0123456789abcdef0123456789abcdef';
+  const exec = async () => {
+    calls += 1;
+    return `${sha}\n`;
+  };
+  assert.equal(await head(exec), sha);
+  assert.equal(await head(exec), sha);
+  assert.equal(calls, 1);
+  assert.equal(await fresh().head(async () => { throw new Error('not a git repository'); }), null);
+});

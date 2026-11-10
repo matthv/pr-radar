@@ -116,3 +116,39 @@ test('demo: a PR claimed on Slack shows, owed and marked', () => {
   assert.ok(claimed, 'a claimed card on the review side');
   assert.equal(claimed.reviewOwedByMe, true);
 });
+
+test('demo: who is online shows three people, one behind, and two seen recently', () => {
+  const { hub } = demo;
+  assert.equal(hub.status, 'online');
+  assert.equal(hub.presence.online.length, 3);
+  assert.ok(hub.presence.online.some(person => person.radars.some(radar => radar.behind > 0)));
+  assert.equal(hub.presence.recent.length, 2);
+  assert.ok(hub.presence.online.every(person => person.avatarUrl));
+});
+
+test('demo: one teammate available, one in focus, and a kudos received', () => {
+  const { hub } = demo;
+  const states = hub.presence.online.map(person => person.availability);
+  assert.ok(states.includes('available'));
+  assert.ok(states.includes('focus'));
+  assert.equal(hub.kudos.length, 1);
+});
+
+test('demo: a wizz comes straight back, plain or on the same PR, and a refused one does not', () => {
+  const { hub } = demo;
+  const online = new Set(hub.presence.online.map(person => person.login));
+  const { mine, reviews } = demo.payload(false);
+  const nudgeable = [
+    ...mine.filter(pr => pr.state === 'OPEN' && pr.reviewers?.some(r => online.has(r.login) && r.state !== 'approved')),
+    ...reviews.filter(pr => pr.state === 'OPEN' && online.has(pr.author)),
+  ];
+  assert.ok(nudgeable.length > 0);
+  const before = hub.wizzes.length;
+  demo.wizzBack('christophebrun-forest', null);
+  assert.equal(hub.wizzes.length, before);
+  demo.wizzBack('bexchauveto', nudgeable[0].url);
+  demo.wizzBack('bexchauveto', nudgeable[0].url);
+  assert.equal(hub.wizzes.length, before + 1);
+  assert.equal(hub.wizzes.at(-1).from, 'bexchauveto');
+  assert.match(hub.wizzes.at(-1).ref, /^[0-9a-f]{64}$/);
+});
