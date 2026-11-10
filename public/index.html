@@ -1097,6 +1097,7 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
   }
   .update b { font-weight: 650; }
+  .update .update-notes { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
   /* Quieter than the update banner: a nudge for the team, not something wrong with the board. */
   .orphans {
     margin: 20px 28px 0; padding: 10px 15px; border-radius: 10px;
@@ -1594,6 +1595,9 @@ const I18N = {
     slackNoConnector: 'Lien Slack désactivé : Claude ne voit pas de connecteur Slack. Nouvel essai dans 30 min ; si ça persiste, active-le sur claude.ai (Paramètres → Connecteurs), puis redémarre pr-radar. Le board, lui, est à jour.',
     slackFailed: 'Lien Slack indisponible ({message}) : les liens vers les annonces peuvent manquer. Le board, lui, est à jour.',
     updateTitle: 'Nouvelle version disponible',
+    updateTitleVersion: 'Version {v} disponible',
+    updateFrom: 'tu es en {v}',
+    updateNotes: 'Notes de version',
     updateBehind_one: '{n} commit en retard.',
     updateBehind_many: '{n} commits en retard.',
     updateHow: 'Ou à la main, dans le dossier pr-radar : {command}, puis redémarre le serveur.',
@@ -1840,6 +1844,9 @@ const I18N = {
     slackNoConnector: 'Slack link off: Claude sees no Slack connector. Trying again in 30 min; if it persists, turn it on at claude.ai (Settings → Connectors), then restart pr-radar. The board itself is up to date.',
     slackFailed: 'Slack link unavailable ({message}): links to announcements may be missing. The board itself is up to date.',
     updateTitle: 'New version available',
+    updateTitleVersion: 'Version {v} available',
+    updateFrom: 'you are on {v}',
+    updateNotes: 'Release notes',
     updateBehind_one: '{n} commit behind.',
     updateBehind_many: '{n} commits behind.',
     updateHow: 'Or by hand, in the pr-radar folder: {command}, then restart the server.',
@@ -3714,8 +3721,12 @@ function renderUpdate(update) {
   }
   const titles = update.titles.slice(0, UPDATE_TITLES_SHOWN).map(title => `<li>${escapeHtml(title)}</li>`);
   const more = update.titles.length - UPDATE_TITLES_SHOWN;
-  box.innerHTML = `<b>${t('updateTitle')}</b>`
-    + `<span>${tn('updateBehind', update.behind)}</span>`
+  const newer = update.latestVersion && update.latestVersion !== update.version;
+  box.innerHTML = `<b>${newer ? t('updateTitleVersion', { v: escapeHtml(update.latestVersion) }) : t('updateTitle')}</b>`
+    + `<span>${newer && update.version ? `${t('updateFrom', { v: escapeHtml(update.version) })} · ` : ''}${tn('updateBehind', update.behind)}</span>`
+    + (newer && update.releasesUrl
+      ? `<a class="update-notes" href="${escapeHtml(update.releasesUrl)}" target="_blank" rel="noopener">${t('updateNotes')}</a>`
+      : '')
     + `<span class="update-actions">`
     + `<button type="button" class="update-apply" data-update-apply${['updating', 'blocked', 'no-restart'].includes(status?.kind) ? ' disabled' : ''}>`
     + `<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg>`

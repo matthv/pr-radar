@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { summarize, refusal, blockers, newEnvVars, apply, reasonOf } = require('../update');
+const { summarize, refusal, blockers, newEnvVars, apply, reasonOf, check, releasesUrl } = require('../update');
 
 const raw = (count, log) => ({ current: 'abc1234\n', latest: 'f00dbabe0123\n', count, log });
 
@@ -200,4 +200,46 @@ test('pending: an npm install owed by an earlier pull still stops the restart', 
   const result = await fresh.apply(exec, noRefresh);
   assert.ok(merged(calls));
   assert.deepEqual([result.blockers, result.restart], [['dependencies'], false]);
+});
+
+function fakeCheckGit({ tags = { HEAD: 'v1.2.0', 'origin/main': 'v1.4.0' }, remote = 'git@github.com:matthv/pr-radar.git' } = {}) {
+  const calls = [];
+  const exec = async (...args) => {
+    calls.push(args.join(' '));
+    const [command] = args;
+    if (command === 'describe') {
+      const tag = tags[args.at(-1)];
+      if (!tag) throw gitError(128, 'fatal: No names found, cannot describe anything.');
+      return `${tag}\n`;
+    }
+    if (command === 'remote') return `${remote}\n`;
+    if (command === 'rev-parse') return args.includes('--short') ? 'aaaaaaa\n' : 'bbbbbbb2222\n';
+    if (command === 'rev-list') return '3\n';
+    if (command === 'log') return 'feat: a\nfix: b\n';
+    return '';
+  };
+  return { exec, calls };
+}
+
+test('check: fetches the tags and says which release runs and which is out', async () => {
+  const { exec, calls } = fakeCheckGit();
+  const result = await check(exec);
+  assert.equal(calls[0], 'fetch --quiet --tags origin main');
+  assert.deepEqual(
+    [result.behind, result.version, result.latestVersion, result.releasesUrl],
+    [3, 'v1.2.0', 'v1.4.0', 'https://github.com/matthv/pr-radar/releases'],
+  );
+});
+
+test('check: before the first release there is no version, and the rest still works', async () => {
+  const { exec } = fakeCheckGit({ tags: {} });
+  const result = await check(exec);
+  assert.deepEqual([result.behind, result.version, result.latestVersion], [3, null, null]);
+});
+
+test('releasesUrl: GitHub over ssh or https, nothing for another host', () => {
+  assert.equal(releasesUrl('git@github.com:matthv/pr-radar.git'), 'https://github.com/matthv/pr-radar/releases');
+  assert.equal(releasesUrl('https://github.com/matthv/pr-radar\n'), 'https://github.com/matthv/pr-radar/releases');
+  assert.equal(releasesUrl('https://gitlab.com/matthv/pr-radar.git'), null);
+  assert.equal(releasesUrl(''), null);
 });

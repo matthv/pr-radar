@@ -417,6 +417,9 @@ const update = {
   behind: 2,
   current: 'demo000',
   latest: 'demo-update',
+  version: 'v1.3.0',
+  latestVersion: 'v1.4.0',
+  releasesUrl: 'https://github.com/matthv/pr-radar/releases',
   titles: ['feat(board): ready to merge, a group of its own', 'feat(sound): your own notification sound'],
 };
 

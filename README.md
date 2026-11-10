@@ -300,14 +300,22 @@ behind.
 
 ## When the tool itself is behind
 
-The tool has no version number; the commit is the version. Every
-`PR_RADAR_UPDATE_HOURS` hours (2 by default, `0` turns it off) the server runs
+Every `PR_RADAR_UPDATE_HOURS` hours (2 by default, `0` turns it off) the server runs
 `git fetch` and counts the commits between its own `HEAD` and `origin/main`. When it is
 behind, the page shows an indigo banner — not amber, since nothing is wrong with the
 data — with the count, the titles of the commits missed (the first eight, then "and N
 more"), **Update & restart** at the top right, and the manual way in small print below
 the list: `git pull` to copy, then a restart. A `×` hides it for that exact remote
 commit; the next push brings it back.
+
+**Versions.** Every merge to `main` that brings a `feat:` or a `fix:` gets a release: a
+`v1.4.0` tag and a GitHub release listing what changed, made by the `Release` workflow
+with semantic-release. `feat:` raises the minor number, `fix:` the patch, a `!` after the
+type (`feat!:`) or a `BREAKING CHANGE:` footer the major; `chore:`, `docs:`, `test:` and
+the like make none. When a newer release is out, the banner names it ("Version v1.4.0
+available, you are on v1.2.0") and links to the release notes; between releases it keeps
+counting commits. Releases are only tags, nothing is committed back, so `package.json`
+does not carry the version, and an update still pulls `main` as before.
 
 Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
 state while working, and a banner there would be noise. Nothing pulls on its own: a
