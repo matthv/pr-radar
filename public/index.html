@@ -361,16 +361,20 @@
   .hub-offer-warn { font-size: 12px; color: var(--text-soft); }
   .hub-toast .hub-btn { flex: none; }
   .card.wizzed { outline: 2px solid var(--indigo); outline-offset: 2px; transition: outline-color .3s; }
-  .hub-toast {
+  .hub-toasts {
     /* Bottom right, where a notification is expected, so it never hides the banners at the top. */
     position: fixed; right: 28px; bottom: 24px; z-index: 30;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none;
+  }
+  .hub-toast {
+    position: relative; pointer-events: auto;
     display: flex; align-items: center; gap: 10px; max-width: min(340px, calc(100vw - 32px));
     padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 560;
     background: var(--indigo-soft); color: var(--text);
     border: 1px solid color-mix(in srgb, var(--indigo) 45%, transparent); box-shadow: var(--shadow-md);
   }
   .hub-toast .hub-stack img { width: 26px; height: 26px; box-shadow: 0 0 0 2px var(--indigo-soft); }
-  @media (min-width: 1100px) { body[data-hub-open] .hub-toast { right: 328px; } }
+  @media (min-width: 1100px) { body[data-hub-open] .hub-toasts { right: 328px; } }
   @media (prefers-reduced-motion: no-preference) {
     .hub-toast { animation: hub-toast-in .22s ease-out; }
     .hub-toast.leaving { animation: hub-toast-out .2s ease-in forwards; }
@@ -1438,7 +1442,7 @@
   <div class="settings-panel" id="settingsPanel" role="dialog" aria-labelledby="settingsHead" hidden></div>
 </header>
 <aside class="hub-panel" id="hubPanel" aria-labelledby="hubHead" hidden></aside>
-<div class="hub-toast" id="hubToast" role="status" hidden></div>
+<div class="hub-toasts" id="hubToast" role="status"></div>
 <div id="decorBack" aria-hidden="true"></div>
 <div id="decorFront" aria-hidden="true"></div>
 <div id="error" class="error" hidden></div>
@@ -2819,7 +2823,7 @@ function beep() {
   chime();
 }
 
-// A teammate's call sounds apart from the board's chime, and is not muted with it: someone who
+// A teammate's call, or a kudos, sounds apart from the board's chime, and is not muted with it: someone who
 // silenced the PR chime still hears a nudge. Focus is what quiets it.
 function wizzSound(nudge, style = WIZZ_SOUND) {
   audio ??= new (window.AudioContext || window.webkitAudioContext)();
@@ -2828,6 +2832,19 @@ function wizzSound(nudge, style = WIZZ_SOUND) {
 }
 
 const WIZZ_SOUNDS = {
+  // One soft note a step above the others, ringing a little longer: nobody needs to answer it.
+  kudos(ctx, now) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = 392;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.06, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.82);
+  },
   // Two warm low notes laid one after the other, held a moment; a third under them for a wizz.
   warm(ctx, now, nudge) {
     const notes = nudge ? [[0, 262], [0.12, 330]] : [[0, 196], [0.1, 262], [0.2, 330]];
@@ -5280,10 +5297,15 @@ function showKudos(data) {
 // Kudos pile up in one toast: those that came while it was showing, or while the tab was in
 // the background, join it rather than replace it.
 let hubKudosBatch = [];
+let hubKudosSoundOwed = false;
 function toastKudos(fresh = []) {
   hubKudosBatch = [...hubKudosBatch, ...fresh];
+  if (fresh.length) hubKudosSoundOwed = true;
   paintTitle();
   if (!hubKudosBatch.length || document.hidden) return;
+  // Only with the confetti, never into a background tab: a kudos is no reason to call anyone back.
+  if (hubKudosSoundOwed && hubData?.availability !== 'focus') wizzSound(false, 'kudos');
+  hubKudosSoundOwed = false;
   const counts = new Map();
   for (const k of hubKudosBatch) counts.set(k.from, { ...k, n: (counts.get(k.from)?.n ?? 0) + 1 });
   const senders = [...counts.values()];
@@ -5301,29 +5323,41 @@ function toastKudos(fresh = []) {
     return `<i class="${shape}" style="--dx:${Math.round(Math.cos(angle) * distance)}px;--dy:${Math.round(Math.sin(angle) * distance)}px;`
       + `--r:${Math.round(Math.random() * 720 - 360)}deg;--d:${(i % 4) * 40}ms;--c:var(${colors[i % colors.length]})">${shape === 'star' ? ICONS.kudos : ''}</i>`;
   }).join('');
-  popToast(`<span class="hub-stack">${faces}</span><span>${escapeHtml(text)}</span><span class="hub-burst" aria-hidden="true">${burst}</span>`, 6000, 'cheer');
+  popToast(`<span class="hub-stack">${faces}</span><span>${escapeHtml(text)}</span><span class="hub-burst" aria-hidden="true">${burst}</span>`, { mood: 'cheer', key: 'kudos' });
 }
 
-// Kudos and wizzes share the one toast: the newest replaces what is showing.
-function popToast(html, ms = 6000, mood = '') {
-  const toast = el('hubToast');
+const TOASTS_SHOWN = 3;
+
+function dropToast(toast, { now = false } = {}) {
+  clearTimeout(toast.timer);
+  if (toast.dataset.toast === 'kudos') hubKudosBatch = [];
+  if (now) return toast.remove();
+  toast.classList.add('leaving');
+  toast.timer = setTimeout(() => toast.remove(), 220);
+}
+
+// Each notice keeps its own place and its own time, newest at the bottom; kudos gather in theirs.
+// Past three, the oldest goes.
+function popToast(html, { ms = 6000, mood = '', key = null } = {}) {
+  const stack = el('hubToast');
+  let toast = key ? stack.querySelector(`.hub-toast[data-toast="${key}"]:not(.leaving)`) : null;
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'hub-toast';
+    if (key) toast.dataset.toast = key;
+    stack.append(toast);
+    const shown = [...stack.children].filter(item => !item.classList.contains('leaving'));
+    for (const old of shown.slice(0, Math.max(0, shown.length - TOASTS_SHOWN))) dropToast(old, { now: true });
+  }
   toast.innerHTML = html;
-  toast.classList.remove('leaving', 'cheer');
+  toast.classList.remove('cheer');
   if (mood) {
     // A reflow between removing and adding the class replays the animation on a toast already showing.
     void toast.offsetWidth;
     toast.classList.add(mood);
   }
-  toast.hidden = false;
-  clearTimeout(popToast.timer);
-  popToast.timer = setTimeout(() => {
-    toast.classList.add('leaving');
-    popToast.timer = setTimeout(() => {
-      toast.hidden = true;
-      toast.classList.remove('leaving');
-      hubKudosBatch = [];
-    }, 220);
-  }, ms);
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => dropToast(toast), ms);
 }
 
 const hubCalm = () => hubData?.availability === 'focus' || calm.matches;
@@ -5393,9 +5427,8 @@ function playWizz(fresh = []) {
     : pr ? t('hubNudgeReceived', { who: last.from, title: pr.title })
       : t('hubNudgeReceivedUnknown', { who: last.from });
   const when = age > 60_000 ? ` · ${t('hubSentAgo', { v: ago(last.at) })}` : '';
-  hubKudosBatch = [];
   popToast(`<span class="hub-stack"><img src="${escapeHtml(avatarSrc(last, 40))}" alt=""></span><span>${escapeHtml(text + when)}</span>`
-    + (pr ? `<button type="button" class="hub-btn" data-wizz-show="${escapeHtml(pr.url)}">${t('hubNudgeShow')}</button>` : ''), pr ? 9000 : 6000);
+    + (pr ? `<button type="button" class="hub-btn" data-wizz-show="${escapeHtml(pr.url)}">${t('hubNudgeShow')}</button>` : ''), { ms: pr ? 9000 : 6000 });
 }
 
 const nudgeTargets = button => {

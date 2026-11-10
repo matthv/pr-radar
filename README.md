@@ -885,7 +885,7 @@ author or the reviewers yet to approve, once one of them is online: their card s
 outlined, at most once per PR every 10 minutes and 3 nudges per person every 10 minutes. A
 nudge or a wizz also makes a short, quiet sound as it arrives, even in a background tab (two
 soft low notes, three for a wizz); it is not the board's chime, and the speaker button leaves
-it alone. Kudos stay silent.
+it alone. A kudos gets a single soft note, only once you are looking at the tab, with its confetti.
 
 **Focus is how you are left alone:** nobody can wizz you (their phone greys out on your row),
 and a nudge still arrives, as a notice and an outline, without shaking or sound.
