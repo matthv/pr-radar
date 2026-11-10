@@ -7,7 +7,8 @@ const path = require('node:path');
 
 const PROTOCOL = 1;
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'pr-radar');
-// The hub closes a connection past 30 messages a minute: one status every 2.5 s stays under.
+// The hub closes a connection past 30 messages a minute, of any kind: status changes grouped to
+// one every 2.5 s take 24 at most, and leave the rest to clicks.
 const STATUS_EVERY_MS = 2500;
 const STABLE_MS = 60_000;
 const RATE_LIMITED_MS = 60_000;
@@ -115,6 +116,7 @@ function createHub({
   let socket = null;
   let attempt = 0;
   let hubError = null;
+  let lastFailure = '';
   let retriedWithoutToken = false;
   let stopping = false;
   let declined = Boolean(files.read(DECLINED));
@@ -132,6 +134,17 @@ function createHub({
   let known = null;
   const timer = { retry: null, stable: null, status: null };
   const view = { status: 'off', login: null, avatarUrl: null, presence: null, auth: null, stopped: null, nextTryAt: null };
+
+  // A full disk or a read-only folder costs the remembered setting, never the radar: these run
+  // inside socket listeners, where a throw would take the whole server down.
+  const save = (name, value) => {
+    try {
+      if (value == null) files.remove(name);
+      else files.write(name, value);
+    } catch (error) {
+      log('fail', `cannot save ${name}: ${error.message}`);
+    }
+  };
 
   const clear = name => {
     if (timer[name]) timers.clear(timer[name]);
@@ -173,7 +186,10 @@ function createHub({
     });
     ws.addEventListener('close', event => ended(ws, event.code, event.reason));
     // Node's WebSocket reports a refused connection with an error and no close at all.
-    ws.addEventListener('error', () => ended(ws, 1006, ''));
+    ws.addEventListener('error', event => {
+      if (socket === ws && event?.message) lastFailure = event.message;
+      ended(ws, 1006, '');
+    });
   }
 
   function received(data) {
@@ -193,7 +209,7 @@ function createHub({
         };
         break;
       case 'welcome':
-        if (message.hubToken) files.write(TOKEN, message.hubToken);
+        if (message.hubToken) save(TOKEN, message.hubToken);
         retriedWithoutToken = false;
         Object.assign(view, { status: 'online', auth: null, login: message.login ?? null, avatarUrl: message.avatarUrl ?? null });
         known = inHello;
@@ -238,7 +254,8 @@ function createHub({
         break;
       case 'error':
         hubError = message.code ?? null;
-        if (hubError === 'bad_message') log('fail', `the hub refused a message: ${message.message ?? ''}`);
+        lastFailure = String(message.message ?? '');
+        if (hubError === 'bad_message') log('fail', `the hub refused a message: ${lastFailure}`);
         break;
       default:
     }
@@ -253,7 +270,7 @@ function createHub({
     view.auth = null;
     if (stopping) return;
     const why = hubError ?? CLOSE_CODES[code] ?? (KNOWN.has(reason) ? reason : null);
-    if (FORGETS_TOKEN.has(why)) files.remove(TOKEN);
+    if (FORGETS_TOKEN.has(why)) save(TOKEN, null);
     if (why === 'bad_token' && !retriedWithoutToken) {
       retriedWithoutToken = true;
       connect();
@@ -266,6 +283,9 @@ function createHub({
     }
     if (code === 1009) log('fail', 'the hub closed the connection on a message over 16 KiB');
     const delay = Math.max(backoffDelay(attempt, random), why === 'rate_limited' ? RATE_LIMITED_MS : 0);
+    // Once per streak of retries, so a long outage says why without filling the log.
+    if (attempt === 0) log('fail', `connection lost (${why ?? code}${lastFailure ? `: ${lastFailure}` : ''}), retrying in ${Math.round(delay / 1000)} s`);
+    lastFailure = '';
     attempt += 1;
     Object.assign(view, { status: 'waiting', nextTryAt: now() + delay });
     timer.retry = timers.set(connect, delay);
@@ -324,7 +344,7 @@ function createHub({
 
   function decline() {
     declined = true;
-    files.write(DECLINED, new Date(now()).toISOString());
+    save(DECLINED, new Date(now()).toISOString());
     const closed = stop(1000);
     Object.assign(view, { status: 'declined', stopped: null });
     return closed;
@@ -332,7 +352,7 @@ function createHub({
 
   function signIn() {
     if (!url) return;
-    if (declined) files.remove(DECLINED);
+    if (declined) save(DECLINED, null);
     declined = false;
     if (socket) return;
     stopping = false;
@@ -359,8 +379,7 @@ function createHub({
     const next = AVAILABILITIES.has(value) ? value : null;
     if (next === availability) return false;
     availability = next;
-    if (next) files.write(AVAILABILITY, next);
-    else files.remove(AVAILABILITY);
+    save(AVAILABILITY, next);
     if (known) known = { ...known, availability, acceptsWizz: acceptsWizz() };
     return true;
   }
@@ -414,6 +433,8 @@ function createHub({
     return offers;
   };
 
+  const peekOffer = id => liveOffers().find(candidate => candidate.id === id) ?? null;
+
   function takeOffer(id) {
     const offer = liveOffers().find(candidate => candidate.id === id) ?? null;
     offers = offers.filter(candidate => candidate.id !== id);
@@ -436,7 +457,7 @@ function createHub({
     })),
   });
 
-  return { start, stop, decline, signIn, setTabs, setVersion, setAvailability, sendKudos, sendWizz, offerTheme, takeOffer, state };
+  return { start, stop, decline, signIn, setTabs, setVersion, setAvailability, sendKudos, sendWizz, offerTheme, peekOffer, takeOffer, state };
 }
 
 const TAB_ID = /^[A-Za-z0-9_-]{8,64}$/;

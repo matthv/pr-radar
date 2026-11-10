@@ -163,15 +163,23 @@ const ICON_MAX = 16;
 async function readForOffer(name, { dir = THEMES_DIR } = {}) {
   if (!NAME_RE.test(name ?? '') || name.length > 40) throw fail('missing', 'no such theme');
   const folder = path.join(dir, name);
+  // Only a file that is not there means no theme, or no script; any other failure says so.
+  const read = (file, { optional = false } = {}) => fs.readFile(path.join(folder, file), 'utf8').catch(error => {
+    if (error.code === 'ENOENT') {
+      if (optional) return null;
+      throw fail('missing', 'no such theme');
+    }
+    throw fail('unreadable', `${name}/${file} cannot be read (${error.message})`, { name, file });
+  });
   let meta;
   try {
-    meta = JSON.parse(await fs.readFile(path.join(folder, 'theme.json'), 'utf8'));
-  } catch {
-    throw fail('missing', 'no such theme');
+    meta = JSON.parse(await read('theme.json'));
+  } catch (error) {
+    if (error.reason) throw error;
+    throw fail('unreadable', `${name}/theme.json is not valid JSON (${error.message})`, { name, file: 'theme.json' });
   }
-  const css = await fs.readFile(path.join(folder, 'theme.css'), 'utf8').catch(() => null);
-  if (css === null) throw fail('missing', 'no such theme');
-  const js = await fs.readFile(path.join(folder, 'theme.js'), 'utf8').catch(() => null);
+  const css = await read('theme.css');
+  const js = await read('theme.js', { optional: true });
   const theme = {
     name,
     label: String(meta.label ?? name).trim().slice(0, LABEL_MAX),
@@ -190,14 +198,16 @@ const asLogin = login => String(login ?? '').toLowerCase().replace(/[^a-z0-9-]/g
 async function installTheme(theme, { from, dir = THEMES_DIR, shippedDir = SHIPPED_DIR } = {}) {
   const name = String(theme?.name ?? '');
   if (!NAME_RE.test(name) || name.length > 40 || name === 'none') throw fail('badOffer', 'the offered theme has no valid name');
-  if (typeof theme.css !== 'string' || (theme.js !== null && typeof theme.js !== 'string')) throw fail('badOffer', 'the offered theme is malformed');
+  // The protocol counts an absent js as null.
+  const script = theme.js ?? null;
+  if (typeof theme.css !== 'string' || (script !== null && typeof script !== 'string')) throw fail('badOffer', 'the offered theme is malformed');
   const label = String(theme.label ?? '').trim().slice(0, LABEL_MAX) || name;
   const icon = String(theme.icon ?? '').trim().slice(0, ICON_MAX) || '🎨';
-  const found = NETWORK.exec(theme.css) ?? (theme.js ? NETWORK.exec(theme.js) : null);
+  const found = NETWORK.exec(theme.css) ?? (script ? NETWORK.exec(script) : null);
   if (found) throw fail('network', `the offered theme reaches the network or the page storage (${found[0]}), refused`, { match: found[0] });
-  if (theme.js) {
+  if (script) {
     try {
-      new vm.Script(theme.js);
+      new vm.Script(script);
     } catch (error) {
       throw fail('parse', `the offered theme.js does not parse (${error.message})`, { error: error.message });
     }
@@ -211,7 +221,7 @@ async function installTheme(theme, { from, dir = THEMES_DIR, shippedDir = SHIPPE
   try {
     await fs.writeFile(path.join(staging, 'theme.json'), `${JSON.stringify({ label, icon, ...(from ? { from: String(from) } : {}) }, null, 2)}\n`);
     await fs.writeFile(path.join(staging, 'theme.css'), theme.css);
-    if (theme.js) await fs.writeFile(path.join(staging, 'theme.js'), theme.js);
+    if (script) await fs.writeFile(path.join(staging, 'theme.js'), script);
     if (await taken(target)) throw fail('exists', `${target} already exists`, { name: target });
     await fs.rename(staging, path.join(dir, target));
   } finally {

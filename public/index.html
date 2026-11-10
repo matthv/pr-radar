@@ -1815,6 +1815,8 @@ const I18N = {
     decorReason_tooBig: '{name} est trop gros pour passer par le hub (plus de 15 Ko)',
     decorReason_badOffer: 'le thème reçu est mal formé, rien n’a été écrit',
     decorReason_gone: 'cette proposition a expiré',
+    decorReason_offline: 'le hub n’est pas connecté, rien n’est parti',
+    decorReason_unreadable: '{file} de {name} ne se lit pas',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -2034,7 +2036,8 @@ const I18N = {
     hubShareSent: '{label} envoyé à {who}, qui choisira de l’installer',
     hubShareFailed: 'Le thème n’est pas parti.',
     hubOfferFrom: '{who} te propose son thème',
-    hubOfferWarnScript: 'Ce thème contient du code qui s’exécutera dans ton radar. Installe-le seulement si tu fais confiance à {who}.',
+    hubOfferWarnScript: 'Ce thème contient du code qui s’exécutera dans ton radar et pourra y agir comme toi, partage de thèmes compris. Installe-le seulement si tu fais confiance à {who}.',
+    hubInstallFailed: 'Le thème n’a pas pu être installé.',
     hubOfferWarnCss: 'Ce thème ne contient que du style, pas de code.',
     hubOfferInstall: 'Installer',
     hubOfferDecline: 'Refuser',
@@ -2134,6 +2137,8 @@ const I18N = {
     decorReason_tooBig: '{name} is too big to go through the hub (over 15 KB)',
     decorReason_badOffer: 'the theme received is malformed, nothing was written',
     decorReason_gone: 'this offer has expired',
+    decorReason_offline: 'the hub is not connected, nothing went out',
+    decorReason_unreadable: '{file} of {name} cannot be read',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2353,7 +2358,8 @@ const I18N = {
     hubShareSent: '{label} sent to {who}: theirs to install',
     hubShareFailed: 'The theme did not go out.',
     hubOfferFrom: '{who} offers you their theme',
-    hubOfferWarnScript: 'This theme carries code that will run in your radar. Install it only if you trust {who}.',
+    hubOfferWarnScript: 'This theme carries code that will run in your radar and can act there as you, sharing themes included. Install it only if you trust {who}.',
+    hubInstallFailed: 'The theme could not be installed.',
     hubOfferWarnCss: 'This theme is style only, no code.',
     hubOfferInstall: 'Install',
     hubOfferDecline: 'Decline',
@@ -2826,9 +2832,25 @@ function beep() {
 // A teammate's call, or a kudos, sounds apart from the board's chime, and is not muted with it: someone who
 // silenced the PR chime still hears a nudge. Focus is what quiets it.
 function wizzSound(nudge, style = WIZZ_SOUND) {
-  audio ??= new (window.AudioContext || window.webkitAudioContext)();
-  audio.resume().catch(() => {});
-  WIZZ_SOUNDS[style](audio, audio.currentTime, nudge);
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    audio.resume().catch(() => {});
+    WIZZ_SOUNDS[style](audio, audio.currentTime, nudge);
+  } catch (error) {
+    console.warn('PR Radar: no sound', error);
+  }
+}
+
+// Every open tab hears the same wizz on its own beat: the first one to claim it plays it.
+function claimSound(key) {
+  try {
+    const played = JSON.parse(localStorage.getItem('pr-radar:soundsPlayed') ?? '[]');
+    if (played.includes(key)) return false;
+    localStorage.setItem('pr-radar:soundsPlayed', JSON.stringify([...played, key].slice(-30)));
+  } catch {
+    /* no storage: each tab plays its own */
+  }
+  return true;
 }
 
 const WIZZ_SOUNDS = {
@@ -2860,43 +2882,6 @@ const WIZZ_SOUNDS = {
       osc.start(now + at);
       osc.stop(now + at + 0.62);
     }
-  },
-  // Kept aside: two soft knocks, or a short low buzz.
-  knock(ctx, now, nudge) {
-    if (nudge) {
-      [0, 0.13].forEach(at => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(540, now + at);
-        osc.frequency.exponentialRampToValueAtTime(360, now + at + 0.08);
-        gain.gain.setValueAtTime(0, now + at);
-        gain.gain.linearRampToValueAtTime(0.09, now + at + 0.008);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.1);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(now + at);
-        osc.stop(now + at + 0.11);
-      });
-      return;
-    }
-    const osc = ctx.createOscillator();
-    const wobble = ctx.createOscillator();
-    const depth = ctx.createGain();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = 170;
-    wobble.frequency.value = 28;
-    depth.gain.value = 25;
-    wobble.connect(depth).connect(osc.frequency);
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.07, now + 0.03);
-    gain.gain.setValueAtTime(0.07, now + 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    wobble.start(now);
-    osc.stop(now + 0.43);
-    wobble.stop(now + 0.43);
   },
 };
 const WIZZ_SOUND = 'warm';
@@ -5140,6 +5125,7 @@ new ResizeObserver(([entry]) => {
 
 async function hubBeat(action, extra = {}) {
   const seq = ++hubSent;
+  let body;
   try {
     const response = await fetch('/api/hub', {
       method: 'POST',
@@ -5147,20 +5133,26 @@ async function hubBeat(action, extra = {}) {
       body: JSON.stringify({ tabId: HUB_TAB, hidden: document.hidden, action, ...extra }),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const wasDown = hubMissed >= 2;
-    hubMissed = 0;
-    const body = await response.json();
-    // A periodic beat answered after a click would put the state from before the click back.
-    if (seq < hubShownSeq) return body;
-    hubShownSeq = seq;
-    renderHub(body.hub, { force: wasDown });
-    refreshNudges();
-    return body;
+    body = await response.json();
   } catch {
     // The page outlived its server: a presence frozen at the last answer would lie.
     hubMissed += 1;
     if (hubMissed === 2) renderHub(hubData, { force: true });
+    return undefined;
   }
+  // Only the request above counts as the server being down; a slip while drawing is a page bug.
+  const wasDown = hubMissed >= 2;
+  hubMissed = 0;
+  // A periodic beat answered after a click would put the state from before the click back.
+  if (seq < hubShownSeq) return body;
+  hubShownSeq = seq;
+  try {
+    renderHub(body.hub, { force: wasDown });
+    refreshNudges();
+  } catch (error) {
+    console.error('PR Radar: drawing who is online failed', error);
+  }
+  return body;
 }
 
 const releaseParts = tag => tag.slice(1).split('.').map(Number);
@@ -5219,9 +5211,9 @@ function hubOffersHtml(data) {
   return offers.join('') + installed;
 }
 
-const hubShareError = error => {
+const hubShareError = (error, fallback = 'hubShareFailed') => {
   const key = `decorReason_${error?.reason}`;
-  return key in I18N[lang] ? t(key, error.params ?? {}) : t('hubShareFailed');
+  return key in I18N[lang] ? t(key, error.params ?? {}) : t(fallback);
 };
 
 function hubPersonHtml(person) {
@@ -5265,7 +5257,7 @@ function hubMeHtml(data, me) {
   const { behind, unknown } = me ? hubVersion(me) : { behind: 0, unknown: true };
   const mineVersion = me ? hubVersion(me) : { tag: null, behindTag: null };
   const version = behind ? behindPill({ behind, behindTag: mineVersion.behindTag })
-    : `<small>${mineVersion.tag ? `${escapeHtml(mineVersion.tag)} · ` : ''}${unknown ? t('hubUnknownVersion') : t('hubUpToDate')}${me ? ` · ${tn('hubTabs', me.tabs ?? 0)}` : ''}</small>`;
+    : `<small>${mineVersion.tag ? `${escapeHtml(mineVersion.tag)} · ` : ''}${unknown ? t('hubUnknownVersion') : t('hubUpToDate')}${me ? ` · ${escapeHtml(tn('hubTabs', me.tabs ?? 0))}` : ''}</small>`;
   return `<div class="hub-me">${hubFace(avatarSrc({ login: data.login, avatarUrl: data.avatarUrl }, 64), mine)}`
     + `<span class="hub-who"><b>${escapeHtml(data.login)}</b>${version}</span>`
     + '<span class="hub-toggles">'
@@ -5304,7 +5296,8 @@ function toastKudos(fresh = []) {
   paintTitle();
   if (!hubKudosBatch.length || document.hidden) return;
   // Only with the confetti, never into a background tab: a kudos is no reason to call anyone back.
-  if (hubKudosSoundOwed && hubData?.availability !== 'focus') wizzSound(false, 'kudos');
+  const lastKudos = hubKudosBatch.at(-1);
+  if (hubKudosSoundOwed && hubData?.availability !== 'focus' && claimSound(`kudos|${lastKudos.from}|${lastKudos.at}`)) wizzSound(false, 'kudos');
   hubKudosSoundOwed = false;
   const counts = new Map();
   for (const k of hubKudosBatch) counts.set(k.from, { ...k, n: (counts.get(k.from)?.n ?? 0) + 1 });
@@ -5323,14 +5316,15 @@ function toastKudos(fresh = []) {
     return `<i class="${shape}" style="--dx:${Math.round(Math.cos(angle) * distance)}px;--dy:${Math.round(Math.sin(angle) * distance)}px;`
       + `--r:${Math.round(Math.random() * 720 - 360)}deg;--d:${(i % 4) * 40}ms;--c:var(${colors[i % colors.length]})">${shape === 'star' ? ICONS.kudos : ''}</i>`;
   }).join('');
-  popToast(`<span class="hub-stack">${faces}</span><span>${escapeHtml(text)}</span><span class="hub-burst" aria-hidden="true">${burst}</span>`, { mood: 'cheer', key: 'kudos' });
+  popToast(`<span class="hub-stack">${faces}</span><span>${escapeHtml(text)}</span><span class="hub-burst" aria-hidden="true">${burst}</span>`, { mood: 'cheer', key: 'kudos' }).dataset.count = hubKudosBatch.length;
 }
 
 const TOASTS_SHOWN = 3;
 
 function dropToast(toast, { now = false } = {}) {
   clearTimeout(toast.timer);
-  if (toast.dataset.toast === 'kudos') hubKudosBatch = [];
+  // Only the kudos it showed: one arrived meanwhile in a hidden tab still waits for its turn.
+  if (toast.dataset.toast === 'kudos') hubKudosBatch = hubKudosBatch.slice(Number(toast.dataset.count ?? 0));
   if (now) return toast.remove();
   toast.classList.add('leaving');
   toast.timer = setTimeout(() => toast.remove(), 220);
@@ -5358,6 +5352,7 @@ function popToast(html, { ms = 6000, mood = '', key = null } = {}) {
   }
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => dropToast(toast), ms);
+  return toast;
 }
 
 const hubCalm = () => hubData?.availability === 'focus' || calm.matches;
@@ -5381,7 +5376,7 @@ function showWizz(data) {
     /* a wizz shown twice is fine */
   }
   // On arrival, hidden tab or not: the sound is what reaches someone working elsewhere.
-  if (fresh.length && data?.availability !== 'focus') wizzSound(fresh.some(w => w.nudge));
+  if (fresh.length && data?.availability !== 'focus' && claimSound(`wizz|${fresh.at(-1).from}|${fresh.at(-1).at}`)) wizzSound(fresh.some(w => w.nudge));
   if (fresh.length) playWizz(fresh);
 }
 
@@ -5541,9 +5536,10 @@ function renderHub(data, { force = false } = {}) {
     store.set('hubOpen', 'true');
   }
   const online = data.presence?.online ?? [];
-  const faces = online.slice(0, 3).map(person => `<img src="${escapeHtml(avatarSrc(person, 40))}" alt="">`).join('');
+  const others = online.filter(person => person.login !== data.login);
+  const faces = others.slice(0, 3).map(person => `<img src="${escapeHtml(avatarSrc(person, 40))}" alt="">`).join('');
   button.innerHTML = (faces ? `<span class="hub-stack">${faces}</span>` : HUB_ICON)
-    + (online.length ? `<span>${online.length}</span>` : '')
+    + (others.length ? `<span>${others.length}</span>` : '')
     + (data.status === 'auth' || data.offers?.length ? '<span class="hub-dot" aria-hidden="true"></span>' : '');
   button.title = t('hubButton');
   button.classList.toggle('on', hubOpen);
@@ -5587,6 +5583,9 @@ el('hubPanel').addEventListener('click', async event => {
     hubShareNote = null;
     return renderHub(hubData, { force: true });
   }
+  // A worn theme runs in this page too: sending, installing or wearing one takes a real click.
+  const consent = event.target.closest('[data-hub-share-theme], [data-hub-accept], [data-hub-wear]');
+  if (consent && !event.isTrusted) return undefined;
   const shareTheme = event.target.closest('[data-hub-share-theme]');
   if (shareTheme) {
     const to = shareTheme.dataset.hubShareTo;
@@ -5609,11 +5608,16 @@ el('hubPanel').addEventListener('click', async event => {
     const label = hubData?.offers?.find(offer => offer.id === accept)?.label ?? '';
     const body = await hubBeat('acceptOffer', { id: accept });
     if (body?.installed) {
-      catalog = body.catalog;
+      if (body.catalog) {
+        catalog = body.catalog;
+        catalogChanged();
+        applyDecor();
+      } else {
+        loadDecor();
+      }
       hubInstalled = { name: body.installed, label };
-      applyDecor();
     } else {
-      hubInstalled = { error: hubShareError(body?.error) };
+      hubInstalled = { error: hubShareError(body?.error, 'hubInstallFailed') };
     }
     return renderHub(hubData, { force: true });
   }

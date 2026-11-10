@@ -113,3 +113,15 @@ test('theme page: a Content-Security-Policy keeps the page on this machine', asy
   assert.match(csp, /connect-src 'self'/);
   assert.match(csp, /img-src 'self' data: https:\/\/github\.com/);
 });
+
+test('hub route: a body that is no object is refused, and the server stays up', async t => {
+  const { base, stop } = await startServer({ PR_RADAR_DEMO: 'true' });
+  t.after(stop);
+  for (const body of [null, [], 'x', 42]) {
+    const response = await fetch(`${base}/api/hub`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+  const response = await send(base, 'POST', '/api/hub', { body: { action: 'kudos', to: ['bexchauveto'] } });
+  assert.equal(response.status, 200);
+  assert.equal((await fetch(`${base}/api/themes`)).status, 200);
+});

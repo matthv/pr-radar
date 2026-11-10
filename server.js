@@ -41,7 +41,8 @@ const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
 const { listAllThemes, overlaps, themeFiles } = require('./themes');
 const { generateTheme, removeTheme, readForOffer, installTheme } = require('./new-theme');
-const { createHub, createTabCounter, realFiles, wizzRef, withPrUrls, CONFIG_DIR } = require('./hub');
+const { createHub, createTabCounter, realFiles, withPrUrls, CONFIG_DIR } = require('./hub');
+const { hubAction, login } = require('./hub-actions');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -71,8 +72,15 @@ const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
-const HUB_URL = DEMO ? '' : (process.env.PR_RADAR_HUB_URL ?? '').trim();
-const GITHUB_LOGIN = /^[A-Za-z0-9-]{1,39}$/;
+const HUB_URL_SET = DEMO ? '' : (process.env.PR_RADAR_HUB_URL ?? '').trim();
+// A value without its wss:// would make the client retry forever: it is turned off instead, and said.
+const HUB_URL = (() => {
+  try {
+    return ['ws:', 'wss:'].includes(new URL(HUB_URL_SET).protocol) ? HUB_URL_SET : '';
+  } catch {
+    return '';
+  }
+})();
 const THEME = (process.env.PR_RADAR_THEME ?? '').trim();
 const ORPHAN_DAYS = Math.max(0, Number(process.env.PR_RADAR_ORPHAN_DAYS ?? 2) || 0);
 const TERMINAL = (process.env.PR_RADAR_TERMINAL ?? '').trim() || 'Terminal';
@@ -177,7 +185,12 @@ function hubInstanceId() {
     /* first start: created below */
   }
   const id = randomUUID();
-  writeFileSync(file, `${id}\n`);
+  try {
+    writeFileSync(file, `${id}\n`);
+  } catch (error) {
+    // A read-only clone still connects, under an id that lasts until the next start.
+    logger.fail('hub', `cannot write .hub-instance (${error.message}), using a temporary id`);
+  }
   return id;
 }
 
@@ -193,7 +206,7 @@ const tabCounter = createTabCounter();
 
 async function syncHub() {
   const checked = update.status();
-  hub.setVersion({ commit: await update.head(), behind: checked && !checked.pending ? checked.behind : null, tag: checked?.version ?? null });
+  hub.setVersion({ commit: await update.head(), behind: checked && !checked.pending ? checked.behind : null, tag: checked && !checked.pending ? checked.version ?? null : null });
   hub.setTabs(tabCounter.count());
 }
 
@@ -577,6 +590,28 @@ const themeCatalog = async () => {
   return { default: THEME || null, themes, canGenerate: digestAvailable && !DEMO };
 };
 
+async function demoHubAction(body) {
+  const { mine, reviews } = demo.payload(false);
+  const urls = [...mine, ...reviews].map(pr => pr.url);
+  const to = login(body.to) ?? '';
+  const pr = typeof body.pr === 'string' ? body.pr : null;
+  if (body.action === 'availability') demo.setAvailability(body.value);
+  if (body.action === 'kudos') demo.kudosBack(to);
+  if (body.action === 'wizz' && (body.pr == null || urls.includes(pr))) demo.wizzBack(to, pr);
+  if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
+  let shared = body.action === 'acceptOffer' ? { error: { reason: 'demo' } } : {};
+  if (body.action === 'offerTheme') {
+    try {
+      const theme = await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR });
+      demo.themeBack(to, { ...theme, hasScript: Boolean(theme.js?.trim()) });
+      shared = { sent: theme.name };
+    } catch (error) {
+      shared = { error: { reason: error.reason, params: error.params } };
+    }
+  }
+  return { hub: withPrUrls(demo.hub, urls, Date.now(), demo.WIZZ_LIMITS), ...shared };
+}
+
 const themeFailure = (res, status, error) =>
   json(res, status, { error: error.message, reason: error.reason, params: error.params });
 
@@ -733,59 +768,24 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return json(res, 400, { error: 'invalid JSON body' });
     }
-    if (DEMO) {
-      const { mine, reviews } = demo.payload(false);
-      const urls = [...mine, ...reviews].map(pr => pr.url);
-      if (body.action === 'availability') demo.setAvailability(body.value);
-      if (body.action === 'kudos') demo.kudosBack(body.to);
-      if (body.action === 'wizz' && (body.pr == null || urls.includes(body.pr))) demo.wizzBack(String(body.to ?? ''), body.pr ?? null);
-      if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
-      let shared = body.action === 'acceptOffer' ? { error: { reason: 'demo' } } : {};
-      if (body.action === 'offerTheme') {
-        try {
-          const theme = await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR });
-          demo.themeBack(String(body.to ?? ''), { ...theme, hasScript: Boolean(theme.js?.trim()) });
-          shared = { sent: theme.name };
-        } catch (error) {
-          shared = { error: { reason: error.reason, params: error.params } };
-        }
-      }
-      return json(res, 200, { hub: withPrUrls(demo.hub, urls, Date.now(), demo.WIZZ_LIMITS), ...shared });
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'expected a JSON object' });
+    // The board never depends on the hub: whatever goes wrong here answers, and the server stays up.
+    try {
+      if (DEMO) return json(res, 200, await demoHubAction(body));
+      const urls = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews].map(pr => pr.url) : [];
+      return json(res, 200, await hubAction(body, {
+        hub,
+        tabCounter,
+        boardUrls: () => urls,
+        readForOffer: name => readForOffer(name, { dir: CUSTOM_THEMES_DIR }),
+        installTheme: (theme, { from }) => installTheme(theme, { from, dir: CUSTOM_THEMES_DIR, shippedDir: THEMES_DIR }),
+        themeCatalog,
+        log: (level, message) => logger[level]('theme', message),
+      }));
+    } catch (error) {
+      logger.fail('hub', `request failed: ${error.message}`);
+      return json(res, 500, { error: error.message });
     }
-    if (body.action === 'bye') tabCounter.bye(body.tabId);
-    else tabCounter.beat(body.tabId, body.hidden);
-    if (body.action === 'signIn') hub.signIn();
-    if (body.action === 'decline') await hub.decline();
-    if (body.action === 'availability') hub.setAvailability(body.value);
-    if (body.action === 'kudos' && GITHUB_LOGIN.test(String(body.to ?? ''))) hub.sendKudos(body.to);
-    if (body.action === 'declineOffer') hub.takeOffer(String(body.id ?? ''));
-    const urls = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews].map(pr => pr.url) : [];
-    // A nudge only for a PR of this board, which the recipient's radar can find too.
-    if (body.action === 'wizz' && GITHUB_LOGIN.test(String(body.to ?? '')) && (body.pr == null || urls.includes(body.pr))) {
-      hub.sendWizz(body.to, body.pr == null ? null : wizzRef(body.pr));
-    }
-    const shared = {};
-    if (body.action === 'offerTheme' && GITHUB_LOGIN.test(String(body.to ?? ''))) {
-      try {
-        if (hub.offerTheme(body.to, await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR }))) shared.sent = body.name;
-      } catch (error) {
-        shared.error = { reason: error.reason, params: error.params };
-      }
-    }
-    if (body.action === 'acceptOffer') {
-      const offer = hub.takeOffer(String(body.id ?? ''));
-      try {
-        if (!offer) throw Object.assign(new Error('offer gone'), { reason: 'gone' });
-        shared.installed = await installTheme(offer.theme, { from: offer.from, dir: CUSTOM_THEMES_DIR, shippedDir: THEMES_DIR });
-        shared.catalog = await themeCatalog();
-        logger.info('theme', `installed custom-themes/${shared.installed}, offered by ${offer.from}`);
-      } catch (error) {
-        shared.error = { reason: error.reason, params: error.params };
-        if (offer) logger.fail('theme', `offer from ${offer.from} not installed, ${error.message}`);
-      }
-    }
-    hub.setTabs(tabCounter.count());
-    return json(res, 200, { hub: withPrUrls(hub.state(), urls), ...shared });
   }
 
   if (url.pathname === '/api/update' && req.method === 'POST') {
@@ -928,7 +928,8 @@ server.listen(PORT, async () => {
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}\n` +
-      `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}` : 'off (no PR_RADAR_HUB_URL)'}`,
+      `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}`
+        : HUB_URL_SET ? `off (PR_RADAR_HUB_URL is not a ws:// or wss:// address: ${HUB_URL_SET})` : 'off (no PR_RADAR_HUB_URL)'}`,
   );
   update.start();
   if (HUB_URL) {
