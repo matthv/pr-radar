@@ -453,7 +453,7 @@ function createHub({
 const TAB_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_TABS = 100;
 
-// Tabs have no connection of their own to the server, only a beat every 25 s. A hidden one
+// Tabs have no connection of their own to the server, only a beat every 5 s (25 s hidden). A hidden one
 // gets more slack: the browser slows its timers down to once a minute.
 function createTabCounter({ visibleMs = 75_000, hiddenMs = 150_000 } = {}) {
   const seen = new Map();

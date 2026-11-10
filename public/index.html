@@ -4573,6 +4573,7 @@ document.addEventListener('change', event => {
 let hiddenSince = null;
 document.addEventListener('visibilitychange', () => {
   hubBeat();
+  scheduleHubBeat();
   if (document.visibilityState === 'visible') {
     toastKudos();
     playWizz();
@@ -5638,7 +5639,16 @@ window.addEventListener('pagehide', () => {
   const bye = new Blob([JSON.stringify({ tabId: HUB_TAB, action: 'bye' })], { type: 'application/json' });
   navigator.sendBeacon('/api/hub', bye);
 });
-setInterval(() => hubBeat(), 25_000);
+// The beat is also how a wizz reaches the page: often while someone looks, sparingly when hidden,
+// where the browser would slow it down anyway.
+function scheduleHubBeat() {
+  clearTimeout(scheduleHubBeat.timer);
+  scheduleHubBeat.timer = setTimeout(() => {
+    hubBeat();
+    scheduleHubBeat();
+  }, document.hidden ? 25_000 : 5_000);
+}
+scheduleHubBeat();
 hubBeat();
 
 applyLang(lang);
