@@ -155,8 +155,9 @@ async function removeTheme(name, { dir = THEMES_DIR } = {}) {
   await fs.rm(folder, { recursive: true });
 }
 
-// The hub closes on a frame over 16 KiB; the margin covers the envelope and the login.
-const OFFER_MAX_BYTES = 15 * 1024;
+// The hub takes a theme_offer up to 110 KiB, other messages up to 16 KiB; the margin covers the
+// envelope and the login.
+const OFFER_MAX_BYTES = 100 * 1024;
 const LABEL_MAX = 60;
 const ICON_MAX = 16;
 
