@@ -155,6 +155,71 @@ async function removeTheme(name, { dir = THEMES_DIR } = {}) {
   await fs.rm(folder, { recursive: true });
 }
 
+// The hub closes on a frame over 16 KiB; the margin covers the envelope and the login.
+const OFFER_MAX_BYTES = 15 * 1024;
+const LABEL_MAX = 60;
+const ICON_MAX = 16;
+
+async function readForOffer(name, { dir = THEMES_DIR } = {}) {
+  if (!NAME_RE.test(name ?? '') || name.length > 40) throw fail('missing', 'no such theme');
+  const folder = path.join(dir, name);
+  let meta;
+  try {
+    meta = JSON.parse(await fs.readFile(path.join(folder, 'theme.json'), 'utf8'));
+  } catch {
+    throw fail('missing', 'no such theme');
+  }
+  const css = await fs.readFile(path.join(folder, 'theme.css'), 'utf8').catch(() => null);
+  if (css === null) throw fail('missing', 'no such theme');
+  const js = await fs.readFile(path.join(folder, 'theme.js'), 'utf8').catch(() => null);
+  const theme = {
+    name,
+    label: String(meta.label ?? name).trim().slice(0, LABEL_MAX),
+    icon: String(meta.icon ?? '🎨').trim().slice(0, ICON_MAX),
+    css,
+    js,
+  };
+  if (Buffer.byteLength(JSON.stringify(theme)) > OFFER_MAX_BYTES) throw fail('tooBig', `${name} is too big to send`, { name });
+  return theme;
+}
+
+const asLogin = login => String(login ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 39);
+
+// What came over the hub is checked like a generated theme, then lands next to the others,
+// under a name of its own when a shipped or a custom theme already has it.
+async function installTheme(theme, { from, dir = THEMES_DIR, shippedDir = SHIPPED_DIR } = {}) {
+  const name = String(theme?.name ?? '');
+  if (!NAME_RE.test(name) || name.length > 40 || name === 'none') throw fail('badOffer', 'the offered theme has no valid name');
+  if (typeof theme.css !== 'string' || (theme.js !== null && typeof theme.js !== 'string')) throw fail('badOffer', 'the offered theme is malformed');
+  const label = String(theme.label ?? '').trim().slice(0, LABEL_MAX) || name;
+  const icon = String(theme.icon ?? '').trim().slice(0, ICON_MAX) || '🎨';
+  const found = NETWORK.exec(theme.css) ?? (theme.js ? NETWORK.exec(theme.js) : null);
+  if (found) throw fail('network', `the offered theme reaches the network or the page storage (${found[0]}), refused`, { match: found[0] });
+  if (theme.js) {
+    try {
+      new vm.Script(theme.js);
+    } catch (error) {
+      throw fail('parse', `the offered theme.js does not parse (${error.message})`, { error: error.message });
+    }
+  }
+  const taken = async candidate => candidate === 'none' || await exists(path.join(dir, candidate)) || await exists(path.join(shippedDir, candidate));
+  const base = (await taken(name)) && asLogin(from) ? `${name}-${asLogin(from)}`.slice(0, 40).replace(/-+$/, '') : name;
+  let target = base;
+  for (let n = 2; await taken(target); n += 1) target = `${base.slice(0, 37)}-${n}`;
+  await fs.mkdir(path.join(dir, '.generating'), { recursive: true });
+  const staging = await fs.mkdtemp(path.join(dir, '.generating', `${target}-`));
+  try {
+    await fs.writeFile(path.join(staging, 'theme.json'), `${JSON.stringify({ label, icon, ...(from ? { from: String(from) } : {}) }, null, 2)}\n`);
+    await fs.writeFile(path.join(staging, 'theme.css'), theme.css);
+    if (theme.js) await fs.writeFile(path.join(staging, 'theme.js'), theme.js);
+    if (await taken(target)) throw fail('exists', `${target} already exists`, { name: target });
+    await fs.rename(staging, path.join(dir, target));
+  } finally {
+    await fs.rm(staging, { recursive: true, force: true });
+  }
+  return target;
+}
+
 const GENERATE_TIMEOUT_MS = 300_000;
 
 const GENERATE_ARGS = [
@@ -176,4 +241,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createTheme, generateTheme, removeTheme, parseGenerated, slugOf, prefixOf };
+module.exports = { createTheme, generateTheme, removeTheme, readForOffer, installTheme, parseGenerated, slugOf, prefixOf };

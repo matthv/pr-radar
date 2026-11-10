@@ -465,7 +465,7 @@ const hub = {
   wizzSent: [],
   kudos: [{ id: 1, from: 'bexchauveto', avatarUrl: avatarOf('bexchauveto'), at: ago(0) }],
   undelivered: null,
-  offers: [],
+  offers: [{ id: 'demo-aurore', from: 'bexchauveto', avatarUrl: avatarOf('bexchauveto'), receivedAt: STARTED_AT, name: 'aurore', label: 'Aurore', icon: '🌌', hasScript: true }],
 };
 
 // The demo's own status follows the picker, so it can be tried without a hub.
@@ -481,6 +481,18 @@ function kudosBack(login) {
   const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
   if (!person) return;
   hub.kudos = [...hub.kudos, { id: hub.kudos.length + 1, from: login, avatarUrl: person.avatarUrl, at: new Date().toISOString() }].slice(-10);
+}
+
+// A theme sent in the demo comes straight back from that teammate, so the offer can be seen too.
+function themeBack(login, { name, label, icon, hasScript }) {
+  const person = hub.presence.online.find(candidate => candidate.login === login && login !== ME);
+  if (!person) return;
+  const id = `demo-${name}-${Date.now()}`;
+  hub.offers = [...hub.offers, { id, from: login, avatarUrl: person.avatarUrl, receivedAt: Date.now(), name, label, icon, hasScript }].slice(-5);
+}
+
+function takeOffer(id) {
+  hub.offers = hub.offers.filter(offer => offer.id !== id);
 }
 
 function setAcceptsWizz(value) {
@@ -577,4 +589,4 @@ async function notes(body) {
   };
 }
 
-module.exports = { payload, update, hub, setAvailability, kudosBack, setAcceptsWizz, wizzBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };
+module.exports = { payload, update, hub, setAvailability, kudosBack, setAcceptsWizz, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };

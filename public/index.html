@@ -344,7 +344,24 @@
   .hub-person:hover :is(.hub-kudos, .hub-wizz).cooldown { opacity: .35; }
   :is(.hub-kudos, .hub-wizz).cooldown:hover { transform: none; background: none; color: var(--text-soft); }
   .hub-note { margin: 0; font-size: 12px; color: var(--text-faint); }
-  .hub-acts { display: flex; flex: none; margin-left: auto; }
+  /* Over the row rather than beside it: hidden until hovered, they would otherwise squeeze the name. */
+  .hub-person { position: relative; flex-wrap: wrap; }
+  .hub-acts { position: absolute; top: -2px; right: 0; display: flex; border-radius: 9px; background: var(--surface); }
+  .hub-person:not(:hover) .hub-acts { pointer-events: none; }
+  .hub-acts:has(:focus-visible, .sent) { pointer-events: auto; }
+  .hub-share { flex: none; display: flex; color: var(--text-soft); cursor: pointer; background: none; border: 0; border-radius: 8px; padding: 5px; opacity: 0; transition: opacity .15s, color .15s; }
+  .hub-share svg { width: 15px; height: 15px; }
+  .hub-person:hover .hub-share, .hub-share:focus-visible, .hub-share.sent { opacity: 1; }
+  .hub-share:hover, .hub-share.sent { color: var(--indigo); background: var(--indigo-soft); }
+  .hub-share-list { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding-left: 38px; }
+  .hub-share-theme { font: inherit; font-size: 12px; cursor: pointer; color: var(--text); background: var(--sunken); border: 1px solid transparent; border-radius: 999px; padding: 3px 10px; }
+  .hub-share-theme:hover { border-color: var(--indigo); color: var(--indigo); }
+  .hub-share-note { margin: 0; font-size: 12px; color: var(--indigo); }
+  .hub-share-note.error { color: var(--rose); }
+  .hub-offer-head { display: flex; align-items: center; gap: 8px; }
+  .hub-offer-head img { width: 22px; height: 22px; border-radius: 50%; }
+  .hub-offer-theme { font-size: 14px; color: var(--text); }
+  .hub-offer-warn { font-size: 12px; color: var(--text-soft); }
   .hub-toast .hub-btn { flex: none; }
   .card.wizzed { outline: 2px solid var(--indigo); outline-offset: 2px; transition: outline-color .3s; }
   .hub-toast {
@@ -1794,6 +1811,9 @@ const I18N = {
     decorReason_parse: 'le theme.js généré ne se lit pas ({error})',
     decorReason_timeout: 'Claude n’a pas répondu en {seconds} s',
     decorReason_missing: 'ce thème n’existe pas',
+    decorReason_tooBig: '{name} est trop gros pour passer par le hub (plus de 15 Ko)',
+    decorReason_badOffer: 'le thème reçu est mal formé, rien n’a été écrit',
+    decorReason_gone: 'cette proposition a expiré',
     settingsTitle: 'Réglages',
     settingsRepoColors: 'Couleur des repos',
     settingsRepoColorsHint: 'Tu choisis la teinte ; la clarté suit le thème, pour rester lisible en clair comme en sombre.',
@@ -2003,7 +2023,7 @@ const I18N = {
     hubWizzCooldown: 'Déjà un wizz pour {who} il y a moins de 5 minutes',
     hubWizzRefused: '{who} a coupé les wizz',
     hubWizzReceived: '{who} t’envoie un wizz',
-    hubWizzAccepting: 'Wizz acceptés : clique pour les couper (les relances sur une PR passent toujours)',
+    hubWizzAccepting: 'Wizz acceptés, avec leur son : clique pour les couper (les relances sur une PR passent toujours)',
     hubWizzRefusing: 'Wizz coupés : clique pour les accepter de nouveau',
     hubNudgeTitle: 'Relancer {who} sur cette PR',
     hubNudgeCooldown: 'Relance déjà envoyée à {who} il y a peu : réessaie dans quelques minutes',
@@ -2011,6 +2031,16 @@ const I18N = {
     hubNudgeReceived: '{who} te relance sur « {title} »',
     hubNudgeReceivedUnknown: '{who} te relance sur une PR',
     hubNudgeShow: 'Voir',
+    hubShareTitle: 'Envoyer un de tes thèmes à {who}',
+    hubShareSent: '{label} envoyé à {who}, qui choisira de l’installer',
+    hubShareFailed: 'Le thème n’est pas parti.',
+    hubOfferFrom: '{who} te propose son thème',
+    hubOfferWarnScript: 'Ce thème contient du code qui s’exécutera dans ton radar. Installe-le seulement si tu fais confiance à {who}.',
+    hubOfferWarnCss: 'Ce thème ne contient que du style, pas de code.',
+    hubOfferInstall: 'Installer',
+    hubOfferDecline: 'Refuser',
+    hubOfferInstalled: '{label} est installé, dans « Mes thèmes ».',
+    hubOfferWear: 'Le porter',
     hubSentAgo: 'il y a {v}',
     notesBusy: 'Rédaction…',
     notesMine: 'mes PRs ({n})',
@@ -2102,6 +2132,9 @@ const I18N = {
     decorReason_parse: 'the generated theme.js does not parse ({error})',
     decorReason_timeout: 'Claude gave no answer within {seconds} s',
     decorReason_missing: 'no such theme',
+    decorReason_tooBig: '{name} is too big to go through the hub (over 15 KB)',
+    decorReason_badOffer: 'the theme received is malformed, nothing was written',
+    decorReason_gone: 'this offer has expired',
     settingsTitle: 'Settings',
     settingsRepoColors: 'Repo colours',
     settingsRepoColorsHint: 'You pick the hue; the lightness follows the theme, so it stays readable in light and dark.',
@@ -2311,7 +2344,7 @@ const I18N = {
     hubWizzCooldown: 'You sent {who} a wizz less than 5 minutes ago',
     hubWizzRefused: '{who} has turned wizzes off',
     hubWizzReceived: '{who} sends you a wizz',
-    hubWizzAccepting: 'Wizzes on: click to turn them off (nudges on a PR still come through)',
+    hubWizzAccepting: 'Wizzes on, with their sound: click to turn them off (nudges on a PR still come through)',
     hubWizzRefusing: 'Wizzes off: click to accept them again',
     hubNudgeTitle: 'Nudge {who} about this PR',
     hubNudgeCooldown: 'You nudged {who} a moment ago: try again in a few minutes',
@@ -2319,6 +2352,16 @@ const I18N = {
     hubNudgeReceived: '{who} is nudging you about “{title}”',
     hubNudgeReceivedUnknown: '{who} is nudging you about a PR',
     hubNudgeShow: 'Show',
+    hubShareTitle: 'Send {who} one of your themes',
+    hubShareSent: '{label} sent to {who}: theirs to install',
+    hubShareFailed: 'The theme did not go out.',
+    hubOfferFrom: '{who} offers you their theme',
+    hubOfferWarnScript: 'This theme carries code that will run in your radar. Install it only if you trust {who}.',
+    hubOfferWarnCss: 'This theme is style only, no code.',
+    hubOfferInstall: 'Install',
+    hubOfferDecline: 'Decline',
+    hubOfferInstalled: '{label} is installed, under “My themes”.',
+    hubOfferWear: 'Wear it',
     hubSentAgo: '{v} ago',
     notesBusy: 'Writing…',
     notesMine: 'my PRs ({n})',
@@ -2483,8 +2526,12 @@ async function loadDecor() {
     return;
   }
   catalog.themes ??= [];
+  catalogChanged();
   await wearDecor();
 }
+
+// The who-is-online panel offers one's own themes: it redraws when they change.
+const catalogChanged = () => document.dispatchEvent(new Event('pr-radar:catalog'));
 
 const calm = matchMedia('(prefers-reduced-motion: reduce)');
 let ambientTimer = null;
@@ -2573,6 +2620,7 @@ async function removeCustomTheme(name) {
   });
   if (!response.ok) throw new Error(await themeError(response));
   ({ catalog } = await response.json());
+  catalogChanged();
   if (store.get('themePick', '') === name) store.set('themePick', '');
   definitions.delete(name);
 }
@@ -2672,6 +2720,7 @@ el('decorNew').addEventListener('submit', async event => {
     for (const field of fields) field.disabled = false;
   }
   catalog = body.catalog;
+  catalogChanged();
   el('decorNew').reset();
   el('decorNew').hidden = true;
   status.textContent = '';
@@ -2776,6 +2825,71 @@ function beep() {
   }
   chime();
 }
+
+// A teammate's call sounds apart from the board's chime, and is not muted with it: someone who
+// silenced the PR chime still hears a nudge. Focus and refusing wizzes are what quiet it.
+function wizzSound(nudge, style = WIZZ_SOUND) {
+  audio ??= new (window.AudioContext || window.webkitAudioContext)();
+  audio.resume().catch(() => {});
+  WIZZ_SOUNDS[style](audio, audio.currentTime, nudge);
+}
+
+const WIZZ_SOUNDS = {
+  // Two warm low notes laid one after the other, held a moment; a third under them for a wizz.
+  warm(ctx, now, nudge) {
+    const notes = nudge ? [[0, 262], [0.12, 330]] : [[0, 196], [0.1, 262], [0.2, 330]];
+    for (const [at, freq] of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + at);
+      gain.gain.linearRampToValueAtTime(0.07, now + at + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.6);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + at);
+      osc.stop(now + at + 0.62);
+    }
+  },
+  // Kept aside: two soft knocks, or a short low buzz.
+  knock(ctx, now, nudge) {
+    if (nudge) {
+      [0, 0.13].forEach(at => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(540, now + at);
+        osc.frequency.exponentialRampToValueAtTime(360, now + at + 0.08);
+        gain.gain.setValueAtTime(0, now + at);
+        gain.gain.linearRampToValueAtTime(0.09, now + at + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.1);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + at);
+        osc.stop(now + at + 0.11);
+      });
+      return;
+    }
+    const osc = ctx.createOscillator();
+    const wobble = ctx.createOscillator();
+    const depth = ctx.createGain();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = 170;
+    wobble.frequency.value = 28;
+    depth.gain.value = 25;
+    wobble.connect(depth).connect(osc.frequency);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.07, now + 0.03);
+    gain.gain.setValueAtTime(0.07, now + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    wobble.start(now);
+    osc.stop(now + 0.43);
+    wobble.stop(now + 0.43);
+  },
+};
+const WIZZ_SOUND = 'warm';
 
 function chime() {
   // One context for the page: a document may only hold a handful, and a tool left open all
@@ -4527,6 +4641,8 @@ const CHECK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" s
 const icon = paths => '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"'
   + ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 const ICONS = {
+  palette: icon('<path d="M8 2a6 6 0 1 0 0 12c.9 0 1.3-.6 1.3-1.2 0-.8-.7-1-.7-1.7 0-.6.5-1.1 1.1-1.1H11a3 3 0 0 0 3-3C14 4.3 11.3 2 8 2Z"/>'
+    + '<circle cx="5" cy="7.2" r=".7"/><circle cx="7.4" cy="4.8" r=".7"/><circle cx="10.4" cy="5.6" r=".7"/>'),
   hand: icon('<path d="M5.5 8.6V4.2a1 1 0 0 1 2 0v3.6M7.5 7.6V3a1 1 0 0 1 2 0v4.6M9.5 7.6V3.8a1 1 0 0 1 2 0v4.4"/>'
     + '<path d="M11.5 8.2V6.4a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5h-.7a4 4 0 0 1-3.1-1.5L3.1 10.4a1.05 1.05 0 0 1 1.6-1.4l.8.9"/>'),
   focus: icon('<path d="M2.5 11.5V8.5a5.5 5.5 0 0 1 11 0v3"/><rect x="2" y="9.5" width="3" height="4.5" rx="1.2"/><rect x="11" y="9.5" width="3" height="4.5" rx="1.2"/>'),
@@ -5023,12 +5139,13 @@ async function hubBeat(action, extra = {}) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const wasDown = hubMissed >= 2;
     hubMissed = 0;
-    const { hub } = await response.json();
+    const body = await response.json();
     // A periodic beat answered after a click would put the state from before the click back.
-    if (seq < hubShownSeq) return;
+    if (seq < hubShownSeq) return body;
     hubShownSeq = seq;
-    renderHub(hub, { force: wasDown });
+    renderHub(body.hub, { force: wasDown });
     refreshNudges();
+    return body;
   } catch {
     // The page outlived its server: a presence frozen at the last answer would lie.
     hubMissed += 1;
@@ -5053,6 +5170,50 @@ function hubVersion(person) {
 const behindPill = ({ behind, behindTag }) => `<span class="hub-behind"${behindTag ? ` title="${escapeHtml(tn('hubBehind', behind))}"` : ''}>`
   + `${escapeHtml(behindTag ? `${behindTag} · ${t('hubLate')}` : tn('hubBehind', behind))}</span>`;
 
+const myThemes = () => catalog.themes.filter(theme => theme.custom);
+let hubShareOpen = null;
+let hubShareNote = null;
+
+// Only a theme of one's own travels: the shipped ones, everybody already has.
+function shareButton(person) {
+  if (!myThemes().length) return '';
+  const open = hubShareOpen === person.login;
+  return `<button type="button" class="hub-share${open ? ' sent' : ''}" data-hub-share="${escapeHtml(person.login)}" aria-expanded="${open}"`
+    + ` title="${escapeHtml(t('hubShareTitle', { who: person.login }))}" aria-label="${escapeHtml(t('hubShareTitle', { who: person.login }))}">${ICONS.palette}</button>`;
+}
+
+function shareList(person) {
+  const note = hubShareNote?.to === person.login ? `<p class="hub-share-note${hubShareNote.error ? ' error' : ''}">${escapeHtml(hubShareNote.text)}</p>` : '';
+  if (hubShareOpen !== person.login) return note ? `<div class="hub-share-list">${note}</div>` : '';
+  return `<div class="hub-share-list">${myThemes().map(theme => `<button type="button" class="hub-share-theme" data-hub-share-to="${escapeHtml(person.login)}"`
+    + ` data-hub-share-theme="${escapeHtml(theme.name)}">${escapeHtml(theme.icon)} ${escapeHtml(theme.label)}</button>`).join('')}${note}</div>`;
+}
+
+let hubInstalled = null;
+
+// A theme runs its own code in the page: installing one is the recipient's call, made knowingly.
+function hubOffersHtml(data) {
+  const offers = (data.offers ?? []).map(offer => `<div class="hub-box hub-offer">`
+    + `<div class="hub-offer-head"><img src="${escapeHtml(avatarSrc({ login: offer.from, avatarUrl: offer.avatarUrl }, 40))}" alt="">`
+    + `<span>${escapeHtml(t('hubOfferFrom', { who: offer.from }))}</span></div>`
+    + `<b class="hub-offer-theme">${escapeHtml(offer.icon)} ${escapeHtml(offer.label)}</b>`
+    + `<p class="hub-offer-warn">${escapeHtml(t(offer.hasScript ? 'hubOfferWarnScript' : 'hubOfferWarnCss', { who: offer.from }))}</p>`
+    + `<div class="hub-actions"><button type="button" class="hub-btn" data-hub-accept="${escapeHtml(offer.id)}">${t('hubOfferInstall')}</button>`
+    + `<button type="button" class="hub-btn quiet" data-hub-decline="${escapeHtml(offer.id)}">${t('hubOfferDecline')}</button></div></div>`);
+  const installed = hubInstalled
+    ? `<div class="hub-box">${hubInstalled.error
+      ? `<p>${escapeHtml(hubInstalled.error)}</p>`
+      : `<p>${escapeHtml(t('hubOfferInstalled', { label: hubInstalled.label }))}</p>`
+        + `<div class="hub-actions"><button type="button" class="hub-btn" data-hub-wear="${escapeHtml(hubInstalled.name)}">${t('hubOfferWear')}</button></div>`}</div>`
+    : '';
+  return offers.join('') + installed;
+}
+
+const hubShareError = error => {
+  const key = `decorReason_${error?.reason}`;
+  return key in I18N[lang] ? t(key, error.params ?? {}) : t('hubShareFailed');
+};
+
 function hubPersonHtml(person) {
   const { behind, unknown, radars } = hubVersion(person);
   const tip = [tn('hubTabs', person.tabs ?? 0), radars.length > 1 ? tn('hubRadars', radars.length) : ''].filter(Boolean).join(' · ');
@@ -5075,7 +5236,7 @@ function hubPersonHtml(person) {
     + ` title="${escapeHtml(t(wizzTitle, { who: person.login }))}" aria-label="${escapeHtml(t('hubWizzTitle', { who: person.login }))}">${wizzSent ? CHECK_ICON : ICONS.wizz}</button>`;
   return `<li class="hub-person" title="${escapeHtml(tip)}">${hubFace(avatarSrc(person, 52), status)}`
     + `<span class="hub-who"><b>${escapeHtml(person.login)}</b>`
-    + `<small>${availability}${escapeHtml(t('hubSince', { v: ago(person.since) }))}</small>${flag}</span><span class="hub-acts">${kudos}${wizz}</span></li>`;
+    + `<small>${availability}${escapeHtml(t('hubSince', { v: ago(person.since) }))}</small>${flag}</span><span class="hub-acts">${kudos}${wizz}${shareButton(person)}</span>${shareList(person)}</li>`;
 }
 
 // Me apart from the list: what I set for the others, and what they see of my radar.
@@ -5196,6 +5357,9 @@ function showWizz(data) {
   } catch {
     /* a wizz shown twice is fine */
   }
+  // On arrival, hidden tab or not: the sound is what reaches someone working elsewhere.
+  const nudged = fresh.some(w => w.nudge);
+  if (fresh.length && data?.availability !== 'focus' && (nudged || data?.acceptsWizz !== false)) wizzSound(nudged);
   if (fresh.length) playWizz(fresh);
 }
 
@@ -5308,6 +5472,7 @@ function hubPanelHtml(data) {
   }
   const online = data.presence?.online ?? [];
   const recent = data.presence?.recent ?? [];
+  if (data.presence || data.offers?.length || hubInstalled) parts.push(hubOffersHtml(data));
   if (data.presence) {
     if (data.login) parts.push(hubMeHtml(data, online.find(person => person.login === data.login)));
     const people = online.filter(person => person.login !== data.login);
@@ -5358,7 +5523,7 @@ function renderHub(data, { force = false } = {}) {
   const faces = online.slice(0, 3).map(person => `<img src="${escapeHtml(avatarSrc(person, 40))}" alt="">`).join('');
   button.innerHTML = (faces ? `<span class="hub-stack">${faces}</span>` : HUB_ICON)
     + (online.length ? `<span>${online.length}</span>` : '')
-    + (data.status === 'auth' ? '<span class="hub-dot" aria-hidden="true"></span>' : '');
+    + (data.status === 'auth' || data.offers?.length ? '<span class="hub-dot" aria-hidden="true"></span>' : '');
   button.title = t('hubButton');
   button.classList.toggle('on', hubOpen);
   button.classList.toggle('stale', hubMissed >= 2);
@@ -5379,6 +5544,9 @@ function openHub(open) {
 }
 
 el('hub').addEventListener('click', () => openHub(!hubOpen));
+document.addEventListener('pr-radar:catalog', () => {
+  if (hubData) renderHub(hubData, { force: true });
+});
 el('hubPanel').addEventListener('click', async event => {
   if (event.target.closest('[data-hub-close]')) return openHub(false);
   const action = event.target.closest('[data-hub-action]')?.dataset.hubAction;
@@ -5391,6 +5559,52 @@ el('hubPanel').addEventListener('click', async event => {
     setTimeout(() => renderHub(hubData, { force: true }), 2100);
     setTimeout(() => renderHub(hubData, { force: true }), 60_100);
     return hubBeat('kudos', { to: kudos }).then(() => renderHub(hubData, { force: true }));
+  }
+  const share = event.target.closest('[data-hub-share]')?.dataset.hubShare;
+  if (share) {
+    hubShareOpen = hubShareOpen === share ? null : share;
+    hubShareNote = null;
+    return renderHub(hubData, { force: true });
+  }
+  const shareTheme = event.target.closest('[data-hub-share-theme]');
+  if (shareTheme) {
+    const to = shareTheme.dataset.hubShareTo;
+    const theme = myThemes().find(candidate => candidate.name === shareTheme.dataset.hubShareTheme);
+    hubShareOpen = null;
+    const body = await hubBeat('offerTheme', { to, name: theme?.name });
+    hubShareNote = body?.sent
+      ? { to, text: t('hubShareSent', { label: theme.label, who: to }) }
+      : { to, error: true, text: hubShareError(body?.error) };
+    renderHub(hubData, { force: true });
+    setTimeout(() => {
+      if (hubShareNote?.to !== to) return;
+      hubShareNote = null;
+      renderHub(hubData, { force: true });
+    }, 5000);
+    return;
+  }
+  const accept = event.target.closest('[data-hub-accept]')?.dataset.hubAccept;
+  if (accept) {
+    const label = hubData?.offers?.find(offer => offer.id === accept)?.label ?? '';
+    const body = await hubBeat('acceptOffer', { id: accept });
+    if (body?.installed) {
+      catalog = body.catalog;
+      hubInstalled = { name: body.installed, label };
+      applyDecor();
+    } else {
+      hubInstalled = { error: hubShareError(body?.error) };
+    }
+    return renderHub(hubData, { force: true });
+  }
+  const decline = event.target.closest('[data-hub-decline]')?.dataset.hubDecline;
+  if (decline) return hubBeat('declineOffer', { id: decline });
+  const wear = event.target.closest('[data-hub-wear]')?.dataset.hubWear;
+  if (wear) {
+    store.set('themePick', wear);
+    askedTheme = null;
+    hubInstalled = null;
+    wearDecor();
+    return renderHub(hubData, { force: true });
   }
   const wizz = event.target.closest('[data-hub-wizz]')?.dataset.hubWizz;
   if (wizz) {

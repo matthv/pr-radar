@@ -884,7 +884,18 @@ page, at most once every 5 minutes; the same phone next to your own name turns w
 nudges still come through. On a card, the bell nudges whoever the PR waits on, its author or
 the reviewers yet to approve, once one of them is online: their card shakes and is outlined,
 at most once per PR every 10 minutes and 3 nudges per person every 10 minutes. In focus,
-nothing shakes: only the notice shows.
+nothing shakes: only the notice shows. A nudge or a wizz also makes a short, quiet sound as it
+arrives, even in a background tab (two soft low notes, three for a wizz). It is not the board's
+chime and the speaker button leaves it alone: turning wizzes off silences them, nudges keep
+theirs, and focus silences both. Kudos stay silent.
+
+**Sharing a theme.** With a theme of your own under `custom-themes/`, the palette on a
+teammate's row lists them; one click sends it, up to 15 KB, through the hub, which relays it
+and keeps nothing. The other side sees who offers what and, for a theme with a `theme.js`, that
+its code will run in their radar: nothing is written until they click **Install**. The theme is
+then checked like a generated one (no network or storage call, a `theme.js` that parses), lands
+in "My themes" under its own name, or with the sender's login added when the name is taken,
+and **Wear it** puts it on. An offer left alone expires after an hour.
 
 **What leaves your machine:** your GitHub login, the commit PR Radar runs, how far behind
 `main` it is, how many board tabs are open, and whether you are available or in focus.

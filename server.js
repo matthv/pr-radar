@@ -40,7 +40,7 @@ const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
 const { listAllThemes, overlaps, themeFiles } = require('./themes');
-const { generateTheme, removeTheme } = require('./new-theme');
+const { generateTheme, removeTheme, readForOffer, installTheme } = require('./new-theme');
 const { createHub, createTabCounter, realFiles, wizzRef, withPrUrls, CONFIG_DIR } = require('./hub');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
@@ -740,7 +740,18 @@ const server = http.createServer(async (req, res) => {
       if (body.action === 'kudos') demo.kudosBack(body.to);
       if (body.action === 'acceptsWizz') demo.setAcceptsWizz(body.value === true);
       if (body.action === 'wizz' && (body.pr == null || urls.includes(body.pr))) demo.wizzBack(String(body.to ?? ''), body.pr ?? null);
-      return json(res, 200, { hub: withPrUrls(demo.hub, urls, Date.now(), demo.WIZZ_LIMITS) });
+      if (body.action === 'declineOffer') demo.takeOffer(String(body.id ?? ''));
+      let shared = body.action === 'acceptOffer' ? { error: { reason: 'demo' } } : {};
+      if (body.action === 'offerTheme') {
+        try {
+          const theme = await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR });
+          demo.themeBack(String(body.to ?? ''), { ...theme, hasScript: Boolean(theme.js?.trim()) });
+          shared = { sent: theme.name };
+        } catch (error) {
+          shared = { error: { reason: error.reason, params: error.params } };
+        }
+      }
+      return json(res, 200, { hub: withPrUrls(demo.hub, urls, Date.now(), demo.WIZZ_LIMITS), ...shared });
     }
     if (body.action === 'bye') tabCounter.bye(body.tabId);
     else tabCounter.beat(body.tabId, body.hidden);
@@ -755,8 +766,28 @@ const server = http.createServer(async (req, res) => {
     if (body.action === 'wizz' && GITHUB_LOGIN.test(String(body.to ?? '')) && (body.pr == null || urls.includes(body.pr))) {
       hub.sendWizz(body.to, body.pr == null ? null : wizzRef(body.pr));
     }
+    const shared = {};
+    if (body.action === 'offerTheme' && GITHUB_LOGIN.test(String(body.to ?? ''))) {
+      try {
+        if (hub.offerTheme(body.to, await readForOffer(String(body.name ?? ''), { dir: CUSTOM_THEMES_DIR }))) shared.sent = body.name;
+      } catch (error) {
+        shared.error = { reason: error.reason, params: error.params };
+      }
+    }
+    if (body.action === 'acceptOffer') {
+      const offer = hub.takeOffer(String(body.id ?? ''));
+      try {
+        if (!offer) throw Object.assign(new Error('offer gone'), { reason: 'gone' });
+        shared.installed = await installTheme(offer.theme, { from: offer.from, dir: CUSTOM_THEMES_DIR, shippedDir: THEMES_DIR });
+        shared.catalog = await themeCatalog();
+        logger.info('theme', `installed custom-themes/${shared.installed}, offered by ${offer.from}`);
+      } catch (error) {
+        shared.error = { reason: error.reason, params: error.params };
+        if (offer) logger.fail('theme', `offer from ${offer.from} not installed, ${error.message}`);
+      }
+    }
     hub.setTabs(tabCounter.count());
-    return json(res, 200, { hub: withPrUrls(hub.state(), urls) });
+    return json(res, 200, { hub: withPrUrls(hub.state(), urls), ...shared });
   }
 
   if (url.pathname === '/api/update' && req.method === 'POST') {
