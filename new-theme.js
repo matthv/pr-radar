@@ -121,7 +121,8 @@ ${exampleJs}`;
 const exists = file => fs.access(file).then(() => true, () => false);
 
 // Drawn in a dot folder the theme list skips, then moved in whole: a server stopped mid-way
-// leaves no half theme in the menu, nor a name taken by one.
+// leaves no half theme in the menu, nor a name taken by one. One folder per run, so two
+// generations of the same name never share one.
 async function generateTheme({ label, icon, description }, { dir = THEMES_DIR, claude = require('./digest').claude } = {}) {
   const cleanLabel = String(label ?? '').trim().slice(0, 40);
   const cleanIcon = String(icon ?? '').trim().slice(0, 8) || '🎨';
@@ -131,10 +132,10 @@ async function generateTheme({ label, icon, description }, { dir = THEMES_DIR, c
   if (!cleanDescription) throw fail('noDescription', 'describe the theme');
   const target = path.join(dir, name);
   if (await exists(target)) throw fail('exists', `${target} already exists`, { name });
-  const staging = path.join(dir, '.generating');
-  await fs.rm(path.join(staging, name), { recursive: true, force: true });
-  const folder = await createTheme(name, { label: cleanLabel, icon: cleanIcon, dir: staging });
+  await fs.mkdir(path.join(dir, '.generating'), { recursive: true });
+  const staging = await fs.mkdtemp(path.join(dir, '.generating', `${name}-`));
   try {
+    const folder = await createTheme(name, { label: cleanLabel, icon: cleanIcon, dir: staging });
     const prompt = await generationPrompt({ label: cleanLabel, icon: cleanIcon, description: cleanDescription, prefix: prefixOf(name) });
     const { css, js } = parseGenerated(await claude(prompt, GENERATE_ARGS, undefined, GENERATE_TIMEOUT_MS));
     await fs.writeFile(path.join(folder, 'theme.css'), css);
@@ -142,7 +143,7 @@ async function generateTheme({ label, icon, description }, { dir = THEMES_DIR, c
     if (await exists(target)) throw fail('exists', `${target} already exists`, { name });
     await fs.rename(folder, target);
   } finally {
-    await fs.rm(folder, { recursive: true, force: true });
+    await fs.rm(staging, { recursive: true, force: true });
   }
   return name;
 }

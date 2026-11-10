@@ -1256,8 +1256,9 @@ the time. Each theme is a folder in [`public/themes/`](public/themes/README.md).
 - **Have Claude draw one**: **+ New theme** at the bottom of the menu takes a name, an icon and
   a description; **Generate** asks the `claude` CLI (Sonnet, no tools) for its CSS and script, a
   minute or two, then wears it. It lands in `custom-themes/<name>/`, yours to tweak. The page's
-  Content-Security-Policy keeps any theme from loading or sending anything outside this machine
-  (avatars from GitHub aside); an answer that obviously tries is refused, and nothing is written.
+  Content-Security-Policy blocks a theme's requests and loads outside this machine (avatars from
+  GitHub aside), but it can't stop a script from navigating away or opening a window; an answer
+  that obviously tries to reach out is refused, and nothing is written.
   A theme still runs on the radar's own page, so read a generated `theme.js` as you would any
   script you install.
 - **Remove one** with the ✕ on its row, under My themes, clicked twice: it deletes its folder in

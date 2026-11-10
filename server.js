@@ -107,7 +107,8 @@ async function assetVersion() {
   return createHash('sha1').update(stamps.join('|')).digest('hex').slice(0, 12);
 }
 
-// Generated themes run unreviewed on this origin: whatever they do, nothing leaves the machine.
+// Generated themes run unreviewed on this origin: this blocks their requests and loads, not a
+// navigation away or window.open, which no CSP directive covers.
 // Scripts stay 'unsafe-inline' because theme.js already runs as 'self'; the boundary is where data can go.
 const CSP = [
   "default-src 'self'",
@@ -661,7 +662,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (DEMO && url.pathname === '/intro') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': CSP });
     res.end(await fs.readFile(path.join(__dirname, 'demo-intro.html')));
     return;
   }
@@ -769,6 +770,7 @@ server.listen(PORT, async () => {
     });
     setInterval(() => readOrphansInBackground(false), 60_000).unref();
   }
+  await fs.rm(path.join(CUSTOM_THEMES_DIR, '.generating'), { recursive: true, force: true });
   const { themes, problems } = await listAllThemes(THEMES_DIR, CUSTOM_THEMES_DIR);
   for (const problem of problems) logger.fail('theme', `left out, ${problem}`);
   for (const [first, second] of overlaps(themes)) {

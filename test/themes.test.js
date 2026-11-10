@@ -231,6 +231,19 @@ test('new-theme: a generation stopped half way leaves nothing listed, and the na
   assert.equal(await fs.readFile(path.join(dir, 'moon', 'theme.css'), 'utf8'), 'a{}\n');
 });
 
+test('new-theme: two generations of the same name, one wins and the other says it exists', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-race-'));
+  const answer = '```css\na{}\n```\n```js\n1\n```';
+  const slow = ms => async () => new Promise(resolve => setTimeout(() => resolve(answer), ms));
+  const results = await Promise.allSettled([
+    generateTheme({ label: 'Twin', description: 'x' }, { dir, claude: slow(10) }),
+    generateTheme({ label: 'Twin', description: 'x' }, { dir, claude: slow(30) }),
+  ]);
+  assert.equal(results[0].value, 'twin');
+  assert.equal(results[1].reason.reason, 'exists');
+  assert.deepEqual(await fs.readdir(path.join(dir, '.generating')), []);
+});
+
 test('new-theme: removing a theme deletes its folder, and only a theme folder in that directory', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-remove-'));
   const dir = path.join(root, 'custom');

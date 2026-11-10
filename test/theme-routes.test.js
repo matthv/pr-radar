@@ -9,12 +9,16 @@ const { spawn } = require('node:child_process');
 
 const ANSWER = '```css\n.zest-sky { color: teal; }\n```\n```js\nPRRadarTheme.register({});\n```\n';
 
-// The user's .env must not switch on Slack, a webhook or anything else reaching out: an empty
-// value set here wins over it, since loadEnvFile never overrides the environment.
-const QUIET = Object.fromEntries([
-  'PR_RADAR_SLACK_TOKEN', 'PR_RADAR_SLACK_CHANNEL', 'PR_RADAR_WEBHOOK_URL', 'PR_RADAR_ORPHAN_DAYS',
-  'PR_RADAR_SOUND', 'PR_RADAR_CLAUDE_SESSIONS', 'PR_RADAR_THEME', 'PR_RADAR_EXTRA_REPOS',
-].map(key => [key, '']));
+// The user's .env must not switch on Slack, a webhook or anything else reaching out: a value
+// set here wins over it, since loadEnvFile never overrides the environment.
+const QUIET = {
+  ...Object.fromEntries([
+    'PR_RADAR_SLACK_TOKEN', 'PR_RADAR_SLACK_CHANNEL', 'PR_RADAR_WEBHOOK_URL', 'PR_RADAR_ORPHAN_DAYS',
+    'PR_RADAR_SOUND', 'PR_RADAR_CLAUDE_SESSIONS', 'PR_RADAR_THEME', 'PR_RADAR_EXTRA_REPOS',
+  ].map(key => [key, ''])),
+  PR_RADAR_CHECK_SECONDS: '0',
+  PR_RADAR_UPDATE_HOURS: '0',
+};
 
 async function fakeClaude() {
   const bin = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-fake-claude-'));
@@ -26,13 +30,14 @@ echo called >> "${calls}"
 cat > /dev/null
 cat "${path.join(bin, 'answer')}"
 `, { mode: 0o755 });
+  await fs.writeFile(path.join(bin, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   return { bin, called: () => fs.access(calls).then(() => true, () => false) };
 }
 
 async function startServer(env) {
   const port = 20_000 + Math.floor(Math.random() * 30_000);
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, ...QUIET, PORT: String(port), PR_RADAR_LIVE: 'false', PR_RADAR_SELF_RESTART: '0', ...env },
+    env: { ...process.env, ...QUIET, PORT: String(port), PR_RADAR_SELF_RESTART: '0', ...env },
     stdio: 'ignore',
   });
   const base = `http://localhost:${port}`;
