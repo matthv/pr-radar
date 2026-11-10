@@ -1328,6 +1328,7 @@
 <script src="/order.js"></script>
 <script src="/kanban.js"></script>
 <script src="/since.js"></script>
+<script src="/versions.js"></script>
 <script src="/decor.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
@@ -3721,11 +3722,11 @@ function renderUpdate(update) {
   }
   const titles = update.titles.slice(0, UPDATE_TITLES_SHOWN).map(title => `<li>${escapeHtml(title)}</li>`);
   const more = update.titles.length - UPDATE_TITLES_SHOWN;
-  const newer = update.latestVersion && update.latestVersion !== update.version;
-  box.innerHTML = `<b>${newer ? t('updateTitleVersion', { v: escapeHtml(update.latestVersion) }) : t('updateTitle')}</b>`
-    + `<span>${newer && update.version ? `${t('updateFrom', { v: escapeHtml(update.version) })} · ` : ''}${tn('updateBehind', update.behind)}</span>`
-    + (newer && update.releasesUrl
-      ? `<a class="update-notes" href="${escapeHtml(update.releasesUrl)}" target="_blank" rel="noopener">${t('updateNotes')}</a>`
+  const release = PRRadarVersions.newerRelease(update);
+  box.innerHTML = `<b>${release ? t('updateTitleVersion', { v: escapeHtml(release.latest) }) : t('updateTitle')}</b>`
+    + `<span>${release?.from ? `${t('updateFrom', { v: escapeHtml(release.from) })} · ` : ''}${tn('updateBehind', update.behind)}</span>`
+    + (release?.notesUrl
+      ? `<a class="update-notes" href="${escapeHtml(release.notesUrl)}" target="_blank" rel="noopener">${t('updateNotes')}</a>`
       : '')
     + `<span class="update-actions">`
     + `<button type="button" class="update-apply" data-update-apply${['updating', 'blocked', 'no-restart'].includes(status?.kind) ? ' disabled' : ''}>`

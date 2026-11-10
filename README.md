@@ -315,7 +315,9 @@ type (`feat!:`) or a `BREAKING CHANGE:` footer the major; `chore:`, `docs:`, `te
 the like make none. When a newer release is out, the banner names it ("Version v1.4.0
 available, you are on v1.2.0") and links to the release notes; between releases it keeps
 counting commits. Releases are only tags, nothing is committed back, so `package.json`
-does not carry the version, and an update still pulls `main` as before.
+does not carry the version, and an update still pulls `main` as before. Tags are fetched
+apart from `main`: one that cannot be fetched only costs the version name, never the
+count of commits behind.
 
 Only *behind* counts: being ahead, with commits not pushed yet, is the author's normal
 state while working, and a banner there would be noise. Nothing pulls on its own: a

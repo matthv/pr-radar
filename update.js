@@ -6,8 +6,8 @@ const { execFile: execFileCb, execFileSync } = require('node:child_process');
 const execFile = promisify(execFileCb);
 
 // Every few hours the server compares its own HEAD with origin/main and the page says so
-// when it is behind. Releases are tags only: what runs is still a commit of main. It pulls only when
-// asked from the page, and only when that is safe (see `apply`).
+// when it is behind. Releases are tags only: what runs is still a commit of main. It pulls
+// only when asked from the page, and only when that is safe (see `apply`).
 const HOURS = Number(process.env.PR_RADAR_UPDATE_HOURS ?? 2);
 
 function sshConfigured() {
@@ -56,19 +56,32 @@ function summarize({ current, latest, count, log }) {
   };
 }
 
+const NO_RELEASE = /No names found|No tags can describe/;
+
 // The last release reachable from a commit; null before the first one, or in a clone
-// without the tags.
-const versionAt = (exec, ref) => exec('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', ref)
-  .then(out => String(out).trim() || null, () => null);
+// without the tags. Any other failure only loses the version, but says so.
+const versionAt = (exec, ref) => exec('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', ref).then(
+  out => String(out).trim() || null,
+  error => {
+    if (!NO_RELEASE.test(error?.stderr ?? '')) logger.fail('update', `no version for ${ref}: ${reasonOf(error)}`);
+    return null;
+  },
+);
 
 function releasesUrl(remote) {
-  const slug = String(remote ?? '').trim().match(/github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/)?.[1];
+  const slug = String(remote ?? '').trim().match(/^(?:[a-z+]+:\/\/)?(?:[^@/\s]+@)?github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/)?.[1];
   return slug ? `https://github.com/${slug}/releases` : null;
 }
 
 async function check(exec = git) {
-  // Tags pointing at commits already fetched are not followed by a plain fetch.
-  await exec('fetch', '--quiet', '--tags', 'origin', 'main');
+  await exec('fetch', '--quiet', 'origin', 'main');
+  // Apart, and allowed to fail: a release tag moved upstream makes a tag fetch refuse to
+  // clobber the local one, and that must cost the version, never the commits behind.
+  // --tags because a plain fetch skips tags on commits it already has; --force because
+  // release tags belong to origin.
+  await exec('fetch', '--quiet', '--force', '--tags', 'origin').catch(error => {
+    logger.fail('update', `tags not fetched: ${reasonOf(error)}`);
+  });
   const [current, latest, count, log, version, latestVersion, remote] = await Promise.all([
     exec('rev-parse', '--short', 'HEAD'),
     exec('rev-parse', 'origin/main'),
@@ -90,7 +103,7 @@ async function refresh() {
     latest = await check();
   } catch (error) {
     latest = null;
-    logger.fail('update', `check failed: ${error.message.split('\n')[0]}`);
+    logger.fail('update', `check failed: ${reasonOf(error)}`);
   }
   return latest;
 }
