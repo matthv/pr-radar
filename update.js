@@ -5,9 +5,9 @@ const logger = require('./log');
 const { execFile: execFileCb, execFileSync } = require('node:child_process');
 const execFile = promisify(execFileCb);
 
-// The commit is the version: the tool has no other. Every few hours the server compares
-// its own HEAD with origin/main and the page says so when it is behind. It pulls only when
-// asked from the page, and only when that is safe (see `apply`).
+// Every few hours the server compares its own HEAD with origin/main and the page says so
+// when it is behind. Releases are tags only: what runs is still a commit of main. It pulls
+// only when asked from the page, and only when that is safe (see `apply`).
 const HOURS = Number(process.env.PR_RADAR_UPDATE_HOURS ?? 2);
 
 function sshConfigured() {
@@ -56,15 +56,42 @@ function summarize({ current, latest, count, log }) {
   };
 }
 
-async function check() {
-  await git('fetch', '--quiet', 'origin', 'main');
-  const [current, latest, count, log] = await Promise.all([
-    git('rev-parse', '--short', 'HEAD'),
-    git('rev-parse', 'origin/main'),
-    git('rev-list', '--count', 'HEAD..origin/main'),
-    git('log', '--format=%s', 'HEAD..origin/main'),
+const NO_RELEASE = /No names found|No tags can describe/;
+
+// The last release reachable from a commit; null before the first one, or in a clone
+// without the tags. Any other failure only loses the version, but says so.
+const versionAt = (exec, ref) => exec('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', ref).then(
+  out => String(out).trim() || null,
+  error => {
+    if (!NO_RELEASE.test(error?.stderr ?? '')) logger.fail('update', `no version for ${ref}: ${reasonOf(error)}`);
+    return null;
+  },
+);
+
+function releasesUrl(remote) {
+  const slug = String(remote ?? '').trim().match(/^(?:[a-z+]+:\/\/)?(?:[^@/\s]+@)?github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/)?.[1];
+  return slug ? `https://github.com/${slug}/releases` : null;
+}
+
+async function check(exec = git) {
+  await exec('fetch', '--quiet', 'origin', 'main');
+  // Apart, and allowed to fail: a release tag moved upstream makes a tag fetch refuse to
+  // clobber the local one, and that must cost the version, never the commits behind.
+  // --tags because a plain fetch skips tags on commits it already has; --force because
+  // release tags belong to origin.
+  await exec('fetch', '--quiet', '--force', '--tags', 'origin').catch(error => {
+    logger.fail('update', `tags not fetched: ${reasonOf(error)}`);
+  });
+  const [current, latest, count, log, version, latestVersion, remote] = await Promise.all([
+    exec('rev-parse', '--short', 'HEAD'),
+    exec('rev-parse', 'origin/main'),
+    exec('rev-list', '--count', 'HEAD..origin/main'),
+    exec('log', '--format=%s', 'HEAD..origin/main'),
+    versionAt(exec, 'HEAD'),
+    versionAt(exec, 'origin/main'),
+    exec('remote', 'get-url', 'origin').catch(() => ''),
   ]);
-  return summarize({ current, latest, count, log });
+  return { ...summarize({ current, latest, count, log }), version, latestVersion, releasesUrl: releasesUrl(remote) };
 }
 
 let latest = null;
@@ -76,7 +103,7 @@ async function refresh() {
     latest = await check();
   } catch (error) {
     latest = null;
-    logger.fail('update', `check failed: ${error.message.split('\n')[0]}`);
+    logger.fail('update', `check failed: ${reasonOf(error)}`);
   }
   return latest;
 }
@@ -106,7 +133,7 @@ function markPending(result) {
 
 // The clone is at origin/main now; no need to ask the network again to say so.
 function settle(to) {
-  if (latest) latest = { ...latest, behind: 0, current: to.slice(0, 7), latest: to, titles: [] };
+  if (latest) latest = { ...latest, behind: 0, current: to.slice(0, 7), latest: to, titles: [], version: latest.latestVersion };
 }
 
 // A clone someone works in is theirs: local edits, another branch or a history of its own
@@ -205,4 +232,4 @@ async function apply(exec = git, { pulled = settle } = {}) {
   };
 }
 
-module.exports = { HOURS, start, status, check, summarize, refusal, blockers, newEnvVars, apply, reasonOf, markPending };
+module.exports = { HOURS, start, status, check, releasesUrl, summarize, refusal, blockers, newEnvVars, apply, reasonOf, markPending };
