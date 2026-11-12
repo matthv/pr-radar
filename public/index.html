@@ -4428,7 +4428,14 @@ async function load(force, { check = false } = {}) {
     if (check) params.set('check', '1');
     if (document.hidden) params.set('hidden', '1');
     const response = await fetch(`/api/prs${params.size ? `?${params}` : ''}`);
-    bootId ??= response.headers.get('x-pr-radar-boot');
+    // A server that restarted (an update, a restart by hand, a watcher on the code) may serve a
+    // newer page: this one reloads rather than run old code against it.
+    const boot = response.headers.get('x-pr-radar-boot');
+    if (bootId && boot && boot !== bootId) {
+      location.reload();
+      return;
+    }
+    bootId ??= boot;
     const version = response.headers.get('x-pr-radar-version');
     if (version) {
       bootVersion ??= version;
