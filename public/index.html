@@ -775,8 +775,8 @@
   button.session-question:hover .prd-question, button.session-question:focus-visible .prd-question { text-decoration: underline; }
   .session-card:not(.folded) .session-question { white-space: normal; }
   .session-card .session-meta { margin-top: 6px; }
-  /* Nothing blinks in the Sessions view: a list watched all day has to stay calm. */
-  .session-card .pill.running { animation: none; }
+  /* A session's badges never blink, in either view: a list watched all day has to stay calm. */
+  .session-card .pill.running, .prd-session .pill.running { animation: none; }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
   .session-prd .title { font-weight: 600; }
@@ -2096,7 +2096,6 @@ const I18N = {
     prdOpened: 'ouvert il y a {v}',
     prdUpdated: 'mis à jour il y a {v}',
     prdNotAssigned: 'pas à toi : une session Claude y travaille',
-    prdNoPrs: 'Aucune PR liée.',
     prdPrOnGithub: 'voir sur GitHub',
     prdHide: 'masquer',
     prdUnhide: 'remettre dans la liste',
@@ -2498,7 +2497,6 @@ const I18N = {
     prdOpened: 'opened {v} ago',
     prdUpdated: 'updated {v} ago',
     prdNotAssigned: 'not yours: a Claude session works on it',
-    prdNoPrs: 'No linked PR.',
     prdPrOnGithub: 'see it on GitHub',
     prdHide: 'hide',
     prdUnhide: 'put back in the list',
@@ -4864,7 +4862,7 @@ function prdCard(prd) {
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
     + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
     + `<div class="prd-meta">${project}${escapeHtml(meta)}</div>`
-    + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
+    + (prs ? `<div class="prd-prs">${prs}</div>` : '')
     + `${prdSessionRows(prd)}</div>`;
 }
 
