@@ -4752,7 +4752,9 @@ function prdSessionParts(session) {
   const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
   const [skillKind, skillState] = prdSkillPill(session);
   // How long it has been in that state, while it runs.
-  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey) + (session.running && session.since ? ` · ${ago(session.since)}` : '')), t(statusKey));
+  const since = session.running && session.since
+    ? ` · <span data-since="${escapeHtml(session.since)}">${escapeHtml(ago(session.since))}</span>` : '';
+  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)) + since, t(statusKey));
   const skill = session.skill
     ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
     : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
@@ -5084,9 +5086,13 @@ async function pollSessions() {
     return merged;
   });
   noteSessionChanges(prdData.sessions);
-  // Unchanged, it still redraws now and then, so the time each has spent in its state moves on.
-  if (JSON.stringify(prdData.sessions) !== before || Date.now() - sessDrawnAt > 30_000) renderPrd();
+  if (JSON.stringify(prdData.sessions) !== before) renderPrd();
 }
+// The time each session has spent in its state counts on in the page between two polls; the
+// next poll sets it right.
+setInterval(() => {
+  for (const span of document.querySelectorAll('#prd [data-since]')) span.textContent = ago(span.dataset.since);
+}, 1000);
 function seeSession(sessionId) {
   if (!sessCalls.delete(sessionId)) return;
   document.querySelector(`.session-card[data-session="${CSS.escape(sessionId)}"]`)?.classList.remove('calls');
@@ -5100,9 +5106,7 @@ if (store.get('sessClosedFolded', '') !== '1') {
   store.set('sessClosedFolded', '1');
 }
 
-let sessDrawnAt = 0;
 function renderSessions() {
-  sessDrawnAt = Date.now();
   const sessions = prdData?.sessions ?? [];
   const counters = Object.keys(SESSION_TONES).map(key => {
     const value = sessions.filter(session => prdSessionStatus(session) === key).length;
