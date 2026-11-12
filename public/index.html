@@ -2107,7 +2107,6 @@ const I18N = {
     sessFocusHint: 'cliquer pour n’afficher que ces sessions',
     sessUnfold: 'déplier : récap, dernier prompt, PRD et PR liés',
     sessFold: 'replier',
-    sessUnderMinute: '< 1 min',
     sessQuestion: 'question',
     sessYourTurn: 'à toi',
     sessCalls: '⚑ {n}',
@@ -2501,7 +2500,6 @@ const I18N = {
     sessFocusHint: 'click to show only these sessions',
     sessUnfold: 'unfold: recap, last prompt, linked PRDs and PRs',
     sessFold: 'fold',
-    sessUnderMinute: '< 1 min',
     sessQuestion: 'question',
     sessYourTurn: 'your turn',
     sessCalls: '⚑ {n}',
@@ -4752,7 +4750,7 @@ function prdSessionParts(session, { status = prdSessionStatus(session), label = 
   const [skillKind, skillState] = prdSkillPill(session);
   // How long it has been in that state, while it runs.
   const since = session.running && session.since
-    ? ` · <span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
+    ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
   const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)) + since, t(statusKey));
   const skill = session.skill
     ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
@@ -5093,14 +5091,17 @@ async function pollSessions() {
   // A session can also move by the clock alone: idle past YOUR_TURN_MS, it is merely open.
   if (JSON.stringify(prdData.sessions) !== before || sessSignature(prdData.sessions) !== sessDrawn) renderPrd();
 }
-// The time each session has spent in its state, in whole minutes, moves on once a minute in the
-// page; a poll that brings news sets it right.
+// The time each session has spent in its state, in whole minutes, from the first one; the page
+// moves it on by itself, and a poll that brings news sets it right.
 function sinceText(iso) {
-  return Date.now() - new Date(iso) < 60_000 ? t('sessUnderMinute') : ago(iso);
+  return Date.now() - new Date(iso) < 60_000 ? '' : ` · ${ago(iso)}`;
 }
 setInterval(() => {
-  for (const span of document.querySelectorAll('#prd [data-since]')) span.textContent = sinceText(span.dataset.since);
-}, 60_000);
+  for (const span of document.querySelectorAll('#prd [data-since]')) {
+    const text = sinceText(span.dataset.since);
+    if (span.textContent !== text) span.textContent = text;
+  }
+}, 15_000);
 setInterval(pollSessions, SESSION_POLL_MS);
 // Closed sessions start folded away; after that, their group is folded or not as you leave it.
 if (store.get('sessClosedFolded', '') !== '1') {
