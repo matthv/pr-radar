@@ -1434,7 +1434,7 @@ it works on. Links that are less likely to be its work start in *n more*.
 
 **Order by** latest change (default), longest in its state, title, folder, ticket or skill.
 
-**Live updates.** While the view is open it rereads session states every 5 seconds, from local
+**Live updates.** While the view is open it rereads session states every second, from local
 files only, so it costs no GitHub or Linear calls. The tab title shows `⚑ n` for the sessions
 waiting on you. Set `PR_RADAR_SESSION_CHIME=true` to hear three falling notes when a session needs you:
 a new question or permission prompt, or Claude finishing its work. Typing into a session, or a skill

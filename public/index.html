@@ -5098,7 +5098,7 @@ function sessionCard(session) {
 // starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
 const sessSignature = sessions => PRRadarPrd.sessionSignature(sessions);
 let sessDrawn = '';
-const SESSION_POLL_MS = 5000;
+const SESSION_POLL_MS = 1000;
 const sessLast = new Map();
 function noteSessionChanges(sessions) {
   if (PRRadarPrd.startedWaiting(sessLast, sessions) && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
