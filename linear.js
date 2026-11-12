@@ -10,6 +10,7 @@ const GITHUB_PR = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
 const FIELDS = `identifier title url createdAt updatedAt
   state { name type color position }
   project { name }
+  assignee { isMe }
   labels(first: 20) { nodes { name color } }
   attachments(first: 30) { nodes { url title } }`;
 
@@ -28,7 +29,7 @@ async function query(apiKey, text, { fetch = globalThis.fetch } = {}) {
   return payload ?? {};
 }
 
-function shape(issue, assigned) {
+function shape(issue) {
   const prs = new Map();
   for (const attachment of issue.attachments?.nodes ?? []) {
     const url = String(attachment.url ?? '').replace(/\/(files|commits)?\/?$/, '');
@@ -44,7 +45,8 @@ function shape(issue, assigned) {
     project: issue.project?.name ?? null,
     labels: (issue.labels?.nodes ?? []).map(label => ({ name: label.name, color: label.color })),
     prs: [...prs].map(([url, title]) => ({ url, title })),
-    assigned,
+    // Yours whatever its state: a ticket a session works on may be yours and already done.
+    assigned: Boolean(issue.assignee?.isMe),
   };
 }
 
@@ -53,13 +55,13 @@ function shape(issue, assigned) {
 async function fetchPrds({ apiKey, extra = [], fetch } = {}) {
   const mine = await query(apiKey, `{ viewer { assignedIssues(first: 100, filter: { state: { type: { eq: "started" } } }) { nodes { ${FIELDS} } } } }`, { fetch });
   if (!mine.data?.viewer) throw new Error(`Linear answered ${mine.errors?.[0]?.message ?? 'no viewer'}`);
-  const prds = mine.data.viewer.assignedIssues.nodes.map(issue => shape(issue, true));
+  const prds = mine.data.viewer.assignedIssues.nodes.map(shape);
   const known = new Set(prds.map(prd => prd.ticket));
   const wanted = [...new Set(extra)].filter(key => IDENTIFIER.test(key) && !known.has(key)).slice(0, 30);
   if (wanted.length) {
     const aliases = wanted.map((key, index) => `t${index}: issue(id: "${key}") { ${FIELDS} }`).join('\n');
     const others = await query(apiKey, `{ ${aliases} }`, { fetch });
-    for (const issue of Object.values(others.data ?? {})) if (issue) prds.push(shape(issue, false));
+    for (const issue of Object.values(others.data ?? {})) if (issue) prds.push(shape(issue));
   }
   return prds;
 }

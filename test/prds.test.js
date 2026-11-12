@@ -63,6 +63,23 @@ test('the session that opened a PRD\'s PR shows only while it runs', () => {
   assert.deepEqual(build([{ sessionId: 'opener' }]), ['opener']);
 });
 
+test('every running session naming the ticket joins its PRD, and only the two newest ended ones', () => {
+  const at = day => `2026-11-0${day}T00:00:00.000Z`;
+  const mentions = [
+    { sessionId: 's5', cwd: '/w', at: at(5) }, { sessionId: 's4', cwd: '/w', at: at(4) },
+    { sessionId: 's3', cwd: '/w', at: at(3) }, { sessionId: 's1', cwd: '/w', at: at(1) },
+  ];
+  const [built] = buildPrds({
+    prds: [prd('PRD-1')],
+    live: [{ sessionId: 's1', name: 'dev-93', status: 'idle', updatedAt: Date.parse(at(6)) }],
+    sessionsOf: ticket => (ticket === 'PRD-1' ? mentions : []),
+    cwdOf: () => '/w',
+  });
+  assert.deepEqual(built.sessions.map(session => [session.sessionId, session.running, session.at]),
+    [['s1', true, at(6)], ['s5', false, at(5)], ['s4', false, at(4)]]);
+  assert.ok(built.sessions.every(session => session.resumable));
+});
+
 test('the tickets to ask Linear for come from the stages, directly or through a board PR', () => {
   const tickets = extraTickets(
     [stage('a', { tickets: ['PRD-5'], prUrls: [PR7] }), stage('b', { prUrls: [PR8] })],
