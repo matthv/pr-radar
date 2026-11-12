@@ -753,7 +753,9 @@
   .session-meta .prd-session-name { color: var(--text-soft); }
   .session-meta .prd-meta { margin-top: 0; }
   .session-question { margin-top: 6px; font-size: 12.5px; }
-  .session-card .prd-top .claude-link { flex: none; }
+  .session-card .prd-top .claude-link { flex: none; margin: 0 -2px 0 -4px; }
+  .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+  .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
   .session-prd .title { font-weight: 600; }
   .prd-pick { display: flex; align-items: center; gap: 6px; cursor: default; }
   .prd-pick select { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
@@ -762,12 +764,13 @@
     --tone: var(--border); position: relative; overflow: hidden;
     border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 10px 16px; margin-bottom: 10px;
     background: linear-gradient(260deg, color-mix(in srgb, var(--tone) 16%, var(--surface)) -10%, var(--surface) 42%);
-    box-shadow: var(--shadow-sm); transition: box-shadow .15s, transform .15s;
+    box-shadow: var(--shadow-sm); transition: box-shadow .15s;
   }
   .prd::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
   .prd.waiting { background: linear-gradient(260deg, var(--amber-soft) -10%, var(--surface) 42%); }
   .prd.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
-  .prd:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .prd:hover { box-shadow: var(--shadow-md); }
+  #prd .card:hover { transform: none; }
   .prd-project { margin-right: 8px; font-size: 11px; }
   .prd-label { background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 65%, var(--text)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent); }
   .prd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -4959,8 +4962,13 @@ function sessionCard(session) {
   const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
   const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
   const parts = prdSessionParts(session);
+  const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
+  const opens = prdData.claudeSessions && session.resumable;
   return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">${parts.open}`
-    + `<span class="prd-title">${escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8))}</span>${parts.cardPills}</div>`
+    + (opens
+      ? `<button type="button" class="prd-title session-title" data-prd-open="${escapeHtml(session.sessionId)}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
+      : `<span class="prd-title">${title}</span>`)
+    + `${parts.cardPills}</div>`
     + `<div class="prd-meta session-meta">${parts.name}${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${parts.at}</div>`
     + (parts.question ? `<div class="session-question">${parts.question}</div>` : '')
     + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
