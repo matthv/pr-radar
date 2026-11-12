@@ -758,7 +758,8 @@
   .prd.session-card { padding: 6px 40px 6px 14px; margin-bottom: 6px; }
   .session-card .prd-caret { top: 8px; }
   .session-card.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
-  .sess-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sess-line { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
+  .sess-line .pill:not(button) { cursor: inherit; }
   .sess-line .session-title { flex: 0 1 auto; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sess-line .pill { flex: none; }
   .sess-key { flex: none; font-size: 12px; font-weight: 600; color: var(--text-soft); text-decoration: none; }
@@ -5181,7 +5182,10 @@ el('prd').addEventListener('click', event => {
     renderPrd();
     return;
   }
-  const toggle = event.target.closest('[data-sess-toggle]');
+  // The caret, or anywhere on a session's line but its links and buttons, folds it or unfolds it.
+  const line = event.target.closest('.sess-line');
+  const toggle = event.target.closest('[data-sess-toggle]')
+    ?? (line && !event.target.closest('a, button') ? line.closest('.session-card').querySelector('[data-sess-toggle]') : null);
   if (toggle) {
     const { sessToggle: id } = toggle.dataset;
     if (!sessOpen.delete(id)) sessOpen.add(id);
