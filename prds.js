@@ -45,13 +45,18 @@ function sessionEntry(sessionId, { stage, record, cwd, seen }) {
   };
 }
 
-// The ended sessions whose prompts or branch name a ticket that are kept: older ones are history.
+// The closed sessions kept per ticket, its heaviest: older work is history.
 const ENDED_MENTIONS = 2;
+// A skill reporting its stages on the ticket is the surest sign of the session doing its work;
+// a PR of the ticket opened in it, or named by its stages, counts like a commit.
+const STAGE_WEIGHT = 10;
+const PR_WEIGHT = 2;
 
 // A PRD's PRs are the ones Linear has attached and the board's PRs naming its ticket. Its
 // sessions are the ones whose stage lines name it or one of its PRs, a running session that
 // opened one of its PRs (a finished one is already the Claude button on that PR's card), and
-// those whose prompts or branch name the ticket: every running one, the newest ended ones.
+// those that declared work on it: every running one, the heaviest closed ones. The heaviest
+// comes first, the main one when it outweighs the next, then running before closed, newest first.
 function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], sessionFor = () => null, sessionsOf = () => [], cwdOf = () => null }) {
   const board = new Map(boardPrs.map(pr => [pr.url, pr]));
   const liveById = new Map(live.map(record => [record.sessionId, record]));
@@ -60,20 +65,28 @@ function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], session
     const prs = new Map(prd.prs.map(pr => [pr.url, prEntry(pr.url, pr.title, board)]));
     for (const pr of boardPrs) if (pr.ticket === prd.ticket && !prs.has(pr.url)) prs.set(pr.url, prEntry(pr.url, pr.title, board));
 
-    const ids = new Set(stageSessions
-      .filter(session => session.tickets.has(prd.ticket) || [...session.prUrls].some(url => prs.has(url)))
-      .map(session => session.sessionId));
+    const weights = new Map();
+    const add = (id, weight) => weights.set(id, (weights.get(id) ?? 0) + weight);
+    for (const session of stageSessions) {
+      if (session.tickets.has(prd.ticket)) add(session.sessionId, STAGE_WEIGHT);
+      if ([...session.prUrls].some(url => prs.has(url))) add(session.sessionId, PR_WEIGHT);
+    }
     for (const url of prs.keys()) {
       const opened = sessionFor(url);
-      if (opened && liveById.has(opened.sessionId)) ids.add(opened.sessionId);
+      if (opened && liveById.has(opened.sessionId)) add(opened.sessionId, PR_WEIGHT);
     }
     const mentions = sessionsOf(prd.ticket);
     const seen = new Map(mentions.map(mention => [mention.sessionId, mention.at]));
-    for (const id of mentions.filter(mention => liveById.has(mention.sessionId)).map(mention => mention.sessionId)) ids.add(id);
-    for (const id of mentions.filter(mention => !liveById.has(mention.sessionId)).slice(0, ENDED_MENTIONS).map(mention => mention.sessionId)) ids.add(id);
-    const sessions = [...ids]
-      .map(id => sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id), cwd: cwdOf(id), seen: seen.get(id) }))
-      .sort((a, b) => b.running - a.running || String(b.at).localeCompare(String(a.at)));
+    const closed = mentions.filter(mention => !liveById.has(mention.sessionId) && !weights.has(mention.sessionId))
+      .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0) || String(b.at).localeCompare(String(a.at)))
+      .slice(0, ENDED_MENTIONS);
+    for (const mention of [...mentions.filter(mention => liveById.has(mention.sessionId) || weights.has(mention.sessionId)), ...closed]) {
+      add(mention.sessionId, mention.weight ?? 1);
+    }
+    const sessions = [...weights]
+      .map(([id, weight]) => ({ ...sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id), cwd: cwdOf(id), seen: seen.get(id) }), weight }))
+      .sort((a, b) => b.weight - a.weight || b.running - a.running || String(b.at).localeCompare(String(a.at)))
+      .map((session, index, all) => ({ ...session, main: index === 0 && all.length > 1 && session.weight > all[1].weight }));
     return { ...prd, prs: [...prs.values()], sessions };
   });
 }
