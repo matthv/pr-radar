@@ -794,6 +794,12 @@
   .prd-session.waiting { --session-tone: var(--amber); }
   .prd-session.closed { --session-tone: var(--border); }
   .prd-session.closed .prd-session-name { color: var(--text-soft); }
+  .prd-more {
+    margin-left: auto; font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1; cursor: pointer;
+    padding: 3px 8px; border-radius: 999px; color: var(--text-soft);
+    background: var(--sunken); border: 1px solid var(--hairline);
+  }
+  .prd-more:hover, .prd-more:focus-visible { color: var(--text); border-color: var(--border); }
   /* The session most likely doing the ticket's work: first, a wider rail, a star. */
   .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); margin-left: -4px; }
   .prd-star {
@@ -1990,6 +1996,8 @@ const I18N = {
     viewTitle: 'vue tableau / vue par auteur / kanban / PRDs',
     prdGroupBy: 'Grouper par',
     prdCountWaiting: 'en attente de toi',
+    prdSessionsUnfold: 'afficher les {n} autres sessions, pour en choisir une autre comme principale',
+    prdSessionsFold: 'replier les {n} autres sessions',
     prdCountBusy: 'en cours de travail',
     prdCountPrs: 't’attendent sur une PR',
     prdCountIdle: 'sans session ouverte',
@@ -2363,6 +2371,8 @@ const I18N = {
     viewTitle: 'board view / by author / kanban / PRDs',
     prdGroupBy: 'Group by',
     prdCountWaiting: 'waiting on you',
+    prdSessionsUnfold: 'show the {n} other sessions, to make another one main',
+    prdSessionsFold: 'fold the {n} other sessions',
     prdCountBusy: 'being worked on',
     prdCountPrs: 'need you on a PR',
     prdCountIdle: 'no open session',
@@ -4615,7 +4625,7 @@ const prdMains = (() => {
 // then, never under the click that starred it.
 let prdMainsShown = { ...prdMains };
 
-function prdSessionRow(session, ticket) {
+function prdSessionRow(session, ticket, tail = '') {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4639,7 +4649,26 @@ function prdSessionRow(session, ticket) {
     + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
     + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
     + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
-    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
+    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}${tail}</div>`;
+}
+
+// One session shows: the main one, or the first. The others fold behind a chip on its row,
+// but one running that waits on you or is at work never hides. Starring another folds them
+// back onto it.
+const prdOpenSessions = new Set();
+function prdSessionRows(prd) {
+  const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMainsShown[prd.ticket]);
+  if (!sessions.length) return '';
+  const lead = sessions.find(session => session.main) ?? sessions[0];
+  const loud = session => ['waiting', 'busy'].includes(prdSessionStatus(session));
+  const folded = sessions.filter(session => session !== lead && !loud(session));
+  const open = prdOpenSessions.has(prd.ticket);
+  const chip = folded.length
+    ? `<button type="button" class="prd-more" data-prd-sessions="${escapeHtml(prd.ticket)}" aria-expanded="${open}"`
+      + ` title="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}">${open ? '−' : '+'}${folded.length}</button>`
+    : '';
+  return sessions.filter(session => open || !folded.includes(session))
+    .map(session => prdSessionRow(session, prd.ticket, session === lead ? chip : '')).join('');
 }
 
 // A PR is the board's own card, drawn as the board draws it, folded to its top line behind a
@@ -4673,7 +4702,7 @@ function prdCard(prd) {
     + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
     + `<div class="prd-meta">${escapeHtml(meta)}</div>`
     + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
-    + `${PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMainsShown[prd.ticket]).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
+    + `${prdSessionRows(prd)}</div>`;
 }
 
 // Linear's own colour when the group has one; otherwise one of the theme's, the same for a
@@ -4774,10 +4803,18 @@ el('prd').addEventListener('click', event => {
     renderPrd();
     return;
   }
+  const more = event.target.closest('[data-prd-sessions]');
+  if (more) {
+    const { prdSessions: ticket } = more.dataset;
+    if (!prdOpenSessions.delete(ticket)) prdOpenSessions.add(ticket);
+    renderPrd();
+    return;
+  }
   const star = event.target.closest('[data-prd-main]');
   if (star) {
     prdMains[star.dataset.prdTicket] = star.dataset.prdMain;
     store.set('prdMain', JSON.stringify(prdMains));
+    prdOpenSessions.delete(star.dataset.prdTicket);
     renderPrd();
     return;
   }
