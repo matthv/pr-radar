@@ -1415,7 +1415,7 @@ The fifth view turns the PRDs view inside out: a line per Claude Code session, e
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
 starts folded), each group a counter in the band that filters to it. *Order by* sorts inside each
 group: the latest to change state first (the default), the longest in its state first, or by
-title, folder or PRD. *Waiting on you* holds a skill's *question*, until it is answered, and a session idle for
+title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, and a session idle for
 less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
 Idle longer, it is merely *open*. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its

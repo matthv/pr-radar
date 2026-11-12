@@ -2117,6 +2117,7 @@ const I18N = {
     sessOrder_title: 'titre',
     sessOrder_folder: 'dossier',
     sessOrder_prd: 'PRD',
+    sessOrder_skill: 'skill',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
@@ -2515,6 +2516,7 @@ const I18N = {
     sessOrder_title: 'title',
     sessOrder_folder: 'folder',
     sessOrder_prd: 'PRD',
+    sessOrder_skill: 'skill',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
@@ -5140,14 +5142,16 @@ if (store.get('sessClosedFolded', '') !== '1') {
 }
 
 // The order inside each state's group, kept in this browser: the latest to change state first
-// (the one that just finished leads), the longest in its state first, or by title, folder or PRD.
-const SESS_ORDERS = ['changed', 'longest', 'title', 'folder', 'prd'];
+// (the one that just finished leads), the longest in its state first, or by title, folder, PRD or
+// skill, those with none last.
+const SESS_ORDERS = ['changed', 'longest', 'title', 'folder', 'prd', 'skill'];
 let sessOrder = SESS_ORDERS.includes(store.get('sessOrder', 'changed')) ? store.get('sessOrder', 'changed') : 'changed';
 function sortSessions(list) {
   const when = session => String(session.since ?? session.at ?? '');
   const title = session => String(session.title ?? session.name ?? session.sessionId).toLowerCase();
   const folder = session => (session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1).toLowerCase() : '\uffff');
   const prd = session => session.tickets?.find(link => link.primary)?.ticket ?? '\uffff';
+  const skill = session => session.skill ?? '\uffff';
   const byTitle = (a, b) => title(a).localeCompare(title(b));
   const by = {
     changed: (a, b) => when(b).localeCompare(when(a)),
@@ -5155,6 +5159,7 @@ function sortSessions(list) {
     title: byTitle,
     folder: (a, b) => folder(a).localeCompare(folder(b)) || byTitle(a, b),
     prd: (a, b) => prd(a).localeCompare(prd(b), undefined, { numeric: true }) || byTitle(a, b),
+    skill: (a, b) => skill(a).localeCompare(skill(b)) || byTitle(a, b),
   }[sessOrder];
   return [...list].sort(by);
 }
