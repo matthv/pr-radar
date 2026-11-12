@@ -43,6 +43,7 @@ const { listAllThemes, overlaps, themeFiles } = require('./themes');
 const { generateTheme, removeTheme, readForOffer, installTheme } = require('./new-theme');
 const { createHub, createTabCounter, realFiles, withPrUrls, CONFIG_DIR } = require('./hub');
 const { hubAction, login } = require('./hub-actions');
+const plugins = require('./plugins');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -175,6 +176,7 @@ let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
 let webhookNotifier = null;
+let PLUGINS = [];
 
 // One per clone, not per machine: a second clone running on another port would otherwise
 // close this one on the hub as "replaced".
@@ -414,7 +416,7 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
   });
   const claimedRefs = claimMode === 'on' ? slack.claimedRefs() : [];
   inFlight = exclusive(() => Promise.all([
-    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs }, reuse ? reusableNodes() : new Map()),
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs, plugins: PLUGINS }, reuse ? reusableNodes() : new Map()),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
@@ -457,7 +459,7 @@ function patchPrs(ids) {
       store.nodes.set(id, node);
       store.loadedAt.set(id, Date.now());
     }
-    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
+    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings], PLUGINS);
     webhookNotifier?.notify(board);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });
@@ -618,6 +620,21 @@ async function demoHubAction(body) {
 const themeFailure = (res, status, error) =>
   json(res, status, { error: error.message, reason: error.reason, params: error.params });
 
+// gh hands back GitHub's error body on stdout and runGh returns it as if it had worked: only the
+// label list GitHub answers a successful add with counts.
+async function addLabel(pr, label) {
+  const out = await watch.runGh(['api', '-X', 'POST', `repos/${pr.repo}/issues/${pr.number}/labels`, '-f', `labels[]=${label}`]);
+  let answer;
+  try {
+    answer = JSON.parse(out);
+  } catch {
+    throw new Error(`GitHub answered something other than JSON: ${out.trim().slice(0, 80)}`);
+  }
+  if (!Array.isArray(answer) || !answer.some(added => added?.name === label)) {
+    throw new Error(answer?.message ?? 'GitHub did not add the label');
+  }
+}
+
 async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
@@ -640,6 +657,13 @@ async function serveStatic(res, urlPath) {
 
 if (!ORG) {
   console.error('PR_RADAR_ORG is missing: set it in .env (see .env.example).');
+  process.exit(1);
+}
+
+try {
+  PLUGINS = DEMO ? [] : plugins.load(process.env.PR_RADAR_PLUGINS);
+} catch (error) {
+  console.error(error.message);
   process.exit(1);
 }
 
@@ -753,7 +777,7 @@ const server = http.createServer(async (req, res) => {
     if (DEMO) return json(res, 200, { ok: true });
     const [status, error] = await claudeSessions.resume(
       { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
-      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload },
+      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload, plugins: PLUGINS },
     );
     return json(res, status, error ? { error } : { ok: true });
   }
@@ -816,6 +840,36 @@ const server = http.createServer(async (req, res) => {
     }
     json(res, 200, { ...result, restart, selfRestart: SELF_RESTART });
     return;
+  }
+
+  // A plugin's label button. Only a label a plugin offers on that PR, as the board last showed it,
+  // and only ever added: taking one off and putting it back would start its workflow again.
+  if (url.pathname === '/api/label' && req.method === 'POST') {
+    const refused = claudeSessions.refusal({
+      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
+    });
+    if (refused) return json(res, 403, { error: refused });
+    if (DEMO) return json(res, 200, { ok: true });
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (error) {
+      return json(res, 400, { error: error.message });
+    }
+    const pr = cache.payload && [...cache.payload.mine, ...cache.payload.reviews].find(candidate => candidate.id === body.id);
+    if (!pr?.plugins?.labels.some(label => label.name === body.label)) {
+      return json(res, 409, { error: 'no plugin offers this label on this PR any more' });
+    }
+    try {
+      await addLabel(pr, body.label);
+    } catch (error) {
+      logger.fail('plugins', `${body.label} on ${pr.repo}#${pr.number}: ${error.message}`);
+      return json(res, 502, { error: error.message });
+    }
+    logger.info('plugins', `${body.label} added to ${pr.repo}#${pr.number}`);
+    // Answered once the card shows the label, so the button the page drew disappears with it.
+    await patchOrForget(new Set([pr.id])).catch(error => logger.fail('plugins', `reload after the label: ${error.message}`));
+    return json(res, 200, { ok: true });
   }
 
   if (url.pathname === '/api/digest' && req.method === 'POST') {
@@ -929,6 +983,7 @@ server.listen(PORT, async () => {
       `  🎨 theme ${THEME_LINE}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
+      `  🧩 plugins ${PLUGINS.length ? PLUGINS.map(plugin => plugin.name).join(', ') : 'none (no PR_RADAR_PLUGINS)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}\n` +
       `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}`

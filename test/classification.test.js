@@ -1552,3 +1552,33 @@ test('claims: GitHub failing is a lost source, not a list of unknown PRs', async
   const { LOSING_SOURCES } = require('../github');
   assert.ok(LOSING_SOURCES.includes('claims-resolve'), 'the webhook keeps the last statuses meanwhile');
 });
+
+// A review claimed through a plugin (the validator's `validate` label, say): the plugin says whose turn it
+// is until my first review after the claim, and a bot's turn has a group of its own.
+test('board: a claimed review is held by whoever the plugin says has the turn, until I review', () => {
+  const id = 'PR_11';
+  const context = {
+    me: ME, org: 'o', maxAgeDays: 60, warnings: [], cutoff: Date.now() - 60 * DAY, mergedCutoff: Date.now() - DAY,
+    stale: new Set(), mineSet: new Set(), reviewSet: new Set([id]), requestedSet: new Set(), assignedSet: new Set(),
+    mergedReviewedIds: new Set(), extraIds: new Set(),
+  };
+  const turn = (turn, why, claimedBy = ME) => [{ name: 'p', decorate: () => ({ review: { claimedBy, since: ago(1), turn, why } }) }];
+  const card = (plugins, overrides = {}) => shapeBoard(new Map([[id, node({ id, ...overrides })]]), context, [], plugins).reviews[0];
+
+  assert.deepEqual([card(turn('bot')).bucket, card(turn('bot')).needsAction], ['bot', false]);
+  assert.equal(card(turn('author')).bucket, 'waiting');
+  const mine = card(turn('me', null));
+  assert.deepEqual([mine.bucket, mine.needsAction, mine.reasons], ['action', true, [{ kind: 'claim', text: null }]]);
+  assert.deepEqual(card(turn('me', 'verify the fixes')).reasons, [{ kind: 'claim', text: 'verify the fixes' }]);
+  assert.equal(card(turn('bot', null, 'someone-else')).bucket, 'idle', 'someone else’s claim holds nothing of mine');
+
+  // My review after the claim hands the card back to the usual rules; one from before it does not.
+  const reviewed = at => ({ reviews: { nodes: [{ id: 'R_1', author: user(ME), state: 'APPROVED', body: '', submittedAt: at, url: 'u' }] } });
+  assert.equal(card(turn('bot'), reviewed(ago(0.5))).bucket, 'idle');
+  assert.equal(card(turn('bot'), reviewed(ago(2))).bucket, 'bot');
+
+  // A plugin that throws leaves the card to the usual rules and says so once.
+  const broken = [{ name: 'broken', decorate: () => { throw new Error('boom'); } }];
+  const board = shapeBoard(new Map([[id, node({ id })]]), { ...context, warnings: [] }, [{ source: 'plugin', message: 'old' }], broken);
+  assert.deepEqual(board.warnings, [{ source: 'plugin', message: 'broken failed on 1 PR(s), first o/r#1: boom' }]);
+});
