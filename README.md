@@ -1383,9 +1383,9 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   lines most, then a skill run on it, a commit on its branch or one of its PRs, then its folder),
   and the first is starred *main* when it outweighs the next. Click another session's star to
   make it the main one instead; the choice is kept per ticket, in this browser, and the session
-  moves first at the next refresh, never under the click. The sessions share one box, folded
+  moves first. The sessions share one box, folded
   behind a caret like a PR card: folded, it shows the main session, or the first, and any running
-  one waiting on you or at work. Starring another folds the box back onto it. Its state is a pill: green open,
+  one waiting on you or at work. Starring another moves it first and folds the box back onto it. Its state is a pill: green open,
   indigo working, amber waiting on you, grey closed; so is its skill. Both are buttons that open
   the session, like its Claude button. A row gives the session's name, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.

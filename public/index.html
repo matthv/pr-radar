@@ -4579,7 +4579,6 @@ function loadPrds(force = false) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || response.statusText);
       prdData = payload;
-      if (force) prdMainsShown = { ...prdMains };
     })
     .catch(error => {
       prdData = { ...prdData, enabled: true, error: error.message };
@@ -4626,10 +4625,6 @@ const prdMains = (() => {
   }
 })();
 
-// The stars as they stood at the page's load or its last refresh: a session goes first only
-// then, never under the click that starred it.
-let prdMainsShown = { ...prdMains };
-
 function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
@@ -4659,10 +4654,10 @@ function prdSessionRow(session, ticket) {
 
 // The sessions share one box, folded like a PR card behind a caret: folded, it shows the main
 // session, or the first, and any running one waiting on you or at work. Starring another
-// folds the box back onto it.
+// moves it first and folds the box back onto it.
 const prdOpenSessions = new Set();
 function prdSessionRows(prd) {
-  const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMainsShown[prd.ticket]);
+  const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMains[prd.ticket]);
   if (!sessions.length) return '';
   const lead = sessions.find(session => session.main) ?? sessions[0];
   const loud = session => ['waiting', 'busy'].includes(prdSessionStatus(session));
