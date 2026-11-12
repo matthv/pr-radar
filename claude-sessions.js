@@ -223,7 +223,12 @@ function sessionDetails(sessionId) {
   }
   if (!latest) return null;
   const { title, summary, summaryAt, prompt, promptAt, branch, cwd } = latest;
-  return { title, summary, summaryAt, prompt, promptAt, branch, cwd, prUrls: [...latest.prUrls], at: new Date(latest.mtimeMs).toISOString() };
+  // `cwd` is the folder it started in, the one `--resume` needs; `folder` the one it works in now,
+  // a worktree it moved into, to show beside the branch it is on there.
+  return {
+    title, summary, summaryAt, prompt, promptAt, branch, cwd, folder: latest.lastCwd ?? cwd,
+    prUrls: [...latest.prUrls], at: new Date(latest.mtimeMs).toISOString(),
+  };
 }
 
 // The sessions that declared work on a ticket, newest first, each with the weight of what it did.

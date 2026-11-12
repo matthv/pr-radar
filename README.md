@@ -1388,7 +1388,7 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   behind a caret like a PR card: folded, it shows the main session, or the first, and any running
   one waiting on you or at work. Starring another moves it first and folds the box back onto it. Its state is a pill: green open,
   indigo working, amber waiting on you, grey closed; so is its skill. Both are buttons that open
-  the session, like its Claude button. A row gives the session's name, the skill it runs
+  the session, like its Claude button. A row gives the session's title, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.
   Its Claude button brings an open session forward, or resumes a closed one through a plugin's
   `open()` or in `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.
@@ -1415,15 +1415,18 @@ The fifth view turns the PRDs view inside out: a line per Claude Code session, e
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
 starts folded), each group a counter in the band that filters to it. *Order by* sorts inside each
 group: the latest to change state first (the default), the longest in its state first, or by
-title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, and a session idle for
+title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, a session held on a
+prompt of Claude Code's own (a *permission prompt*, named as Claude Code names it), and a session idle for
 less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
 Idle longer, it is merely *open*. A star puts a session in a *starred* list above the groups,
 kept in this browser until you unstar it or the session leaves the view. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
 badges, a skill at work saying what it does and for how long (*validator · review · 3 min*, or
-*working · 3 min* when it runs none), else its state, each its own colour (*question* amber, *your
-turn* cyan, *open* green), then its skill in grey; the PRD it
-works on, or else its PR; its folder and branch; when it was last active, once closed; and below,
+*working · 3 min* when it runs none), else its state, each its own colour (*question* and
+*permission prompt* amber, *your turn* cyan, *open* green), then its skill in grey, a finished one
+with its outcome (*validator · done · commented*); the PRD it
+works on, or else its PR; the folder it last worked in, a worktree it moved to rather than the one
+it started from, and its branch; when it was last active, once closed; and below,
 the question it waits on. Its caret unfolds the rest: its name, its latest
 recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,
 and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the

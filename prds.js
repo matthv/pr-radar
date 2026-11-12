@@ -36,6 +36,8 @@ function sessionEntry(sessionId, { stage, record, cwd, seen }) {
     name: record?.name ?? null,
     running: Boolean(record),
     status: record?.status ?? null,
+    // What Claude Code says it waits on when it blocks on you: a permission prompt, say.
+    waitingFor: record?.status === 'waiting' ? record.waitingFor ?? null : null,
     resumable: Boolean(record || cwd),
     skill: run?.skill ?? null,
     stage: run?.stage ?? null,

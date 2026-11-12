@@ -881,6 +881,7 @@
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
+  .prd-session .prd-session-name { max-width: 42ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   button.prd-session-name { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   button.prd-session-name:hover, button.prd-session-name:focus-visible { text-decoration: underline; }
   .prd-question { color: var(--amber); }
@@ -4744,7 +4745,8 @@ const PRD_SESSION_STATUS = {
 };
 function prdSessionStatus(session) {
   if (!session.running) return 'closed';
-  if (session.state === 'waiting') return 'waiting';
+  // A skill's question, or a prompt Claude Code itself blocks on, a permission say.
+  if (session.state === 'waiting' || session.status === 'waiting') return 'waiting';
   return session.status === 'busy' ? 'busy' : 'open';
 }
 
@@ -4768,9 +4770,11 @@ const prdMains = (() => {
 })();
 
 // A session's pieces, for its row under a PRD and for its own card in the Sessions view.
-function prdSessionParts(session) {
+function prdSessionParts(session, { titled = false } = {}) {
   const id = escapeHtml(session.sessionId);
-  const name = session.name ?? session.sessionId.slice(0, 8);
+  // Under a PRD, a session goes by Claude Code's title for it, as in the Sessions view.
+  const title = titled ? prdData.sessions?.find(card => card.sessionId === session.sessionId)?.title : null;
+  const name = title ?? session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
   const action = t(session.running ? 'prdFocusTitle' : 'prdResumeTitle');
   const pillButton = (kind, label, title) => (opens
@@ -4801,7 +4805,7 @@ function prdSessionParts(session) {
 
 function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
-  const { status, open, name, pills, question, at } = prdSessionParts(session);
+  const { status, open, name, pills, question, at } = prdSessionParts(session, { titled: true });
   const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
     + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
     + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
@@ -5019,13 +5023,25 @@ const sessOpen = new Set();
 // or a plain *working* badge when it runs none; otherwise its state, each its own colour (a
 // question amber, your turn cyan, open green), then its skill in grey.
 function sessPills(session, status, pillButton) {
-  const skill = session.skill ? `${session.skill}${session.stage ? ` · ${session.stage}` : ''}` : null;
+  // A skill whose run ended says so, with its outcome; one still going names its stage.
+  const ended = ['done', 'stopped'].includes(session.state);
+  const skill = !session.skill ? null
+    : ended ? [session.skill, t(`prdState_${session.state}`), session.outcome].filter(Boolean).join(' · ')
+      : `${session.skill}${session.stage ? ` · ${session.stage}` : ''}`;
   if (status === 'busy') {
+    // At work on something past its skill's run: plain working, the ended skill after it in grey.
+    const live = ended ? null : skill;
     const clock = session.since ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
-    return pillButton('todo', escapeHtml(skill ?? t('prdSessionBusy')) + clock, skill ?? t('prdSessionBusy'));
+    return pillButton('todo', escapeHtml(live ?? t('prdSessionBusy')) + clock, live ?? t('prdSessionBusy'))
+      + (ended ? pillButton('', escapeHtml(skill), skill) : '');
   }
   const key = sessStatusLabel(session, status);
   const kind = { sessQuestion: 'pending', sessYourTurn: 'turn', prdSessionOpen: 'good' }[key] ?? '';
+  // A prompt Claude Code blocks on reads as it names it: "permission prompt".
+  if (session.status === 'waiting' && session.state !== 'waiting') {
+    const label = session.waitingFor ?? t('sessQuestion');
+    return pillButton('pending', escapeHtml(label), label) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
+  }
   return pillButton(kind, escapeHtml(t(key)), t(key)) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
 }
 
@@ -5033,7 +5049,8 @@ function sessionCard(session) {
   const status = sessStatus(session);
   const id = escapeHtml(session.sessionId);
   const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
-  const folder = session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1) : null;
+  const path = session.folder ?? session.cwd;
+  const folder = path ? path.slice(path.lastIndexOf('/') + 1) : null;
   const where = [folder, session.branch].filter(Boolean).join(' · ');
   const parts = prdSessionParts(session);
   const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
@@ -5084,18 +5101,13 @@ function sessionCard(session) {
 // Waiting on you is a skill's question, or a session idle for less than YOUR_TURN_MS: it finished
 // its turn, or was started and given nothing yet. Idle longer, it is merely open. A session that
 // starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
-const YOUR_TURN_MS = 15 * 60_000;
-function sessStatus(session) {
-  const status = prdSessionStatus(session);
-  if (status !== 'open') return status;
-  return session.since && Date.now() - new Date(session.since) < YOUR_TURN_MS ? 'waiting' : 'open';
-}
+const sessStatus = session => PRRadarPrd.sessionStatus(session);
 const sessStatusLabel = (session, status) => (status !== 'waiting' ? PRD_SESSION_STATUS[status][1]
   : session.state === 'waiting' ? 'sessQuestion' : 'sessYourTurn');
 const sessSignature = sessions => sessions.map(session => `${session.sessionId}:${sessStatus(session)}`).join();
 let sessDrawn = '';
 const SESSION_POLL_MS = 5000;
-const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
+const SESSION_FIELDS = ['running', 'status', 'waitingFor', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
 const sessLast = new Map();
 function noteSessionChanges(sessions) {
   let ring = false;
@@ -5174,28 +5186,10 @@ const saveStars = () => store.set('sessStarred', JSON.stringify([...sessStars]))
 // The order inside each state's group, kept in this browser: the latest to change state first
 // (the one that just finished leads), the longest in its state first, or by title, folder, PRD or
 // skill, those with none last.
-const SESS_ORDERS = ['changed', 'longest', 'title', 'folder', 'prd', 'skill'];
-let sessOrder = SESS_ORDERS.includes(store.get('sessOrder', 'changed')) ? store.get('sessOrder', 'changed') : 'changed';
-function sortSessions(list) {
-  const when = session => String(session.since ?? session.at ?? '');
-  const title = session => String(session.title ?? session.name ?? session.sessionId).toLowerCase();
-  const folder = session => (session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1).toLowerCase() : '\uffff');
-  const prd = session => session.tickets?.find(link => link.primary)?.ticket ?? '\uffff';
-  const skill = session => session.skill ?? '\uffff';
-  const byTitle = (a, b) => title(a).localeCompare(title(b));
-  const by = {
-    changed: (a, b) => when(b).localeCompare(when(a)),
-    longest: (a, b) => when(a).localeCompare(when(b)),
-    title: byTitle,
-    folder: (a, b) => folder(a).localeCompare(folder(b)) || byTitle(a, b),
-    prd: (a, b) => prd(a).localeCompare(prd(b), undefined, { numeric: true }) || byTitle(a, b),
-    skill: (a, b) => skill(a).localeCompare(skill(b)) || byTitle(a, b),
-  }[sessOrder];
-  return [...list].sort(by);
-}
+let sessOrder = PRRadarPrd.SESSION_ORDERS.includes(store.get('sessOrder', 'changed')) ? store.get('sessOrder', 'changed') : 'changed';
 
 function renderSessions() {
-  const sessions = sortSessions(prdData?.sessions ?? []);
+  const sessions = PRRadarPrd.sortSessions(prdData?.sessions ?? [], sessOrder);
   sessDrawn = sessSignature(sessions);
   const counters = Object.keys(SESSION_TONES).map(key => {
     const value = sessions.filter(session => sessStatus(session) === key).length;
@@ -5205,7 +5199,7 @@ function renderSessions() {
       + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'sessFocusHint'))}"` : ''}>`
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
-  const orders = SESS_ORDERS.map(value => `<option value="${value}"${value === sessOrder ? ' selected' : ''}>${escapeHtml(t(`sessOrder_${value}`))}</option>`).join('');
+  const orders = PRRadarPrd.SESSION_ORDERS.map(value => `<option value="${value}"${value === sessOrder ? ' selected' : ''}>${escapeHtml(t(`sessOrder_${value}`))}</option>`).join('');
   const bar = `<div class="summary prd-summary"><label class="picker-trigger prd-pick">${escapeHtml(t('prdOrderBy'))} <select data-sess-order>${orders}</select></label>`
     + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
     + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
