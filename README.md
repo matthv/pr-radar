@@ -1402,10 +1402,11 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 - **The band** above the tickets replaces the board's: the two pickers, then counters of the
   tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
   counter filters the list to its tickets; a second click or Esc clears it.
-- **Hiding.** Any PR under a PRD, or PRD or PR under a session, has an eye on hover that hides it
-  into a folded *n hidden* line at the foot of the list; its eye there puts it back. Closed ones
-  start hidden: a merged PR, one no longer on the board, a ticket Linear completed or canceled.
-  Your choice either way beats that, per card, in this browser.
+- **n more.** Any PR under a PRD, or PRD or PR under a session, has an eye on hover that moves it
+  into a folded *n more* line at the foot of the list; its eye there puts it back. Folded, each
+  sits under why it is there: *also linked* (a session's links ranked second), *closed* with its
+  reason (merged, off the board, or the ticket's Linear status), *hidden by you*. Closed ones
+  start folded; your choice either way beats the defaults, per card, in this browser.
 
 ### The Sessions view
 
@@ -1414,12 +1415,10 @@ and the closed ones a PRD keeps, grouped by state (waiting on you, working, open
 group a counter in the band that filters to it. A card gives what the session's transcript says it
 is about: Claude Code's title for it, its latest recap, or the last prompt you typed when that is
 newer, its folder and branch. Below sit its session row, then the PRDs it works on and their PRs,
-and the PRs it made or opened itself, each folded behind a caret and hidden as above. The most
-likely to be the session's work come first, outlined, ahead of an *also linked* line with the rest
-dimmed: the PRs on the branch the session is on, or else the PRDs it weighs most on (a branch
-naming the ticket adds to it), their PRs and the latest PR it opened. A wrong guess is yours to
-fix: each item's star, filled on the primary ones, moves it across, per session, in this browser.
-It needs
+and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the
+session's work stay in the list: the PRs on the branch it is on, or else the PRDs it weighs most
+on (a branch naming the ticket adds to it), their PRs and the latest PR it opened. The rest start
+under *also linked* in *n more*, as above, where an eye brings back a wrong guess. It needs
 `PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the cards carry only their own PRs.
 
 ## Reading the colours

@@ -777,16 +777,6 @@
      same colours and rules. A session row sits on the plain surface with its own rail. */
   .prd-pr-item { position: relative; }
   .prd-pr-item .card { margin-bottom: 0; padding-right: 66px; }
-  .prd-pr-item:has(.prd-pin) .card { padding-right: 90px; }
-  .prd-pin {
-    position: absolute; right: 60px; top: 10px; z-index: 3; width: 22px; height: 22px; padding: 0; cursor: pointer;
-    font: inherit; font-size: 14px; line-height: 1; background: none; border: 0; border-radius: 6px;
-    color: var(--text-faint); opacity: 0; transition: opacity .15s;
-  }
-  .prd-pin.on { color: var(--amber); opacity: 1; }
-  .prd-pr-item:hover .prd-pin, .prd-pin:focus-visible { opacity: 1; }
-  .prd-pin:hover { background: var(--hairline); }
-  .prd-pr-item:not(.folded) .prd-pin { top: 16px; }
   .prd-eye {
     position: absolute; right: 36px; top: 10px; z-index: 3; width: 22px; height: 22px;
     display: grid; place-items: center; padding: 0; cursor: pointer; opacity: 0;
@@ -796,12 +786,16 @@
   .prd-pr-item:hover .prd-eye, .prd-eye:focus-visible, .prd-hidden .prd-eye { opacity: 1; }
   .prd-eye:hover { color: var(--text); background: var(--hairline); }
   .prd-pr-item:not(.folded) .prd-eye { top: 16px; }
-  .prd-pr-item.primary .card { box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--indigo) 35%, transparent); }
-  .prd-pr-item.secondary { opacity: .68; transition: opacity .15s; }
-  .prd-pr-item.secondary:hover { opacity: 1; }
   .prd-also { margin: 4px 0 -2px 2px; font-size: 10.5px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; color: var(--text-faint); }
   .prd-hidden { display: flex; flex-direction: column; gap: 6px; }
-  .prd-hidden .prd-pr-item { opacity: .6; }
+  .prd-hidden .prd-pr-item { opacity: .75; transition: opacity .15s; }
+  .prd-hidden .prd-pr-item:hover { opacity: 1; }
+  .prd-hidden .prd-pr-item:has(.prd-why) .card { padding-right: 170px; }
+  .prd-why {
+    position: absolute; right: 62px; top: 12px; z-index: 3; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10.5px; font-weight: 600; color: var(--text-soft); padding: 2px 7px; border-radius: 999px; background: var(--sunken);
+  }
+  .prd-pr-item:not(.folded) .prd-why { top: 18px; }
   .prd-hidden-head {
     align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 2px 4px; cursor: pointer;
     font: inherit; font-size: 11.5px; color: var(--text-faint); background: none; border: 0; border-radius: 6px;
@@ -2072,11 +2066,14 @@ const I18N = {
     prdNoPrs: 'Aucune PR liée.',
     prdPrOnGithub: 'voir sur GitHub',
     prdHide: 'masquer',
-    prdPin: 'en faire le travail principal de la session',
-    prdUnpin: 'ne plus en faire le travail principal',
     prdUnhide: 'remettre dans la liste',
-    prdHiddenCount: '{n} masqués',
-    prdAlsoLinked: 'aussi liés',
+    prdMoreCount: '{n} de plus',
+    prdMore_linked: 'aussi liés',
+    prdMore_closed: 'fermés',
+    prdMore_mine: 'masqués par toi',
+    prdWhyMerged: 'fusionnée',
+    prdWhyAway: 'hors tableau',
+    prdWhyDone: 'terminé',
     sessTotal: '{n} sessions',
     sessEmpty: 'Aucune session Claude ouverte, ni récente sur un de tes PRDs.',
     sessNoLinks: 'Aucun PRD ni PR lié.',
@@ -2457,11 +2454,14 @@ const I18N = {
     prdNoPrs: 'No linked PR.',
     prdPrOnGithub: 'see it on GitHub',
     prdHide: 'hide',
-    prdPin: 'make it this session’s main work',
-    prdUnpin: 'no longer this session’s main work',
     prdUnhide: 'put back in the list',
-    prdHiddenCount: '{n} hidden',
-    prdAlsoLinked: 'also linked',
+    prdMoreCount: '{n} more',
+    prdMore_linked: 'also linked',
+    prdMore_closed: 'closed',
+    prdMore_mine: 'hidden by you',
+    prdWhyMerged: 'merged',
+    prdWhyAway: 'off the board',
+    prdWhyDone: 'done',
     sessTotal: '{n} sessions',
     sessEmpty: 'No Claude session open, and none lately on one of your PRDs.',
     sessNoLinks: 'No PRD or PR linked.',
@@ -4747,7 +4747,7 @@ function prdSessionRows(prd) {
 // unfolded across refreshes. A PR the board does not hold, merged long ago or someone else's,
 // gets a plain card of the same shape that says so and links to GitHub.
 const prdOpenPrs = new Set();
-function prdPrItem(pr, eye = '', rank = '') {
+function prdPrItem(pr, eye = '') {
   const open = prdOpenPrs.has(pr.url);
   const board = pr.boardId ? prById(pr.boardId) : null;
   const card = board
@@ -4755,7 +4755,7 @@ function prdPrItem(pr, eye = '', rank = '') {
     : `<div class="card idle" data-pr-url="${escapeHtml(pr.url)}"><div class="card-top">${pr.repo ? repoChip(pr) : ''}`
       + `<a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title ?? t('prdPrOnGithub'))}</a></div>`
       + `<div class="meta"><span>${escapeHtml(t('prdPrAway'))}</span></div></div>`;
-  return `<div class="prd-pr-item${open ? '' : ' folded'}${rank ? ` ${rank}` : ''}" data-prd-item="${escapeHtml(pr.url)}">${eye}`
+  return `<div class="prd-pr-item${open ? '' : ' folded'}" data-prd-item="${escapeHtml(pr.url)}">${eye}`
     + `<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(pr.url)}" aria-expanded="${open}"`
     + ` title="${escapeHtml(t(open ? 'prdPrFold' : 'prdPrUnfold'))}"></button>${card}</div>`;
 }
@@ -4769,7 +4769,7 @@ function prdCard(prd) {
     : '';
   const meta = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
-  const prs = linkedList(`prd:${prd.ticket}`, prd.prs.map(pr => ({ key: pr.url, closed: !prOpen(pr), primary: true, html: (eye, rank) => prdPrItem(pr, eye, rank) })));
+  const prs = linkedList(`prd:${prd.ticket}`, prd.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: true, html: eye => prdPrItem(pr, eye) })));
   const waiting = prd.sessions.some(session => session.running && session.state === 'waiting');
   return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
@@ -4809,6 +4809,8 @@ let prdFocus = null;
 // session or PRD card, in this browser, and dropped once that card is gone.
 const prOpen = pr => pr.state === 'open' || pr.state === 'draft';
 const prdOpen = prd => !['completed', 'canceled'].includes(prd.status?.type);
+const prClosed = pr => (prOpen(pr) ? null : t(pr.state === 'merged' ? 'prdWhyMerged' : 'prdWhyAway'));
+const prdClosed = prd => (prdOpen(prd) ? null : prd.status?.name ?? t('prdWhyDone'));
 const prdHides = (() => {
   try {
     return JSON.parse(store.get('prdHidden', '{}')) ?? {};
@@ -4816,56 +4818,41 @@ const prdHides = (() => {
     return {};
   }
 })();
-const isHidden = (scope, key, closed) => prdHides[scope]?.[key] ?? closed;
 function setHidden(scope, key, hidden) {
   (prdHides[scope] ??= {})[key] = hidden;
   store.set('prdHidden', JSON.stringify(prdHides));
 }
-// Which of a session's links are its primary work: the ranking's guess until you star or unstar
-// one, kept the same way as the hides.
-const prdPrimaries = (() => {
-  try {
-    return JSON.parse(store.get('prdPrimary', '{}')) ?? {};
-  } catch {
-    return {};
-  }
-})();
-function setPrimary(scope, key, primary) {
-  (prdPrimaries[scope] ??= {})[key] = primary;
-  store.set('prdPrimary', JSON.stringify(prdPrimaries));
-}
 function pruneHides(scopes) {
-  for (const [choices, name] of [[prdHides, 'prdHidden'], [prdPrimaries, 'prdPrimary']]) {
-    const gone = Object.keys(choices).filter(scope => !scopes.has(scope));
-    for (const scope of gone) delete choices[scope];
-    if (gone.length) store.set(name, JSON.stringify(choices));
-  }
+  const gone = Object.keys(prdHides).filter(scope => !scopes.has(scope));
+  for (const scope of gone) delete prdHides[scope];
+  if (gone.length) store.set('prdHidden', JSON.stringify(prdHides));
 }
 const prdOpenHidden = new Set();
 const EYE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>';
 
-// A list's items, each { key, closed, primary, html(controls, rank) }: the shown ones first, the
-// primary ones ahead of an "also linked" line when both kinds show, then the hidden ones folded.
-// A ranked list, a session's, lets each item be starred primary or not.
-function linkedList(scope, entries, { ranked: rankable = false } = {}) {
-  const items = entries.map(item => ({ ...item, primary: Boolean(rankable ? prdPrimaries[scope]?.[item.key] ?? item.primary : item.primary) }));
-  const at = `data-prd-scope="${escapeHtml(scope)}"`;
-  const controls = ({ key, primary }, hidden) => `<button type="button" class="prd-eye" data-prd-hide="${escapeHtml(key)}" ${at}`
-    + ` data-prd-hidden="${hidden}" aria-label="${escapeHtml(t(hidden ? 'prdUnhide' : 'prdHide'))}">${hidden ? EYE : EYE_OFF}</button>`
-    + (rankable && !hidden ? `<button type="button" class="prd-pin${primary ? ' on' : ''}" data-prd-pin="${escapeHtml(key)}" ${at}`
-      + ` data-prd-primary="${primary}" aria-label="${escapeHtml(t(primary ? 'prdUnpin' : 'prdPin'))}">${primary ? '★' : '☆'}</button>` : '');
-  const shown = items.filter(item => !isHidden(scope, item.key, item.closed));
-  const hidden = items.filter(item => isHidden(scope, item.key, item.closed));
-  if (rankable) shown.sort((a, b) => b.primary - a.primary);
-  const ranked = shown.some(item => item.primary) && shown.some(item => !item.primary);
-  const list = shown.map((item, index) => (ranked && !item.primary && shown[index - 1]?.primary ? `<div class="prd-also">${escapeHtml(t('prdAlsoLinked'))}</div>` : '')
-    + item.html(controls(item, false), ranked ? (item.primary ? 'primary' : 'secondary') : '')).join('');
-  if (!hidden.length) return list;
+// A list's items, each { key, primary, closed: why or null, html(eye) }. In the list: the primary
+// ones that are not closed. Folded below in "n more", each under why it is there: the others
+// linked (the ranking put them second), the closed ones with their reason, then the ones you hid.
+// The eye moves an item across, and that choice beats the defaults.
+function linkedList(scope, items) {
+  const eye = (key, hidden) => `<button type="button" class="prd-eye" data-prd-hide="${escapeHtml(key)}" data-prd-scope="${escapeHtml(scope)}"`
+    + ` data-prd-hidden="${hidden}" aria-label="${escapeHtml(t(hidden ? 'prdUnhide' : 'prdHide'))}">${hidden ? EYE : EYE_OFF}</button>`;
+  const folded = item => prdHides[scope]?.[item.key] ?? (Boolean(item.closed) || !item.primary);
+  const list = items.filter(item => !folded(item)).map(item => item.html(eye(item.key, false))).join('');
+  const why = item => (prdHides[scope]?.[item.key] === true ? 'mine' : item.closed ? 'closed' : 'linked');
+  const more = items.filter(folded);
+  if (!more.length) return list;
   const open = prdOpenHidden.has(scope);
+  const sections = ['linked', 'closed', 'mine'].map(reason => {
+    const these = more.filter(item => why(item) === reason);
+    if (!these.length) return '';
+    return `<div class="prd-also">${escapeHtml(t(`prdMore_${reason}`))}</div>`
+      + these.map(item => item.html(eye(item.key, true) + (reason === 'closed' ? `<span class="prd-why">${escapeHtml(item.closed)}</span>` : ''))).join('');
+  }).join('');
   return list + `<div class="prd-hidden${open ? '' : ' folded'}"><button type="button" class="prd-hidden-head" data-prd-hidden-toggle="${escapeHtml(scope)}" aria-expanded="${open}">`
-    + `<span class="prd-hidden-caret"></span>${escapeHtml(t('prdHiddenCount', { n: hidden.length }))}</button>`
-    + (open ? hidden.map(item => item.html(controls(item, true), '')).join('') : '') + '</div>';
+    + `<span class="prd-hidden-caret"></span>${escapeHtml(t('prdMoreCount', { n: more.length }))}</button>`
+    + (open ? sections : '') + '</div>';
 }
 
 function prdBand(prds) {
@@ -4924,7 +4911,7 @@ const SESSION_TONES = { waiting: 'var(--amber)', busy: 'var(--indigo)', open: 'v
 const SESSION_COUNT_KIND = { waiting: 'pending', busy: 'todo', open: 'open', closed: 'idle' };
 
 // A PRD inside a session card: its top line folded, its project, labels and dates unfolded.
-function sessionPrdItem(prd, eye = '', rank = '') {
+function sessionPrdItem(prd, eye = '') {
   const key = `prd:${prd.ticket}`;
   const open = prdOpenPrs.has(key);
   const status = prd.status
@@ -4933,7 +4920,7 @@ function sessionPrdItem(prd, eye = '', rank = '') {
   const project = prd.project ? `<span class="pill prd-label prd-project" style="--tone: ${safeColor(prd.projectColor)}">${escapeHtml(prd.project)}</span>` : '';
   const labels = prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('');
   const dates = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) })].join(' · ');
-  return `<div class="prd-pr-item${open ? '' : ' folded'}${rank ? ` ${rank}` : ''}">${eye}<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(key)}" aria-expanded="${open}"></button>`
+  return `<div class="prd-pr-item${open ? '' : ' folded'}">${eye}<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(key)}" aria-expanded="${open}"></button>`
     + `<div class="card idle session-prd" style="--tone: ${safeColor(prd.status?.color)}"><div class="card-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener">${escapeHtml(prd.ticket)}</a>`
     + `<span class="title">${escapeHtml(prd.title)}</span>${status}</div>`
@@ -4950,11 +4937,10 @@ function sessionCard(session) {
   const aboutAt = recap ? session.summaryAt : session.promptAt;
   const prdItems = session.tickets.filter(link => byTicket.has(link.ticket)).map(link => {
     const prd = byTicket.get(link.ticket);
-    return { key: `prd:${prd.ticket}`, closed: !prdOpen(prd), primary: link.primary, html: (eye, rank) => sessionPrdItem(prd, eye, rank) };
+    return { key: `prd:${prd.ticket}`, closed: prdClosed(prd), primary: link.primary, html: eye => sessionPrdItem(prd, eye) };
   });
-  const prItems = session.prs.map(pr => ({ key: pr.url, closed: !prOpen(pr), primary: pr.primary, html: (eye, rank) => prdPrItem(pr, eye, rank) }));
-  // The primary PRDs and PRs first, then the others, PRDs ahead of PRs within each (a stable sort).
-  const items = linkedList(session.sessionId, [...prdItems, ...prItems], { ranked: true });
+  const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
+  const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
   return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">`
     + `<span class="prd-title">${escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8))}</span></div>`
     + (meta ? `<div class="prd-meta">${escapeHtml(meta)}</div>` : '')
@@ -5022,12 +5008,6 @@ el('prd').addEventListener('click', event => {
   const hide = event.target.closest('[data-prd-hide]');
   if (hide) {
     setHidden(hide.dataset.prdScope, hide.dataset.prdHide, hide.dataset.prdHidden !== 'true');
-    renderPrd();
-    return;
-  }
-  const pin = event.target.closest('[data-prd-pin]');
-  if (pin) {
-    setPrimary(pin.dataset.prdScope, pin.dataset.prdPin, pin.dataset.prdPrimary !== 'true');
     renderPrd();
     return;
   }
