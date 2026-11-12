@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('../prds');
-const { group, sortPrds, withMain } = require('../public/prd');
+const { group, sortPrds, withMain, sessionStatus, sortSessions, YOUR_TURN_MS } = require('../public/prd');
 
 const PR7 = 'https://github.com/ForestAdmin/claudine/pull/7';
 const PR8 = 'https://github.com/ForestAdmin/claudine/pull/8';
@@ -194,6 +194,39 @@ test('the sessions poll carries each running session and each reporting skill, s
     ['s3', false, null, 'done', 'Which repo?', '2026-11-12T10:00:00Z'],
   ]);
   assert.equal('tickets' in statuses[1], false);
+  // A prompt Claude Code blocks on comes with what it waits for.
+  const [blocked] = sessionStatuses({ live: [{ sessionId: 's4', status: 'waiting', waitingFor: 'permission prompt' }] });
+  assert.equal(blocked.waitingFor, 'permission prompt');
   // Since when each is in its state: the status change, or the line that asked the question.
   assert.deepEqual(statuses.map(s => s.since), ['2026-11-12T11:00:00.000Z', '2026-11-12T10:00:00Z', null]);
+});
+
+test('a session waits on you on a question, or idle for less than its turn; idle longer it is open', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const ago = ms => new Date(now - ms).toISOString();
+  const status = session => sessionStatus({ running: true, ...session }, now);
+  assert.equal(sessionStatus({ running: false, state: 'waiting' }, now), 'closed');
+  assert.equal(status({ status: 'idle', state: 'waiting', since: ago(YOUR_TURN_MS * 4) }), 'waiting');
+  assert.equal(status({ status: 'busy', since: ago(1000) }), 'busy');
+  // Claude Code blocked on a permission prompt waits on you however long it has been.
+  assert.equal(status({ status: 'waiting', waitingFor: 'permission prompt', since: ago(YOUR_TURN_MS * 4) }), 'waiting');
+  assert.equal(status({ status: 'idle', since: ago(YOUR_TURN_MS - 1000) }), 'waiting');
+  assert.equal(status({ status: 'idle', since: ago(YOUR_TURN_MS + 1000) }), 'open');
+  assert.equal(status({ status: 'idle', since: null }), 'open');
+});
+
+test('sessions sort by latest change, longest in state, title, folder, PRD or skill, those without one last', () => {
+  const sessions = [
+    { sessionId: 'a', title: 'Bravo', since: '2026-11-12T10:00:00Z', folder: '/dev/zeta', skill: 'validator', tickets: [{ ticket: 'PRD-10', primary: true }] },
+    { sessionId: 'b', title: 'alpha', since: '2026-11-12T11:00:00Z', cwd: '/dev/alpha', tickets: [{ ticket: 'PRD-9', primary: true }] },
+    { sessionId: 'c', title: 'Charlie', at: '2026-11-12T09:00:00Z', skill: 'implement', tickets: [] },
+  ];
+  const ids = order => sortSessions(sessions, order).map(session => session.sessionId).join('');
+  assert.equal(ids('changed'), 'bac');
+  assert.equal(ids('longest'), 'cab');
+  assert.equal(ids('title'), 'bac');
+  assert.equal(ids('folder'), 'bac');
+  assert.equal(ids('prd'), 'bac');
+  assert.equal(ids('skill'), 'cab');
+  assert.equal(ids('unknown'), 'bac');
 });

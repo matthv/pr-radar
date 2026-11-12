@@ -73,7 +73,7 @@ test('a session is tied to the tickets it works on: a skill run on one, a worktr
   assert.equal(sessionsForTicket('PRD-1')[0].cwd, '/Users/me/dev');
 });
 
-test('a session says what it is about: its latest title, recap, typed prompt and branch, and its PRs', async () => {
+test('a session says what it is about: its latest title, recap, typed prompt, folder and branch, and its PRs', async () => {
   const dir = await projectsDir();
   const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/dev', gitBranch: 'feat/caret', message: { role: 'user', content }, ...extra });
   await writeSession(dir, OLDER, [
@@ -86,6 +86,7 @@ test('a session says what it is about: its latest title, recap, typed prompt and
     user('<system-reminder>injected</system-reminder>'),
     user('a meta line', { isMeta: true }),
     line({ type: 'system', subtype: 'away_summary', content: 'You asked for the caret; it is done.', timestamp: '2026-11-12T11:30:00Z' }),
+    line({ type: 'assistant', cwd: '/Users/me/dev/claudine-prd-1', message: { role: 'assistant', content: [] } }),
     prLink(OLDER, PR),
   ].join(''), 0);
 
@@ -100,6 +101,7 @@ test('a session says what it is about: its latest title, recap, typed prompt and
     promptAt: '2026-11-12T11:00:00Z',
     branch: 'feat/caret',
     cwd: '/Users/me/dev',
+    folder: '/Users/me/dev/claudine-prd-1',
     prUrls: [PR],
     at: undefined,
   });
