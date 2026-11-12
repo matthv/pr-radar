@@ -1401,9 +1401,11 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   or by title. Both choices are kept per browser, and a group folds from its header.
 - **The band** above the tickets replaces the board's: the two pickers, then counters of the
   tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
-  counter filters the list to its tickets; a second click or Esc clears it. Both views hide the
-  merged PRs, the ones no longer on the board, and the tickets Linear has completed or canceled,
-  until **Show closed** is on; the choice is kept per browser.
+  counter filters the list to its tickets; a second click or Esc clears it.
+- **Hiding.** Any PR under a PRD, or PRD or PR under a session, has an eye on hover that hides it
+  into a folded *n hidden* line at the foot of the list; its eye there puts it back. Closed ones
+  start hidden: a merged PR, one no longer on the board, a ticket Linear completed or canceled.
+  Your choice either way beats that, per card, in this browser.
 
 ### The Sessions view
 
@@ -1412,7 +1414,10 @@ and the closed ones a PRD keeps, grouped by state (waiting on you, working, open
 group a counter in the band that filters to it. A card gives what the session's transcript says it
 is about: Claude Code's title for it, its latest recap, or the last prompt you typed when that is
 newer, its folder and branch. Below sit its session row, then the PRDs it works on and their PRs,
-and the PRs it made or opened itself, each folded behind a caret. It needs
+and the PRs it made or opened itself, each folded behind a caret and hidden as above. The most
+likely to be the session's work come first, outlined, ahead of an *also linked* line with the rest
+dimmed: the PRs on the branch the session is on, or else the PRDs it weighs most on (a branch
+naming the ticket adds to it), their PRs and the latest PR it opened. It needs
 `PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the cards carry only their own PRs.
 
 ## Reading the colours
