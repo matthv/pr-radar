@@ -753,7 +753,27 @@
   .session-meta .prd-session-name { color: var(--text-soft); }
   .session-meta .prd-meta { margin-top: 0; }
   .session-question { margin-top: 6px; font-size: 12.5px; }
-  .session-card .prd-top .claude-link { flex: none; margin: 0 -2px 0 -4px; }
+  .session-card .claude-link { flex: none; margin: 0 -2px 0 -4px; }
+  /* A session is one line: what it is, where it runs, what it works on, and how long ago. */
+  .prd.session-card { padding: 6px 40px 6px 14px; margin-bottom: 6px; }
+  .session-card .prd-caret { top: 8px; }
+  .session-card.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
+  .sess-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sess-line .session-title { flex: 0 1 auto; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-line .pill { flex: none; }
+  .sess-key { flex: none; font-size: 12px; font-weight: 600; color: var(--text-soft); text-decoration: none; }
+  .sess-key:hover { color: var(--indigo); }
+  .sess-where { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-faint); }
+  .sess-age { flex: none; margin-left: auto; font-size: 12px; color: var(--text-faint); }
+  .session-card .session-question { margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-card:not(.folded) .session-question { white-space: normal; }
+  .session-card .session-meta { margin-top: 6px; }
+  /* A session that just turned to you, until you look at it. */
+  .session-card.calls { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone) 55%, transparent), var(--shadow-md); }
+  @media (prefers-reduced-motion: no-preference) {
+    .session-card.calls { animation: sess-call 2.4s ease-in-out infinite; }
+    @keyframes sess-call { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone) 30%, transparent), var(--shadow-md); } }
+  }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
   .session-prd .title { font-weight: 600; }
@@ -2088,6 +2108,9 @@ const I18N = {
     sessRecap: 'récap · il y a {v}',
     sessAsked: 'ta dernière demande · il y a {v}',
     sessFocusHint: 'cliquer pour n’afficher que ces sessions',
+    sessUnfold: 'déplier : récap, dernier prompt, PRD et PR liés',
+    sessFold: 'replier',
+    sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
     prdPrAway: 'pas sur le tableau : fusionnée il y a longtemps, ou celle de quelqu’un d’autre',
@@ -2476,6 +2499,9 @@ const I18N = {
     sessRecap: 'recap · {v} ago',
     sessAsked: 'your last prompt · {v} ago',
     sessFocusHint: 'click to show only these sessions',
+    sessUnfold: 'unfold: recap, last prompt, linked PRDs and PRs',
+    sessFold: 'fold',
+    sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
     prdPrAway: 'not on the board: merged long ago, or someone else’s',
@@ -4648,11 +4674,14 @@ let prdOrder = PRRadarPrd.ORDERS.includes(store.get('prdOrder', 'updated')) ? st
 const safeColor = color => (/^#[0-9a-f]{3,8}$/i.test(color ?? '') ? color : 'var(--border)');
 
 function loadPrds(force = false) {
+  let changed = true;
   prdLoading ??= fetch(`/api/prds${force ? '?force=1' : ''}`)
     .then(async response => {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || response.statusText);
+      changed = JSON.stringify(payload) !== JSON.stringify(prdData);
       prdData = payload;
+      noteSessionChanges(payload.sessions ?? []);
       if (payload.enabled !== false && payload.linear !== false) {
         pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
       }
@@ -4662,7 +4691,8 @@ function loadPrds(force = false) {
     })
     .finally(() => {
       prdLoading = null;
-      renderPrd();
+      // A redraw would close a picker someone has open; picking redraws anyway.
+      if (changed && !document.activeElement?.matches('#prd select')) renderPrd();
     });
   return prdLoading;
 }
@@ -4947,33 +4977,90 @@ function sessionPrdItem(prd, eye = '') {
     + `<div class="meta">${project}${labels}<span>${escapeHtml(dates)}</span></div></div></div>`;
 }
 
+// Folded, a session is one line plus the question it waits on; its caret brings back the
+// recap, the last prompt and every PRD and PR it touches.
+const sessOpen = new Set();
 function sessionCard(session) {
   const status = prdSessionStatus(session);
+  const id = escapeHtml(session.sessionId);
   const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
   const folder = session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1) : null;
-  const meta = [folder, session.branch].filter(Boolean).join(' · ');
-  const recap = Boolean(session.summary) && (!session.promptAt || String(session.summaryAt) >= String(session.promptAt));
-  const about = recap ? session.summary : session.prompt;
-  const aboutAt = recap ? session.summaryAt : session.promptAt;
-  const prdItems = session.tickets.filter(link => byTicket.has(link.ticket)).map(link => {
-    const prd = byTicket.get(link.ticket);
-    return { key: `prd:${prd.ticket}`, closed: prdClosed(prd), primary: link.primary, html: eye => sessionPrdItem(prd, eye) };
-  });
-  const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
-  const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
+  const where = [folder, session.branch].filter(Boolean).join(' · ');
   const parts = prdSessionParts(session);
   const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
   const opens = prdData.claudeSessions && session.resumable;
-  return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">${parts.open}`
+  // What it works on, at a glance: its main PRD, else its main PR.
+  const lead = session.tickets.find(link => link.primary && byTicket.has(link.ticket));
+  const leadPr = lead ? null : session.prs.find(pr => pr.primary);
+  const key = lead
+    ? `<a class="sess-key" href="${escapeHtml(byTicket.get(lead.ticket).url)}" target="_blank" rel="noopener" title="${escapeHtml(byTicket.get(lead.ticket).title)}">${escapeHtml(lead.ticket)}</a>`
+    : leadPr ? `<a class="sess-key" href="${escapeHtml(leadPr.url)}" target="_blank" rel="noopener" title="${escapeHtml(leadPr.title ?? '')}">#${escapeHtml(String(leadPr.number ?? leadPr.url.split('/').pop()))}</a>` : '';
+  const open = sessOpen.has(session.sessionId);
+  const line = `<div class="sess-line">${parts.open}`
     + (opens
-      ? `<button type="button" class="prd-title session-title" data-prd-open="${escapeHtml(session.sessionId)}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
+      ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
       : `<span class="prd-title">${title}</span>`)
-    + `${parts.cardPills}</div>`
-    + `<div class="prd-meta session-meta">${parts.name}${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${parts.at}</div>`
-    + (parts.question ? `<div class="session-question">${parts.question}</div>` : '')
-    + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
-    + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`)
-    + '</div>';
+    + `${parts.cardPills}${key}<span class="sess-where">${escapeHtml(where)}</span>`
+    + (session.at ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + '</div>';
+  let details = '';
+  if (open) {
+    const recap = Boolean(session.summary) && (!session.promptAt || String(session.summaryAt) >= String(session.promptAt));
+    const about = recap ? session.summary : session.prompt;
+    const aboutAt = recap ? session.summaryAt : session.promptAt;
+    const prdItems = session.tickets.filter(link => byTicket.has(link.ticket)).map(link => {
+      const prd = byTicket.get(link.ticket);
+      return { key: `prd:${prd.ticket}`, closed: prdClosed(prd), primary: link.primary, html: eye => sessionPrdItem(prd, eye) };
+    });
+    const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
+    const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
+    details = `<div class="prd-meta session-meta">${parts.name}${parts.at}</div>`
+      + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
+      + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`);
+  }
+  return `<div class="prd session-card${open ? '' : ' folded'}${sessCalls.has(session.sessionId) ? ' calls' : ''}" data-session="${id}" style="--tone: ${SESSION_TONES[status]}">`
+    + `<button type="button" class="prd-caret" data-sess-toggle="${id}" aria-expanded="${open}" aria-label="${escapeHtml(t(open ? 'sessFold' : 'sessUnfold'))}"></button>`
+    + line + (parts.question ? `<div class="session-question">${parts.question}</div>` : '') + details + '</div>';
+}
+
+// Sessions change by the second while the board refreshes every few minutes: they have their
+// own poll, in every view. A session that turns to you, waiting on you or done working, rings,
+// lights up and counts in the tab title until you look at it.
+const SESSION_POLL_MS = 5000;
+const sessLast = new Map();
+const sessCalls = new Set();
+function noteSessionChanges(sessions) {
+  let ring = false;
+  for (const session of sessions) {
+    const now = prdSessionStatus(session);
+    const before = sessLast.get(session.sessionId);
+    if (before && before !== now && (now === 'waiting' || (before === 'busy' && now === 'open'))) {
+      sessCalls.add(session.sessionId);
+      ring = true;
+    }
+    if (now === 'busy' || now === 'closed') sessCalls.delete(session.sessionId);
+    sessLast.set(session.sessionId, now);
+  }
+  if (ring) beep();
+  paintTitle();
+}
+function seeSession(sessionId) {
+  if (!sessCalls.delete(sessionId)) return;
+  document.querySelector(`.session-card[data-session="${CSS.escape(sessionId)}"]`)?.classList.remove('calls');
+  paintTitle();
+}
+setInterval(() => {
+  if (prdData && (prdData.enabled === false || prdData.claudeSessions === false)) return;
+  loadPrds();
+}, SESSION_POLL_MS);
+el('prd').addEventListener('mouseover', event => {
+  const card = event.target.closest('.session-card.calls');
+  if (card) seeSession(card.dataset.session);
+});
+// Closed sessions start folded away; after that, their group is folded or not as you leave it.
+if (store.get('sessClosedFolded', '') !== '1') {
+  collapsedGroups.add('sessions:closed');
+  saveCollapsed();
+  store.set('sessClosedFolded', '1');
 }
 
 function renderSessions() {
@@ -5065,8 +5152,17 @@ el('prd').addEventListener('click', event => {
     renderPrd();
     return;
   }
-  const open = event.target.closest('[data-prd-open]');
-  const link = open?.closest('.prd-session, .session-card')?.querySelector('.claude-link');
+  const toggle = event.target.closest('[data-sess-toggle]');
+  if (toggle) {
+    const { sessToggle: id } = toggle.dataset;
+    if (!sessOpen.delete(id)) sessOpen.add(id);
+    renderPrd();
+    return;
+  }
+  const open = event.target.closest('[data-prd-open], .claude-link');
+  const card = open?.closest('.prd-session, .session-card');
+  if (card?.dataset.session) seeSession(card.dataset.session);
+  const link = open?.matches('[data-prd-open]') ? card?.querySelector('.claude-link') : null;
   if (link) resumeClaudeSession(link);
 });
 
@@ -6210,7 +6306,8 @@ let hubWizzQueue = [];
 // A hidden tab cannot shake, so it says so in its title until someone looks.
 function paintTitle() {
   const waiting = document.hidden && (hubWizzQueue.length > 0 || hubKudosBatch.length > 0);
-  document.title = `${waiting ? '● ' : ''}${state.titleBase ?? 'PR Radar'}`;
+  const calls = sessCalls.size ? `${t('sessCalls', { n: sessCalls.size })} · ` : '';
+  document.title = `${waiting ? '● ' : ''}${calls}${state.titleBase ?? 'PR Radar'}`;
 }
 
 const WIZZ_STALE_MS = 10 * 60_000;

@@ -1410,17 +1410,22 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 
 ### The Sessions view
 
-The fifth view turns the PRDs view inside out: a card per Claude Code session, every running one
-and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed), each
-group a counter in the band that filters to it. A card is the session: its Claude button, Claude
-Code's title for it, its state and skill pills; its name, folder, branch and last activity; the
-question it waits on; its latest recap, or the last prompt you typed when that is newer. Below sit
-the PRDs it works on and their PRs,
+The fifth view turns the PRDs view inside out: a line per Claude Code session, every running one
+and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
+starts folded), each group a counter in the band that filters to it. A line is the session: its
+Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
+state and skill pills; the PRD it works on, or else its PR; its folder and branch; its last
+activity; and below, the question it waits on. Its caret unfolds the rest: its name, its latest
+recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,
 and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the
 session's work stay in the list: the PRs on the branch it is on, or else the PRDs it weighs most
 on (a branch naming the ticket adds to it), their PRs and the latest PR it opened. The rest start
 under *also linked* in *n more*, as above, where an eye brings back a wrong guess. It needs
-`PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the cards carry only their own PRs.
+`PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the lines carry only their own PRs.
+
+Sessions are read every 5 seconds, whichever view is open. A session that turns to you, waiting on
+you or done working, plays the chime (muted with the board's), lights up, and counts in the tab
+title as `⚑ n` until you hover it or open it.
 
 ## Reading the colours
 
