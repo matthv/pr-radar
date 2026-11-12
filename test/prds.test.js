@@ -256,18 +256,35 @@ test('a status poll updates the drawn sessions, closes the ones it no longer lis
   assert.equal(mergeStatuses(drawn, [{ sessionId: 'z', running: false }]).unseen, false);
 });
 
-test('the chime rings once a known session starts waiting on you, never for one seen the first time', () => {
+test('the chime rings only when a session needs you', () => {
   const now = Date.parse('2026-11-12T12:00:00Z');
   const last = new Map();
   const busy = { sessionId: 'a', running: true, status: 'busy' };
   const asks = { ...busy, status: 'idle', state: 'waiting' };
+  const idle = at => ({ ...busy, status: 'idle', since: new Date(at).toISOString() });
+  // Seen for the first time: quiet.
   assert.equal(startedWaiting(last, [asks], now), false);
+  // A new question, or a permission prompt, rings at once, and once.
   assert.equal(startedWaiting(last, [busy], now), false);
   assert.equal(startedWaiting(last, [asks], now), true);
   assert.equal(startedWaiting(last, [asks], now), false);
-  // A permission prompt rings like a question.
   assert.equal(startedWaiting(last, [busy], now), false);
   assert.equal(startedWaiting(last, [{ ...busy, status: 'waiting', waitingFor: 'permission prompt' }], now), true);
+  // Your turn rings once Claude stopped working and stayed idle a few seconds.
+  assert.equal(startedWaiting(last, [busy], now), false);
+  assert.equal(startedWaiting(last, [idle(now)], now), false);
+  assert.equal(startedWaiting(last, [idle(now)], now + 5000), true);
+  assert.equal(startedWaiting(last, [idle(now)], now + 10000), false);
+  // A pause between a skill's steps, idle then busy again within those seconds: quiet.
+  assert.equal(startedWaiting(last, [busy], now + 11000), false);
+  assert.equal(startedWaiting(last, [idle(now + 12000)], now + 12000), false);
+  assert.equal(startedWaiting(last, [busy], now + 14000), false);
+  // Typing into a long-idle session refreshes its idle time: your turn again, but quiet.
+  const quiet = new Map();
+  const later = now + YOUR_TURN_MS * 2;
+  assert.equal(startedWaiting(quiet, [idle(now)], later), false);
+  assert.equal(startedWaiting(quiet, [idle(later)], later), false);
+  assert.equal(startedWaiting(quiet, [idle(later)], later + 10000), false);
 });
 
 test('the drawn signature moves when the clock alone ends your turn', () => {

@@ -1429,15 +1429,17 @@ session (☆ on hover) to pin it in a *starred* list at the top.
 - the ticket or PR it works on, the folder it is in (its worktree, if it moved into one) and branch;
 - underneath, the question it is waiting on: click it to jump to the session.
 
-Unfold a line for the session's latest recap or your last prompt, and the tickets and PRs it works
-on. Links that are less likely to be its work start in *n more*.
+Unfold a line for its full session ID, its latest recap or your last prompt, and the tickets and PRs
+it works on. Links that are less likely to be its work start in *n more*.
 
 **Order by** latest change (default), longest in its state, title, folder, ticket or skill.
 
 **Live updates.** While the view is open it rereads session states every 5 seconds, from local
 files only, so it costs no GitHub or Linear calls. The tab title shows `⚑ n` for the sessions
-waiting on you. Set `PR_RADAR_SESSION_CHIME=true` to hear three falling notes when a session starts
-waiting on you, distinct from the board's chime; the mute button silences both.
+waiting on you. Set `PR_RADAR_SESSION_CHIME=true` to hear three falling notes when a session needs you:
+a new question or permission prompt, or Claude finishing its work. Typing into a session, or a skill
+moving to its next step, stays quiet. The notes are distinct from the board's chime; the mute
+button silences both.
 
 ## Reading the colours
 

@@ -775,6 +775,7 @@
   button.session-question:hover .prd-question, button.session-question:focus-visible .prd-question { text-decoration: underline; }
   .session-card:not(.folded) .session-question { white-space: normal; }
   .session-card .session-meta { margin-top: 6px; }
+  .session-card .sess-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; user-select: all; }
   /* A session's badges never blink, in either view: a list watched all day has to stay calm. */
   .session-card .pill.running, .prd-session .pill.running { animation: none; }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
@@ -5077,7 +5078,7 @@ function sessionCard(session) {
     });
     const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
     const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
-    details = `<div class="prd-meta session-meta">${parts.name}${parts.at}</div>`
+    details = `<div class="prd-meta session-meta">${parts.name}<span class="sess-id" title="${escapeHtml(`claude --resume ${session.sessionId}`)}">${id}</span>${parts.at}</div>`
       + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
       + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`);
   }
