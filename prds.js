@@ -165,4 +165,13 @@ function buildSessions({ prds, boardPrs = [], stageSessions = [], live = [], det
   }).sort((a, b) => b.running - a.running || String(b.at).localeCompare(String(a.at)));
 }
 
-module.exports = { buildPrds, buildSessions, extraTickets };
+// Only what moves by the second, for the Sessions view's poll: each running session's state and
+// each reporting skill's stage. The PRDs and PRs a session works on stay with the full read.
+function sessionStatuses({ stageSessions = [], live = [] }) {
+  const liveById = new Map(live.map(record => [record.sessionId, record]));
+  const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
+  return [...new Set([...liveById.keys(), ...stageById.keys()])]
+    .map(id => sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id) }));
+}
+
+module.exports = { buildPrds, buildSessions, extraTickets, sessionStatuses };
