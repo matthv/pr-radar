@@ -2112,6 +2112,11 @@ const I18N = {
     sessFold: 'replier',
     sessQuestion: 'question',
     sessYourTurn: 'à toi',
+    sessOrder_changed: 'dernier changement',
+    sessOrder_longest: 'le plus long dans son état',
+    sessOrder_title: 'titre',
+    sessOrder_folder: 'dossier',
+    sessOrder_prd: 'PRD',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
@@ -2505,6 +2510,11 @@ const I18N = {
     sessFold: 'fold',
     sessQuestion: 'question',
     sessYourTurn: 'your turn',
+    sessOrder_changed: 'latest change',
+    sessOrder_longest: 'longest in state',
+    sessOrder_title: 'title',
+    sessOrder_folder: 'folder',
+    sessOrder_prd: 'PRD',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
@@ -5106,7 +5116,9 @@ async function pollSessions() {
   });
   noteSessionChanges(prdData.sessions);
   // A session can also move by the clock alone: idle past YOUR_TURN_MS, it is merely open.
-  if (JSON.stringify(prdData.sessions) !== before || sessSignature(prdData.sessions) !== sessDrawn) renderPrd();
+  // A redraw would close a picker someone has open; picking redraws anyway.
+  if ((JSON.stringify(prdData.sessions) !== before || sessSignature(prdData.sessions) !== sessDrawn)
+    && !document.activeElement?.matches('#prd select')) renderPrd();
 }
 // The time each session has spent in its state, in whole minutes, from the first one; the page
 // moves it on by itself, and a poll that brings news sets it right.
@@ -5127,9 +5139,28 @@ if (store.get('sessClosedFolded', '') !== '1') {
   store.set('sessClosedFolded', '1');
 }
 
+// The order inside each state's group, kept in this browser: the latest to change state first
+// (the one that just finished leads), the longest in its state first, or by title, folder or PRD.
+const SESS_ORDERS = ['changed', 'longest', 'title', 'folder', 'prd'];
+let sessOrder = SESS_ORDERS.includes(store.get('sessOrder', 'changed')) ? store.get('sessOrder', 'changed') : 'changed';
+function sortSessions(list) {
+  const when = session => String(session.since ?? session.at ?? '');
+  const title = session => String(session.title ?? session.name ?? session.sessionId).toLowerCase();
+  const folder = session => (session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1).toLowerCase() : '\uffff');
+  const prd = session => session.tickets?.find(link => link.primary)?.ticket ?? '\uffff';
+  const byTitle = (a, b) => title(a).localeCompare(title(b));
+  const by = {
+    changed: (a, b) => when(b).localeCompare(when(a)),
+    longest: (a, b) => when(a).localeCompare(when(b)),
+    title: byTitle,
+    folder: (a, b) => folder(a).localeCompare(folder(b)) || byTitle(a, b),
+    prd: (a, b) => prd(a).localeCompare(prd(b), undefined, { numeric: true }) || byTitle(a, b),
+  }[sessOrder];
+  return [...list].sort(by);
+}
+
 function renderSessions() {
-  // In each group, the latest to have changed state first: the one that just finished leads.
-  const sessions = [...(prdData?.sessions ?? [])].sort((a, b) => String(b.since ?? b.at).localeCompare(String(a.since ?? a.at)));
+  const sessions = sortSessions(prdData?.sessions ?? []);
   sessDrawn = sessSignature(sessions);
   const counters = Object.keys(SESSION_TONES).map(key => {
     const value = sessions.filter(session => sessStatus(session) === key).length;
@@ -5139,7 +5170,9 @@ function renderSessions() {
       + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'sessFocusHint'))}"` : ''}>`
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
-  const bar = `<div class="summary prd-summary"><div class="counters">${counters}</div>`
+  const orders = SESS_ORDERS.map(value => `<option value="${value}"${value === sessOrder ? ' selected' : ''}>${escapeHtml(t(`sessOrder_${value}`))}</option>`).join('');
+  const bar = `<div class="summary prd-summary"><label class="picker-trigger prd-pick">${escapeHtml(t('prdOrderBy'))} <select data-sess-order>${orders}</select></label>`
+    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
     + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
@@ -5170,6 +5203,7 @@ function renderSessions() {
 el('prd').addEventListener('change', event => {
   if (event.target.matches('[data-prd-group]')) store.set('prdGroup', (prdGroup = event.target.value));
   else if (event.target.matches('[data-prd-order]')) store.set('prdOrder', (prdOrder = event.target.value));
+  else if (event.target.matches('[data-sess-order]')) store.set('sessOrder', (sessOrder = event.target.value));
   else return;
   renderPrd();
 });
