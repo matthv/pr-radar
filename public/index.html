@@ -840,12 +840,12 @@
   .prd-caret {
     position: absolute; right: 10px; top: 10px; z-index: 3; width: 22px; height: 22px;
     display: grid; place-items: center; padding: 0; cursor: pointer;
-    background: none; border: 0; border-radius: 6px; color: var(--text-soft);
+    background: none; border: 0; border-radius: 6px; color: var(--text-faint);
   }
   /* The group headers' chevron: down when unfolded, right when folded. */
   .prd-caret::before {
-    content: ""; width: 7px; height: 7px;
-    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    content: ""; width: 5px; height: 5px;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
     transform: translateY(-2px) rotate(45deg); transition: transform .15s;
   }
   .prd-pr-item.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
