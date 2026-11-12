@@ -66,8 +66,22 @@ function creditTools(entry, record) {
   }
 }
 
+// What a session is about, for a card of its own: Claude Code's title for it, the recap it
+// writes while you are away, the last prompt you typed and the branch it is on, each the latest.
+const PROMPT_CHARS = 240;
+const NOT_TYPED = /^\s*<(system-reminder|task-notification|local-command|bash-|user-prompt-submit-hook)/;
+function promptOf(text) {
+  const command = /<command-name>([^<]*)<\/command-name>/.exec(text)?.[1];
+  const said = command ? `${command} ${/<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1] ?? ''}` : text;
+  if (!command && NOT_TYPED.test(said)) return null;
+  const flat = said.replace(/\s+/g, ' ').trim();
+  return flat ? (flat.length > PROMPT_CHARS ? `${flat.slice(0, PROMPT_CHARS - 1)}…` : flat) : null;
+}
+
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
+    const branch = fieldOf(line, 'gitBranch');
+    if (branch) entry.branch = branch;
     // Every record names the folder it ran in, ahead of its content; only a change is read again.
     const cwd = fieldOf(line, 'cwd');
     if (cwd && cwd !== entry.lastCwd) {
@@ -79,7 +93,8 @@ function readLines(text, entry) {
     const wantsCwd = !entry.cwd && cwd !== null;
     const inPrompt = declaresInPrompt(line);
     const inTools = !inPrompt && declaresInTools(line);
-    if (!wantsCwd && !inPrompt && !inTools && !line.includes('"type":"pr-link"')) continue;
+    const about = line.includes('"type":"ai-title"') || line.includes('"subtype":"away_summary"') || isTyped(line);
+    if (!wantsCwd && !inPrompt && !inTools && !about && !line.includes('"type":"pr-link"')) continue;
     let record;
     try {
       record = JSON.parse(line);
@@ -90,13 +105,22 @@ function readLines(text, entry) {
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
     if (inPrompt && record.type === 'user') credit(entry, promptTickets(textOf(record.message?.content)), WEIGHT.skill);
     if (inTools && record.type === 'assistant') creditTools(entry, record);
+    if (record.type === 'ai-title' && record.aiTitle) entry.title = record.aiTitle;
+    if (record.subtype === 'away_summary' && record.content) Object.assign(entry, { summary: String(record.content), summaryAt: record.timestamp ?? null });
+    if (record.type === 'user' && !record.isMeta && !record.isCompactSummary) {
+      const prompt = promptOf(textOf(record.message?.content));
+      if (prompt) Object.assign(entry, { prompt, promptAt: record.timestamp ?? null });
+    }
   }
 }
 
 async function readNewLines(file, stat) {
   let entry = transcripts.get(file);
   if (!entry || stat.size < entry.offset) {
-    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Map(), folders: new Set() };
+    entry = {
+      offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Map(), folders: new Set(),
+      title: null, summary: null, summaryAt: null, prompt: null, promptAt: null, branch: null,
+    };
     transcripts.set(file, entry);
   }
   entry.mtimeMs = stat.mtimeMs;
@@ -188,6 +212,18 @@ function sessionFor(prUrl) {
     if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
   }
   return latest && { sessionId: latest.sessionId, cwd: latest.cwd };
+}
+
+// What a session's latest transcript says it is about, and the PRs it made or opened.
+function sessionDetails(sessionId) {
+  let latest = null;
+  for (const entry of transcripts.values()) {
+    if (entry.sessionId !== sessionId) continue;
+    if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
+  }
+  if (!latest) return null;
+  const { title, summary, summaryAt, prompt, promptAt, branch, cwd } = latest;
+  return { title, summary, summaryAt, prompt, promptAt, branch, cwd, prUrls: [...latest.prUrls], at: new Date(latest.mtimeMs).toISOString() };
 }
 
 // The sessions that declared work on a ticket, newest first, each with the weight of what it did.
@@ -507,6 +543,7 @@ module.exports = {
   scan,
   sessionFor,
   sessionsForTicket,
+  sessionDetails,
   cwdOf,
   liveSessions,
   resumeCommand,

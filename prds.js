@@ -91,4 +91,35 @@ function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], session
   });
 }
 
-module.exports = { buildPrds, extraTickets };
+// The Sessions view turns the PRDs inside out: a card per session, every running one and the
+// closed ones a PRD keeps, with the tickets it works on, their PRs and the PRs it made or opened
+// itself, and what its transcript says it is about. Running first, then the most recent.
+function buildSessions({ prds, boardPrs = [], stageSessions = [], live = [], detailsOf = () => null, cwdOf = () => null }) {
+  const board = new Map(boardPrs.map(pr => [pr.url, pr]));
+  const liveById = new Map(live.map(record => [record.sessionId, record]));
+  const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
+  const cards = new Map();
+  const cardOf = id => {
+    if (!cards.has(id)) cards.set(id, { session: null, tickets: [], prs: new Map() });
+    return cards.get(id);
+  };
+  for (const record of live) cardOf(record.sessionId);
+  for (const prd of prds) {
+    for (const session of prd.sessions) {
+      const card = cardOf(session.sessionId);
+      card.session ??= session;
+      card.tickets.push(prd.ticket);
+      for (const pr of prd.prs) if (!card.prs.has(pr.url)) card.prs.set(pr.url, pr);
+    }
+  }
+  return [...cards].map(([id, card]) => {
+    const details = detailsOf(id);
+    for (const url of details?.prUrls ?? []) if (!card.prs.has(url)) card.prs.set(url, prEntry(url, null, board));
+    const session = card.session ?? sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id), cwd: cwdOf(id), seen: details?.at });
+    const { prUrls, ...about } = details ?? {};
+    const { main, weight, ...base } = session;
+    return { ...base, ...about, at: base.at ?? about.at ?? null, tickets: card.tickets, prs: [...card.prs.values()] };
+  }).sort((a, b) => b.running - a.running || String(b.at).localeCompare(String(a.at)));
+}
+
+module.exports = { buildPrds, buildSessions, extraTickets };

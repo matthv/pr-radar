@@ -1395,13 +1395,23 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   `~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` overrides it). A skill running
   inside another, `/validator` inside `/review-loop`, shows while it runs, then its caller again.
   A run left mid-stage by a closed session shows as *interrupted*.
-- **Group by** the running skill, the status, the project or the label, or nothing; a ticket
-  with two skills running or two labels sits in both groups, and one with none in the last.
+- **Group by** the status, the project or the label, or nothing; a ticket with two labels sits
+  in both groups, and one with none in the last.
   Statuses follow Linear's own order. **Order by** last update or opening date, newest first,
   or by title. Both choices are kept per browser, and a group folds from its header.
 - **The band** above the tickets replaces the board's: the two pickers, then counters of the
   tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
   counter filters the list to its tickets; a second click or Esc clears it.
+
+### The Sessions view
+
+The fifth view turns the PRDs view inside out: a card per Claude Code session, every running one
+and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed), each
+group a counter in the band that filters to it. A card gives what the session's transcript says it
+is about: Claude Code's title for it, its latest recap, or the last prompt you typed when that is
+newer, its folder and branch. Below sit its session row, then the PRDs it works on and their PRs,
+and the PRs it made or opened itself, each folded behind a caret. It needs
+`PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the cards carry only their own PRs.
 
 ## Reading the colours
 

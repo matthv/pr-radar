@@ -37,7 +37,7 @@ const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const skillStages = require('./skill-stages');
 const linear = require('./linear');
-const { buildPrds, extraTickets } = require('./prds');
+const { buildPrds, buildSessions, extraTickets } = require('./prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -274,17 +274,21 @@ async function prdView(force) {
     warnings.push({ source: 'claude', message: error.message });
     return [];
   });
-  const prds = await linearPrds(extraTickets(stageSessions, boardPrs), force);
+  // The Sessions view needs no Linear: without a key it shows the sessions and their own PRs.
+  const fetched = LINEAR_API_KEY ? await linearPrds(extraTickets(stageSessions, boardPrs), force) : [];
+  const prds = buildPrds({
+    prds: fetched, boardPrs, stageSessions, live,
+    sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
+    sessionsOf: CLAUDE_SESSIONS ? claudeSessions.sessionsForTicket : () => [],
+    cwdOf: claudeSessions.cwdOf,
+  });
   return {
     enabled: true,
+    linear: Boolean(LINEAR_API_KEY),
     claudeSessions: CLAUDE_SESSIONS,
     warnings,
-    prds: buildPrds({
-      prds, boardPrs, stageSessions, live,
-      sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
-      sessionsOf: CLAUDE_SESSIONS ? claudeSessions.sessionsForTicket : () => [],
-      cwdOf: claudeSessions.cwdOf,
-    }),
+    prds,
+    sessions: buildSessions({ prds, boardPrs, stageSessions, live, detailsOf: CLAUDE_SESSIONS ? claudeSessions.sessionDetails : () => null, cwdOf: claudeSessions.cwdOf }),
   };
 }
 
@@ -767,7 +771,6 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/prds') {
     if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
-    if (!LINEAR_API_KEY) return json(res, 200, { enabled: false, reason: 'noKey' });
     try {
       return json(res, 200, await prdView(url.searchParams.get('force') === '1'));
     } catch (error) {
