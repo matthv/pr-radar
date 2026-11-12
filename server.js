@@ -281,6 +281,12 @@ async function prdView(force) {
     warnings.push({ source: 'claude', message: error.message });
     return [];
   });
+  // Waiting on you and working come from the `status` Claude Code writes in each running session's
+  // file, which it does not document: say so when it is missing rather than show those sessions open.
+  const statusless = live.filter(record => !record.status).length;
+  if (statusless) {
+    warnings.push({ source: 'sessions', message: `${statusless} running Claude Code session(s) record no status, so they show as open, never waiting on you or working: a Claude Code update may have changed its session files.` });
+  }
   // A session started since the last scan has no title, folder or branch until its transcript is read.
   if (CLAUDE_SESSIONS) {
     await claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(({ touched }) => {

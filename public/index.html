@@ -4741,11 +4741,15 @@ const PRD_SESSION_STATUS = {
   open: ['good', 'prdSessionOpen'],
   closed: ['', 'prdSessionClosed'],
 };
-function prdSessionStatus(session) {
-  if (!session.running) return 'closed';
-  // A skill's question, or a prompt Claude Code itself blocks on, a permission say.
-  if (session.state === 'waiting' || session.status === 'waiting') return 'waiting';
-  return session.status === 'busy' ? 'busy' : 'open';
+// One status for both views (PRRadarPrd.sessionStatus): waiting on you, working, open or closed.
+const sessStatus = session => PRRadarPrd.sessionStatus(session);
+// Its badge: a skill's question amber, a prompt Claude Code blocks on amber under its own name
+// ("permission prompt"), your turn cyan; any other state as PRD_SESSION_STATUS says.
+function sessStateBadge(session, status) {
+  if (status !== 'waiting') return [PRD_SESSION_STATUS[status][0], t(PRD_SESSION_STATUS[status][1])];
+  if (session.state === 'waiting') return ['pending', t('sessQuestion')];
+  if (session.status === 'waiting') return ['pending', session.waitingFor ?? t('sessQuestion')];
+  return ['turn', t('sessYourTurn')];
 }
 
 // The skill's pill: indigo while it runs, amber waiting on you, green done, grey interrupted
@@ -4778,10 +4782,10 @@ function prdSessionParts(session, { titled = false } = {}) {
   const pillButton = (kind, label, title) => (opens
     ? `<button type="button" class="pill ${kind}" data-prd-open="${id}" title="${escapeHtml(`${title} · ${action}`)}">${label}</button>`
     : pill(kind, label, title));
-  const status = prdSessionStatus(session);
-  const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
+  const status = sessStatus(session);
+  const [statusKind, statusLabel] = sessStateBadge(session, status);
   const [skillKind, skillState] = prdSkillPill(session);
-  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey));
+  const statusPill = pillButton(statusKind, escapeHtml(statusLabel), statusLabel);
   const skill = session.skill
     ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
     : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
@@ -4818,7 +4822,7 @@ function prdSessionRows(prd) {
   const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMains[prd.ticket]);
   if (!sessions.length) return '';
   const lead = sessions.find(session => session.main) ?? sessions[0];
-  const loud = session => ['waiting', 'busy'].includes(prdSessionStatus(session));
+  const loud = session => ['waiting', 'busy'].includes(sessStatus(session));
   const folded = sessions.filter(session => session !== lead && !loud(session));
   const open = prdOpenSessions.has(prd.ticket);
   const caret = folded.length
@@ -4857,7 +4861,7 @@ function prdCard(prd) {
   const meta = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
   const prs = linkedList(`prd:${prd.ticket}`, prd.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: true, html: eye => prdPrItem(pr, eye) })));
-  const waiting = prd.sessions.some(session => session.running && session.state === 'waiting');
+  const waiting = prdRunning(prd, 'waiting');
   return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
     + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
@@ -4878,7 +4882,7 @@ function prdGroupTone(entry) {
 
 // What the band counts, each a filter. "Open" is a session still running; a PR "for you" is
 // one the board says needs you.
-const prdRunning = (prd, state) => prd.sessions.some(session => session.running && (!state || session.state === state));
+const prdRunning = (prd, status) => prd.sessions.some(session => session.running && (!status || sessStatus(session) === status));
 const PRD_FOCUS = {
   waiting: { kind: 'pending', label: 'prdCountWaiting', test: prd => prdRunning(prd, 'waiting') },
   busy: { kind: 'todo', label: 'prdCountBusy', test: prd => prdRunning(prd, 'busy') },
@@ -5033,14 +5037,8 @@ function sessPills(session, status, pillButton) {
     return pillButton('todo', escapeHtml(live ?? t('prdSessionBusy')) + clock, live ?? t('prdSessionBusy'))
       + (ended ? pillButton('', escapeHtml(skill), skill) : '');
   }
-  const key = sessStatusLabel(session, status);
-  const kind = { sessQuestion: 'pending', sessYourTurn: 'turn', prdSessionOpen: 'good' }[key] ?? '';
-  // A prompt Claude Code blocks on reads as it names it: "permission prompt".
-  if (session.status === 'waiting' && session.state !== 'waiting') {
-    const label = session.waitingFor ?? t('sessQuestion');
-    return pillButton('pending', escapeHtml(label), label) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
-  }
-  return pillButton(kind, escapeHtml(t(key)), t(key)) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
+  const [kind, label] = sessStateBadge(session, status);
+  return pillButton(kind, escapeHtml(label), label) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
 }
 
 function sessionCard(session) {
@@ -5099,9 +5097,6 @@ function sessionCard(session) {
 // Waiting on you is a skill's question, or a session idle for less than YOUR_TURN_MS: it finished
 // its turn, or was started and given nothing yet. Idle longer, it is merely open. A session that
 // starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
-const sessStatus = session => PRRadarPrd.sessionStatus(session);
-const sessStatusLabel = (session, status) => (status !== 'waiting' ? PRD_SESSION_STATUS[status][1]
-  : session.state === 'waiting' ? 'sessQuestion' : 'sessYourTurn');
 const sessSignature = sessions => sessions.map(session => `${session.sessionId}:${sessStatus(session)}`).join();
 let sessDrawn = '';
 const SESSION_POLL_MS = 5000;

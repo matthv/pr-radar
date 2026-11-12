@@ -1386,8 +1386,8 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   make it the main one instead; the choice is kept per ticket, in this browser, and the session
   moves first. The sessions share one box, folded
   behind a caret like a PR card: folded, it shows the main session, or the first, and any running
-  one waiting on you or at work. Starring another moves it first and folds the box back onto it. Its state is a pill: green open,
-  indigo working, amber waiting on you, grey closed; so is its skill. Both are buttons that open
+  one waiting on you or at work. Starring another moves it first and folds the box back onto it. Its state is a pill, as in the Sessions view below: green open,
+  indigo working, amber a question or permission prompt, cyan your turn, grey closed; so is its skill. Both are buttons that open
   the session, like its Claude button. A row gives the session's title, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.
   Its Claude button brings an open session forward, or resumes a closed one through a plugin's
@@ -1417,7 +1417,7 @@ starts folded), each group a counter in the band that filters to it. *Order by* 
 group: the latest to change state first (the default), the longest in its state first, or by
 title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, a session held on a
 prompt of Claude Code's own (a *permission prompt*, named as Claude Code names it), and a session idle for
-less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
+less than 30 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
 Idle longer, it is merely *open*. A star puts a session in a *starred* list above the groups,
 kept in this browser until you unstar it or the session leaves the view. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
