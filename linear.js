@@ -9,7 +9,7 @@ const GITHUB_PR = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
 
 const FIELDS = `identifier title url createdAt updatedAt
   state { name type color position }
-  project { name url color }
+  project { name color }
   assignee { isMe }
   labels(first: 20) { nodes { name color } }
   attachments(first: 30) { nodes { url title } }`;
@@ -43,7 +43,6 @@ function shape(issue) {
     updatedAt: issue.updatedAt,
     status: issue.state ? { name: issue.state.name, type: issue.state.type, color: issue.state.color, position: issue.state.position } : null,
     project: issue.project?.name ?? null,
-    projectUrl: issue.project?.url ?? null,
     projectColor: issue.project?.color ?? null,
     labels: (issue.labels?.nodes ?? []).map(label => ({ name: label.name, color: label.color })),
     prs: [...prs].map(([url, title]) => ({ url, title })),
