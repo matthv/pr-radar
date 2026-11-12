@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('../prds');
-const { group, sortPrds, withMain, sessionStatus, sortSessions, YOUR_TURN_MS } = require('../public/prd');
+const { group, sortPrds, withMain, sessionStatus, sortSessions, stateBadge, mergeStatuses, startedWaiting, sessionSignature, YOUR_TURN_MS } = require('../public/prd');
 
 const PR7 = 'https://github.com/ForestAdmin/claudine/pull/7';
 const PR8 = 'https://github.com/ForestAdmin/claudine/pull/8';
@@ -232,4 +232,55 @@ test('sessions sort by latest change, longest in state, title, folder, PRD or sk
   assert.equal(ids('prd'), 'bac');
   assert.equal(ids('skill'), 'cab');
   assert.equal(ids('unknown'), 'bac');
+});
+
+test('a status poll updates the drawn sessions, closes the ones it no longer lists, and flags a new one', () => {
+  const drawn = [
+    { sessionId: 'a', running: true, status: 'busy', at: '2026-11-12T10:00:00Z', tickets: [{ ticket: 'PRD-1' }] },
+    { sessionId: 'b', running: true, status: 'idle', at: '2026-11-12T09:00:00Z' },
+    { sessionId: 'c', running: false, status: null },
+  ];
+  const { sessions, unseen } = mergeStatuses(drawn, [
+    { sessionId: 'a', running: true, status: 'idle', skill: 'validator', state: 'waiting', question: 'Which repo?', at: null, since: '2026-11-12T11:00:00Z' },
+  ]);
+  assert.equal(unseen, false);
+  // Its state follows the poll; its links stay, and an `at` the poll lacks is kept.
+  assert.deepEqual(sessions[0], {
+    sessionId: 'a', running: true, status: 'idle', waitingFor: undefined, name: undefined, skill: 'validator', stage: undefined,
+    state: 'waiting', question: 'Which repo?', outcome: undefined, at: '2026-11-12T10:00:00Z', since: '2026-11-12T11:00:00Z',
+    tickets: [{ ticket: 'PRD-1' }],
+  });
+  assert.deepEqual([sessions[1].running, sessions[1].status], [false, null]);
+  assert.equal(sessions[2], drawn[2]);
+  assert.equal(mergeStatuses(drawn, [{ sessionId: 'z', running: true }]).unseen, true);
+  assert.equal(mergeStatuses(drawn, [{ sessionId: 'z', running: false }]).unseen, false);
+});
+
+test('the chime rings once a known session starts waiting on you, never for one seen the first time', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const last = new Map();
+  const busy = { sessionId: 'a', running: true, status: 'busy' };
+  const asks = { ...busy, status: 'idle', state: 'waiting' };
+  assert.equal(startedWaiting(last, [asks], now), false);
+  assert.equal(startedWaiting(last, [busy], now), false);
+  assert.equal(startedWaiting(last, [asks], now), true);
+  assert.equal(startedWaiting(last, [asks], now), false);
+  // A permission prompt rings like a question.
+  assert.equal(startedWaiting(last, [busy], now), false);
+  assert.equal(startedWaiting(last, [{ ...busy, status: 'waiting', waitingFor: 'permission prompt' }], now), true);
+});
+
+test('the drawn signature moves when the clock alone ends your turn', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z');
+  const session = { sessionId: 'a', running: true, status: 'idle', since: new Date(now - YOUR_TURN_MS + 1000).toISOString() };
+  assert.equal(sessionSignature([session], now), 'a:waiting');
+  assert.equal(sessionSignature([session], now + 2000), 'a:open');
+});
+
+test('a session badge says why it waits on you', () => {
+  assert.deepEqual(stateBadge({ state: 'waiting' }, 'waiting'), { kind: 'pending', key: 'sessQuestion' });
+  assert.deepEqual(stateBadge({ status: 'waiting', waitingFor: 'permission prompt' }, 'waiting'), { kind: 'pending', key: 'sessQuestion', text: 'permission prompt' });
+  assert.deepEqual(stateBadge({ status: 'idle' }, 'waiting'), { kind: 'turn', key: 'sessYourTurn' });
+  assert.deepEqual(stateBadge({ status: 'busy' }, 'busy'), { kind: 'todo running', key: 'prdSessionBusy' });
+  assert.deepEqual(stateBadge({}, 'unknown'), { kind: '', key: 'sessNoStatus' });
 });

@@ -89,5 +89,59 @@
     return [...sessions].sort(by[order] ?? by.changed);
   }
 
-  return { group, sortPrds, withMain, sessionStatus, sortSessions, GROUPS, ORDERS, SESSION_ORDERS, YOUR_TURN_MS };
+  // Each state's badge colour and label key, both views. Waiting on you splits by why: a skill's
+  // question amber, a prompt Claude Code blocks on amber under its own name ("permission prompt"),
+  // your turn cyan.
+  const SESSION_STATES = {
+    waiting: ['pending', 'prdWaiting'],
+    busy: ['todo running', 'prdSessionBusy'],
+    open: ['good', 'prdSessionOpen'],
+    closed: ['', 'prdSessionClosed'],
+    unknown: ['', 'sessNoStatus'],
+  };
+  function stateBadge(session, status) {
+    if (status !== 'waiting') return { kind: SESSION_STATES[status][0], key: SESSION_STATES[status][1] };
+    if (session.state === 'waiting') return { kind: 'pending', key: 'sessQuestion' };
+    if (session.status === 'waiting') return { kind: 'pending', key: 'sessQuestion', text: session.waitingFor ?? null };
+    return { kind: 'turn', key: 'sessYourTurn' };
+  }
+
+  // A status poll merged into the sessions the last full read drew. One it no longer lists has
+  // closed; `unseen` is a running one that read never drew, which needs a full read for its links.
+  const SESSION_FIELDS = ['running', 'status', 'waitingFor', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
+  function mergeStatuses(sessions, statuses) {
+    const fresh = new Map(statuses.map(session => [session.sessionId, session]));
+    const known = new Set(sessions.map(session => session.sessionId));
+    const unseen = statuses.some(session => session.running && !known.has(session.sessionId));
+    const merged = sessions.map(session => {
+      const next = fresh.get(session.sessionId);
+      if (!next) return session.running ? { ...session, running: false, status: null } : session;
+      const copy = { ...session };
+      for (const field of SESSION_FIELDS) if (field !== 'at' || next.at) copy[field] = next[field];
+      return copy;
+    });
+    return { sessions: merged, unseen };
+  }
+
+  // Whether any session started waiting on you since the last call, which chimes. `last` keeps each
+  // session's previous status between calls; a session seen for the first time never chimes.
+  function startedWaiting(last, sessions, now = Date.now()) {
+    let started = false;
+    for (const session of sessions) {
+      const status = sessionStatus(session, now);
+      const before = last.get(session.sessionId);
+      if (before && before !== 'waiting' && status === 'waiting') started = true;
+      last.set(session.sessionId, status);
+    }
+    return started;
+  }
+
+  // What the view drew, by status: it changes when the clock alone moves a session, idle past
+  // YOUR_TURN_MS, so the view redraws though no data changed.
+  const sessionSignature = (sessions, now = Date.now()) => sessions.map(session => `${session.sessionId}:${sessionStatus(session, now)}`).join();
+
+  return {
+    group, sortPrds, withMain, sessionStatus, sortSessions, stateBadge, mergeStatuses, startedWaiting, sessionSignature,
+    GROUPS, ORDERS, SESSION_ORDERS, SESSION_STATES, YOUR_TURN_MS,
+  };
 });
