@@ -816,6 +816,8 @@
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
+  button.prd-session-name { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button.prd-session-name:hover, button.prd-session-name:focus-visible { text-decoration: underline; }
   .prd-question { color: var(--amber); }
 
   #kanban {
@@ -4646,7 +4648,9 @@ function prdSessionRow(session, ticket) {
     + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
     + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
   return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${open}`
-    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
+    + (opens
+      ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
+      : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`) + `${main}`
     + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
     + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
     + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
