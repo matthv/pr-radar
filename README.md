@@ -1428,7 +1428,8 @@ While the view is open, the sessions' states and their skills' stages are read e
 from local files only (`GET /api/sessions/status`); what they link to follows the board's refresh.
 A session that turns to you, waiting on you or done working, lights up and counts in the tab
 title as `⚑ n` until you hover it or open it. With `PR_RADAR_SESSION_CHIME=true` it also chimes,
-unless the board is muted.
+unless the board is muted: three falling notes, apart from the board's rising two, and never
+`PR_RADAR_SOUND`, which stays the board's.
 
 ## Reading the colours
 

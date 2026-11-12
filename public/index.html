@@ -3151,7 +3151,7 @@ function beep() {
   if (state.data?.customSound) {
     customSound ??= new Audio('/sound');
     customSound.currentTime = 0;
-    customSound.play().catch(chime);
+    customSound.play().catch(() => chime());
     return;
   }
   chime();
@@ -3216,17 +3216,20 @@ const WIZZ_SOUNDS = {
 };
 const WIZZ_SOUND = 'warm';
 
-function chime() {
+// The board's chime rises in two sine notes; a Claude session turning to you falls in three
+// triangle ones, so the ear tells them apart.
+const SESSION_NOTES = [988, 784, 659];
+function chime(notes = [660, 880], type = 'sine') {
   // One context for the page: a document may only hold a handful, and a tool left open all
   // day would beep its way past the cap.
   audio ??= new (window.AudioContext || window.webkitAudioContext)();
   // A tab nobody has touched has never granted audio, so the context starts suspended.
   audio.resume().catch(() => {});
   const now = audio.currentTime;
-  [660, 880].forEach((freq, index) => {
+  notes.forEach((freq, index) => {
     const osc = audio.createOscillator();
     const gain = audio.createGain();
-    osc.type = 'sine';
+    osc.type = type;
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, now + index * 0.15);
     gain.gain.linearRampToValueAtTime(0.1, now + index * 0.15 + 0.02);
@@ -5043,7 +5046,7 @@ function noteSessionChanges(sessions) {
     if (now === 'busy' || now === 'closed') sessCalls.delete(session.sessionId);
     sessLast.set(session.sessionId, now);
   }
-  if (ring && prdData?.sessionChime) beep();
+  if (ring && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
   paintTitle();
 }
 
