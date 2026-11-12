@@ -766,7 +766,9 @@
   .sess-key:hover { color: var(--indigo); }
   .sess-where { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-faint); }
   .sess-age { flex: none; margin-left: auto; font-size: 12px; color: var(--text-faint); }
-  .session-card .session-question { margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-card .session-question { display: block; max-width: calc(100% - 30px); margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.session-question { font: inherit; font-size: 12.5px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+  button.session-question:hover .prd-question, button.session-question:focus-visible .prd-question { text-decoration: underline; }
   .session-card:not(.folded) .session-question { white-space: normal; }
   .session-card .session-meta { margin-top: 6px; }
   /* Nothing blinks in the Sessions view: a list watched all day has to stay calm. */
@@ -5039,7 +5041,11 @@ function sessionCard(session) {
   }
   return `<div class="prd session-card${open ? '' : ' folded'}" data-session="${id}" style="--tone: ${SESSION_TONES[status]}">`
     + `<button type="button" class="prd-caret" data-sess-toggle="${id}" aria-expanded="${open}" aria-label="${escapeHtml(t(open ? 'sessFold' : 'sessUnfold'))}"></button>`
-    + line + (parts.question ? `<div class="session-question">${parts.question}</div>` : '') + details + '</div>';
+    // The question it waits on brings the session forward, as its title does.
+    + line + (parts.question
+      ? (opens ? `<button type="button" class="session-question" data-prd-open="${id}" title="${escapeHtml(t('prdFocusTitle'))}">${parts.question}</button>`
+        : `<div class="session-question">${parts.question}</div>`)
+      : '') + details + '</div>';
 }
 
 // Sessions change by the second while the board refreshes every few minutes: the Sessions view
