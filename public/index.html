@@ -760,26 +760,26 @@
   .prd-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--dot, var(--border)); }
   .prd-meta { margin-top: 4px; font-size: 11.5px; color: var(--text-faint); }
   .prd-prs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-  /* A PR chip wears its ticket's colour a shade darker than the card, and its own state as a
-     rail and glyph in the board's colours, so a ticket and its PRs in the same hue still read
-     apart. A session row sits on the plain surface with its own rail. */
-  .prd-pr {
-    --pr-tone: var(--border);
-    display: inline-block; max-width: 100%; vertical-align: top; text-align: left;
-    font: inherit; font-size: 12px; cursor: pointer; padding: 2px 8px 2px 7px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--text); background: color-mix(in srgb, var(--tone) 26%, var(--surface)); box-shadow: var(--shadow-sm);
-    border: 1px solid color-mix(in srgb, var(--tone) 45%, var(--border)); border-left: 3px solid var(--pr-tone); border-radius: 8px;
+  /* A PR is the board's own card, folded to its top line behind a caret: the same element, the
+     same colours and rules. A session row sits on the plain surface with its own rail. */
+  .prd-pr-item { position: relative; }
+  .prd-pr-item .card { margin-bottom: 0; padding-left: 34px; }
+  .prd-pr-item.folded .card { padding-top: 8px; padding-bottom: 8px; cursor: pointer; }
+  .prd-pr-item.folded .card > :not(.card-top) { display: none; }
+  .prd-caret {
+    position: absolute; left: 8px; top: 7px; z-index: 3; width: 22px; height: 22px;
+    display: grid; place-items: center; padding: 0; cursor: pointer;
+    background: none; border: 0; border-radius: 6px; color: var(--text-soft);
   }
-  .prd-pr:hover, .prd-pr:focus-visible { border-color: var(--indigo); border-left-color: var(--pr-tone); }
-  .prd-pr::before { margin-right: 5px; color: var(--pr-tone); font-weight: 700; }
-  .prd-pr.action { --pr-tone: var(--indigo); }
-  .prd-pr.action::before { content: "●"; }
-  .prd-pr.merged { --pr-tone: var(--emerald); color: var(--text-soft); }
-  .prd-pr.merged::before { content: "✓"; }
-  .prd-pr.draft { --pr-tone: var(--text-faint); border-style: dashed; border-left-style: solid; color: var(--text-soft); }
-  .prd-pr.draft::before { content: "◌"; }
-  .prd-ref { margin-right: 5px; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; opacity: .75; }
+  /* The group headers' chevron: down when unfolded, right when folded. */
+  .prd-caret::before {
+    content: ""; width: 7px; height: 7px;
+    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
+  }
+  .prd-pr-item.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
+  .prd-pr-item:not(.folded) .prd-caret { top: 12px; }
+  .prd-caret:hover, .prd-caret:focus-visible { color: var(--text); background: var(--hairline); }
   .prd-session {
     --session-tone: var(--border);
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 5px 8px 5px 7px;
@@ -804,11 +804,6 @@
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
   .prd-question { color: var(--amber); }
-  .prd-pr-item { display: block; }
-  .prd-pr-item.open > .prd-pr { margin-bottom: 6px; }
-  .prd-chev { margin-right: 4px; color: var(--text-faint); }
-  .prd-pr-card .card { margin-bottom: 0; }
-  .prd-pr-away { font-size: 12px; color: var(--text-soft); padding: 4px 2px; }
 
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
@@ -2016,8 +2011,7 @@ const I18N = {
     prdNoPrs: 'Aucune PR liée.',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
-    prdPrAway: 'Cette PR n’est pas sur le tableau (fusionnée il y a longtemps, ou celle de quelqu’un d’autre) :',
-    prdPrOnGithub: 'l’ouvrir sur GitHub',
+    prdPrAway: 'pas sur le tableau : fusionnée il y a longtemps, ou celle de quelqu’un d’autre',
     prdRunning: 'en cours',
     prdWaiting: 'attend ta réponse',
     prdInterrupted: 'interrompu',
@@ -2384,8 +2378,7 @@ const I18N = {
     prdNoPrs: 'No linked PR.',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
-    prdPrAway: 'This PR is not on the board (merged long ago, or someone else’s):',
-    prdPrOnGithub: 'open it on GitHub',
+    prdPrAway: 'not on the board: merged long ago, or someone else’s',
     prdRunning: 'running',
     prdWaiting: 'waiting on you',
     prdInterrupted: 'interrupted',
@@ -4627,28 +4620,29 @@ function prdSessionRow(session, ticket) {
   const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
     + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
     + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
-  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${main}${open}`
-    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`
+  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${open}`
+    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
     + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
     + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
     + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
 }
 
-// A PR line is the board's card for that PR, folded: a click unfolds the same card, with the same
-// pills, threads and buttons, in place. Folded by default, kept unfolded across refreshes. A PR the
-// board does not hold, merged long ago or someone else's, unfolds to its GitHub link.
+// A PR is the board's own card, drawn as the board draws it, folded to its top line behind a
+// caret: the caret, or a click on the folded card, unfolds it whole. Folded by default, kept
+// unfolded across refreshes. A PR the board does not hold, merged long ago or someone else's,
+// gets a plain card of the same shape that says so and links to GitHub.
 const prdOpenPrs = new Set();
 function prdPrItem(pr) {
   const open = prdOpenPrs.has(pr.url);
-  const chip = `<button type="button" class="prd-pr${pr.state === 'merged' || pr.state === 'draft' ? ` ${pr.state}` : ''}${pr.needsAction ? ' action' : ''}"`
-    + ` data-prd-pr="${escapeHtml(pr.url)}" aria-expanded="${open}" title="${escapeHtml(t(open ? 'prdPrFold' : 'prdPrUnfold'))}">`
-    + `<span class="prd-chev">${open ? '▾' : '▸'}</span><span class="prd-ref">${escapeHtml(`${repoName(pr.repo ?? '')}#${pr.number ?? ''}`)}</span>${escapeHtml(pr.title ?? '')}</button>`;
-  if (!open) return `<div class="prd-pr-item">${chip}</div>`;
-  const card = pr.boardId ? prById(pr.boardId) : null;
-  const body = card
-    ? (card.side === 'mine' ? mineCard(resolveMine(card)) : reviewCard(resolveReview(card)))
-    : `<div class="prd-pr-away">${escapeHtml(t('prdPrAway'))} <a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(t('prdPrOnGithub'))}</a></div>`;
-  return `<div class="prd-pr-item open">${chip}<div class="prd-pr-card">${body}</div></div>`;
+  const board = pr.boardId ? prById(pr.boardId) : null;
+  const card = board
+    ? (board.side === 'mine' ? mineCard(resolveMine(board)) : reviewCard(resolveReview(board)))
+    : `<div class="card idle" data-pr-url="${escapeHtml(pr.url)}"><div class="card-top">${pr.repo ? repoChip(pr) : ''}`
+      + `<a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title ?? pr.url)}</a></div>`
+      + `<div class="meta"><span>${escapeHtml(t('prdPrAway'))}</span></div></div>`;
+  return `<div class="prd-pr-item${open ? '' : ' folded'}" data-prd-item="${escapeHtml(pr.url)}">`
+    + `<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(pr.url)}" aria-expanded="${open}"`
+    + ` title="${escapeHtml(t(open ? 'prdPrFold' : 'prdPrUnfold'))}"></button>${card}</div>`;
 }
 
 function prdCard(prd) {
@@ -4718,7 +4712,10 @@ el('prd').addEventListener('change', event => {
   renderPrd();
 });
 el('prd').addEventListener('click', event => {
-  const pr = event.target.closest('[data-prd-pr]');
+  // The caret, or anywhere on a folded card but its links and buttons.
+  const folded = event.target.closest('.prd-pr-item.folded');
+  const pr = event.target.closest('[data-prd-pr]')
+    ?? (folded && !event.target.closest('a, button') ? folded.querySelector('[data-prd-pr]') : null);
   if (pr) {
     const { prdPr: url } = pr.dataset;
     if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
