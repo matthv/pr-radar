@@ -737,9 +737,12 @@
 
   /* PRDs: your tickets, each with its PRs and the Claude sessions working on it. */
   #prd { padding: 4px 28px 70px; max-width: 1180px; }
-  .prd-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 18px 0 4px; font-size: 12.5px; color: var(--text-soft); }
-  .prd-bar label { display: flex; align-items: center; gap: 6px; }
-  .prd-bar select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; }
+  /* The PRDs view's own band, in the board's shape: its pickers, then counters that filter. */
+  .summary.prd-off { display: none; }
+  .prd-summary { padding: 20px 0 4px; }
+  .counter.idle .dot { background: var(--text-faint); }
+  .prd-pick { display: flex; align-items: center; gap: 6px; cursor: default; }
+  .prd-pick select { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
   .prd-notice { margin: 18px 0; color: var(--text-soft); font-size: 13px; }
   .prd {
     --tone: var(--border); position: relative; overflow: hidden;
@@ -1986,6 +1989,12 @@ const I18N = {
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
     viewTitle: 'vue tableau / vue par auteur / kanban / PRDs',
     prdGroupBy: 'Grouper par',
+    prdCountWaiting: 'en attente de toi',
+    prdCountBusy: 'en cours de travail',
+    prdCountPrs: 't’attendent sur une PR',
+    prdCountIdle: 'sans session ouverte',
+    prdTotal: '{n} PRDs',
+    prdFocusHint: 'cliquer pour n’afficher que ces PRDs',
     prdOrderBy: 'Trier par',
     prdGroup_skill: 'skill en cours',
     prdGroup_status: 'statut',
@@ -2353,6 +2362,12 @@ const I18N = {
     focusClear: 'click (or Esc) to clear the filter',
     viewTitle: 'board view / by author / kanban / PRDs',
     prdGroupBy: 'Group by',
+    prdCountWaiting: 'waiting on you',
+    prdCountBusy: 'being worked on',
+    prdCountPrs: 'need you on a PR',
+    prdCountIdle: 'no open session',
+    prdTotal: '{n} PRDs',
+    prdFocusHint: 'click to show only these PRDs',
     prdOrderBy: 'Order by',
     prdGroup_skill: 'running skill',
     prdGroup_status: 'status',
@@ -2616,6 +2631,7 @@ function applyView(next) {
   el('kanban').hidden = next !== 'kanban';
   el('orbits').hidden = next !== 'orbits';
   el('prd').hidden = next !== 'prd';
+  el('summary').classList.toggle('prd-off', next === 'prd');
   if (switched && next === 'kanban') render();
   if (next === 'prd') renderPrd();
   if (switched && next === 'prd') loadPrds();
@@ -4670,12 +4686,42 @@ function prdGroupTone(entry) {
   return PRD_TONES[hash % PRD_TONES.length];
 }
 
-function renderPrd() {
-  if (view !== 'prd') return;
+// What the band counts, each a filter. "Open" is a session still running; a PR "for you" is
+// one the board says needs you.
+const prdRunning = (prd, state) => prd.sessions.some(session => session.running && (!state || session.state === state));
+const PRD_FOCUS = {
+  waiting: { kind: 'pending', label: 'prdCountWaiting', test: prd => prdRunning(prd, 'waiting') },
+  busy: { kind: 'todo', label: 'prdCountBusy', test: prd => prdRunning(prd, 'busy') },
+  prs: { kind: 'ready', label: 'prdCountPrs', test: prd => prd.prs.some(pr => {
+    const board = pr.boardId ? prById(pr.boardId) : null;
+    return Boolean(board && (board.side === 'mine' ? resolveMine(board) : resolveReview(board)).needsAction);
+  }) },
+  idle: { kind: 'idle', label: 'prdCountIdle', test: prd => !prdRunning(prd) },
+};
+let prdFocus = null;
+
+function prdBand(prds) {
   const options = (list, current, prefix) => list
     .map(value => `<option value="${value}"${value === current ? ' selected' : ''}>${escapeHtml(t(`${prefix}_${value}`))}</option>`).join('');
-  const bar = `<div class="prd-bar"><label>${escapeHtml(t('prdGroupBy'))} <select data-prd-group>${options(PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}</select></label>`
-    + `<label>${escapeHtml(t('prdOrderBy'))} <select data-prd-order>${options(PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}</select></label></div>`;
+  const pick = (label, attr, list, current, prefix) => `<label class="picker-trigger prd-pick">${escapeHtml(t(label))}`
+    + ` <select ${attr}>${options(list, current, prefix)}</select></label>`;
+  const counters = Object.entries(PRD_FOCUS).map(([key, { kind, label, test }]) => {
+    const value = prds.filter(test).length;
+    const active = prdFocus === key;
+    const classes = ['counter', kind, value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
+    return `<button type="button" class="${classes.join(' ')}" data-prd-focus="${key}"${value ? '' : ' disabled'}`
+      + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'prdFocusHint'))}"` : ''}>`
+      + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(label))}<span class="go">${active ? '×' : '›'}</span></button>`;
+  }).join('');
+  return `<div class="summary prd-summary">${pick('prdGroupBy', 'data-prd-group', PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}`
+    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}`
+    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
+    + `${prds.length ? `<span class="stale">${escapeHtml(t('prdTotal', { n: prds.length }))}</span>` : ''}</div>`;
+}
+
+function renderPrd() {
+  if (view !== 'prd') return;
+  const bar = prdBand(prdData?.prds ?? []);
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
     return;
@@ -4691,7 +4737,8 @@ function renderPrd() {
     el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
     return;
   }
-  el('prd').innerHTML = bar + notices + PRRadarPrd.group(prds, { by: prdGroup, order: prdOrder }).map(entry => {
+  const shown = prdFocus ? prds.filter(PRD_FOCUS[prdFocus].test) : prds;
+  el('prd').innerHTML = bar + notices + PRRadarPrd.group(shown, { by: prdGroup, order: prdOrder }).map(entry => {
     const cards = entry.prds.map(prdCard).join('');
     if (prdGroup === 'none') return cards;
     const key = `prd:${prdGroup}:${entry.key ?? ''}`;
@@ -4718,6 +4765,12 @@ el('prd').addEventListener('click', event => {
   if (pr) {
     const { prdPr: url } = pr.dataset;
     if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
+    renderPrd();
+    return;
+  }
+  const focus = event.target.closest('[data-prd-focus]');
+  if (focus) {
+    prdFocus = prdFocus === focus.dataset.prdFocus ? null : focus.dataset.prdFocus;
     renderPrd();
     return;
   }
@@ -5020,6 +5073,11 @@ document.addEventListener('keydown', event => {
   if (hubOpen && !el('hubPanel').hidden) {
     openHub(false);
     el('hub').focus();
+    return;
+  }
+  if (view === 'prd' && prdFocus) {
+    prdFocus = null;
+    renderPrd();
     return;
   }
   if (!state.focus) return;

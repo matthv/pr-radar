@@ -1397,6 +1397,9 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   with two skills running or two labels sits in both groups, and one with none in the last.
   Statuses follow Linear's own order. **Order by** last update or opening date, newest first,
   or by title. Both choices are kept per browser, and a group folds from its header.
+- **The band** above the tickets replaces the board's: the two pickers, then counters of the
+  tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
+  counter filters the list to its tickets; a second click or Esc clears it.
 
 ## Reading the colours
 
