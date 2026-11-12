@@ -282,6 +282,7 @@ async function prdView(force) {
     prds: buildPrds({
       prds, boardPrs, stageSessions, live,
       sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
+      sessionsOf: CLAUDE_SESSIONS ? claudeSessions.sessionsForTicket : () => [],
       cwdOf: claudeSessions.cwdOf,
     }),
   };

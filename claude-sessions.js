@@ -25,10 +25,21 @@ const knownLinks = new Map();
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it. The link is read from there rather than from a branch: a session
 // started in a folder above the repositories records none.
+// A ticket key in what the person typed, or in the branch the session worked on, ties the
+// session to that ticket. Tool output, injected skill text and compaction summaries are skipped:
+// they name tickets nobody is working on.
+const TICKET_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/g;
+const isPrompt = line => line.includes('"type":"user"') && !line.includes('"tool_result"')
+  && !line.includes('"isMeta":true') && !line.includes('"isCompactSummary":true');
+const promptText = content => typeof content === 'string'
+  ? content
+  : Array.isArray(content) ? content.filter(part => part?.type === 'text').map(part => part.text).join('\n') : '';
+
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
     const wantsCwd = !entry.cwd && line.includes('"cwd":');
-    if (!wantsCwd && !line.includes('"type":"pr-link"')) continue;
+    const prompt = isPrompt(line);
+    if (!wantsCwd && !prompt && !line.includes('"type":"pr-link"')) continue;
     let record;
     try {
       record = JSON.parse(line);
@@ -37,13 +48,17 @@ function readLines(text, entry) {
     }
     if (wantsCwd && typeof record.cwd === 'string') entry.cwd = record.cwd;
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
+    if (prompt && record.type === 'user') {
+      for (const key of promptText(record.message?.content).match(TICKET_KEY) ?? []) entry.tickets.add(key);
+      for (const key of String(record.gitBranch ?? '').toUpperCase().match(TICKET_KEY) ?? []) entry.tickets.add(key);
+    }
   }
 }
 
 async function readNewLines(file, stat) {
   let entry = transcripts.get(file);
   if (!entry || stat.size < entry.offset) {
-    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set() };
+    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Set() };
     transcripts.set(file, entry);
   }
   entry.mtimeMs = stat.mtimeMs;
@@ -135,6 +150,14 @@ function sessionFor(prUrl) {
     if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
   }
   return latest && { sessionId: latest.sessionId, cwd: latest.cwd };
+}
+
+// The sessions whose prompts or branch name a ticket, newest first.
+function sessionsForTicket(ticket) {
+  return [...transcripts.values()]
+    .filter(entry => entry.cwd && SESSION_ID.test(entry.sessionId) && entry.tickets.has(ticket))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .map(entry => ({ sessionId: entry.sessionId, cwd: entry.cwd, at: new Date(entry.mtimeMs).toISOString() }));
 }
 
 const shellQuote = value => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -445,6 +468,7 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
 module.exports = {
   scan,
   sessionFor,
+  sessionsForTicket,
   cwdOf,
   liveSessions,
   resumeCommand,

@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, sessionsForTicket, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -40,6 +40,25 @@ test('a PR worked on in two sessions resumes the most recently active one, from 
 
   assert.deepEqual(sessionFor(PR), { sessionId: NEWER, cwd: '/Users/me/Projects/agent-nodejs' });
   assert.equal(sessionFor('https://github.com/ForestAdmin/agent-nodejs/pull/1'), null);
+});
+
+test('a session is tied to the tickets typed in its prompts or on its branch, never those in tool output or injected text', async () => {
+  const dir = await projectsDir();
+  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/Projects', message: { role: 'user', content }, ...extra });
+  await writeSession(dir, OLDER, user('/implement PRD-1932 please') + user([{ type: 'text', text: 'also PRD-7' }]), 1);
+  await writeSession(dir, NEWER, [
+    user('hi', { gitBranch: 'feat/prd-2145-feedback' }),
+    user([{ type: 'tool_result', content: 'PRD-1932 PRD-7' }]),
+    user('skill body naming PRD-1932', { isMeta: true }),
+    user('summary naming PRD-7', { isCompactSummary: true }),
+  ].join(''), 0);
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  assert.deepEqual(sessionsForTicket('PRD-1932').map(session => session.sessionId), [OLDER]);
+  assert.deepEqual(sessionsForTicket('PRD-7').map(session => session.sessionId), [OLDER]);
+  assert.deepEqual(sessionsForTicket('PRD-2145').map(session => session.sessionId), [NEWER]);
+  assert.equal(sessionsForTicket('PRD-2145')[0].cwd, '/Users/me/Projects');
 });
 
 test('a session past the age limit, without a cwd, or not named by a session id is never offered', async () => {

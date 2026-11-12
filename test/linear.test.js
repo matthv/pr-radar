@@ -13,6 +13,7 @@ const issue = (identifier, extra = {}) => ({
   updatedAt: '2026-11-10T00:00:00Z',
   state: { name: 'In Progress', type: 'started', color: '#f2c94c', position: 2 },
   project: { name: 'Workflows' },
+  assignee: { isMe: true },
   labels: { nodes: [{ name: 'Backend', color: '#5e6ad2' }] },
   attachments: { nodes: [] },
   ...extra,
@@ -69,7 +70,7 @@ test('your started tickets come back with their status, project, labels and GitH
 test('a ticket a session works on is fetched by its key, and one Linear cannot show is left out', async () => {
   const { fetch, asked } = fakeLinear(
     { body: { data: { viewer: { assignedIssues: { nodes: [issue('PRD-1')] } } } } },
-    { body: { data: { t0: issue('PRD-2'), t1: null }, errors: [{ message: 'Entity not found' }] } },
+    { body: { data: { t0: issue('PRD-2', { assignee: { isMe: false } }), t1: null }, errors: [{ message: 'Entity not found' }] } },
   );
   const prds = await fetchPrds({ apiKey: 'k', extra: ['PRD-1', 'PRD-2', 'PRD-3', 'not a key"}'], fetch });
   assert.deepEqual(prds.map(prd => [prd.ticket, prd.assigned]), [['PRD-1', true], ['PRD-2', false]]);

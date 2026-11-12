@@ -736,9 +736,19 @@
   .prd-bar label { display: flex; align-items: center; gap: 6px; }
   .prd-bar select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; }
   .prd-notice { margin: 18px 0; color: var(--text-soft); font-size: 13px; }
-  .prd { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px 14px; margin-bottom: 10px; }
+  .prd {
+    --tone: var(--border); position: relative; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 10px 16px; margin-bottom: 10px;
+    background: linear-gradient(100deg, color-mix(in srgb, var(--tone) 16%, var(--surface)) -10%, var(--surface) 42%);
+    box-shadow: var(--shadow-sm); transition: box-shadow .15s, transform .15s;
+  }
+  .prd::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
+  .prd.waiting { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
+  .prd.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
+  .prd:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .prd-label { background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 65%, var(--text)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent); }
   .prd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; font-size: 12px; color: var(--text-soft); text-decoration: none; }
+  .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; font-size: 12px; font-weight: 600; color: var(--link); text-decoration: none; }
   .prd-key:hover { text-decoration: underline; }
   .prd-title { flex: 1 1 260px; min-width: 0; font-weight: 600; font-size: 13.5px; }
   .prd-status { display: inline-flex; align-items: center; gap: 5px; }
@@ -751,10 +761,13 @@
     color: var(--text); background: none; border: 1px solid var(--border); border-radius: 8px;
   }
   .prd-pr:hover, .prd-pr:focus-visible { border-color: var(--indigo); }
-  .prd-pr.action { border-color: var(--indigo); color: var(--indigo); }
-  .prd-pr.merged { color: var(--text-faint); }
+  .prd-pr.action { border-color: color-mix(in srgb, var(--indigo) 40%, transparent); background: var(--indigo-soft); color: var(--indigo); }
+  .prd-pr.merged { border-color: color-mix(in srgb, var(--emerald) 30%, transparent); background: var(--emerald-soft); color: var(--emerald); }
+  .prd-pr.draft { border-style: dashed; color: var(--text-soft); }
   .prd-ref { margin-right: 5px; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; opacity: .75; }
-  .prd-session { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; }
+  .prd-session { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 5px 8px; border-radius: 8px; background: var(--sunken); font-size: 12.5px; }
+  .prd-session.live { background: var(--indigo-soft); }
+  .prd-session.waiting { background: var(--amber-soft); }
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
@@ -1956,6 +1969,7 @@ const I18N = {
     prdNone_status: 'Sans statut',
     prdNone_project: 'Sans projet',
     prdNone_label: 'Sans label',
+    prdSessionsOff: 'Les sessions Claude sont désactivées : mets PR_RADAR_CLAUDE_SESSIONS=true dans .env pour les voir et les ouvrir depuis chaque PRD, puis relance.',
     prdNoKey: 'La vue PRDs lit tes tickets dans Linear : renseigne PR_RADAR_LINEAR_API_KEY dans .env (une clé personnelle, Linear › Settings › Security & access), puis relance.',
     prdDemo: 'La vue PRDs lit Linear : elle est vide dans la démo.',
     prdError: 'Impossible de lire les PRDs : {message}',
@@ -2317,6 +2331,7 @@ const I18N = {
     prdNone_status: 'No status',
     prdNone_project: 'No project',
     prdNone_label: 'No label',
+    prdSessionsOff: 'Claude sessions are off: set PR_RADAR_CLAUDE_SESSIONS=true in .env to see and open them from each PRD, then restart.',
     prdNoKey: 'The PRDs view reads your tickets from Linear: set PR_RADAR_LINEAR_API_KEY in .env (a personal key, Linear › Settings › Security & access), then restart.',
     prdDemo: 'The PRDs view reads Linear: it is empty in the demo.',
     prdError: 'Could not read the PRDs: {message}',
@@ -4517,7 +4532,8 @@ function prdSessionRow(session) {
     ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${escapeHtml(session.sessionId)}"`
       + ` title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${CLAUDE_ICON}</button>`
     : '';
-  return `<div class="prd-session">${open}<span class="prd-session-name" title="claude --resume ${escapeHtml(session.sessionId)}">${escapeHtml(name)}</span>`
+  const tone = session.running && session.state === 'waiting' ? ' waiting' : session.running ? ' live' : '';
+  return `<div class="prd-session${tone}">${open}<span class="prd-session-name" title="claude --resume ${escapeHtml(session.sessionId)}">${escapeHtml(name)}</span>`
     + `${skill}${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
     + `<span class="prd-meta">${escapeHtml(where)}</span></div>`;
 }
@@ -4528,12 +4544,13 @@ function prdCard(prd) {
     : '';
   const meta = [prd.project, t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
-  const prs = prd.prs.map(pr => `<button type="button" class="prd-pr${pr.state === 'merged' ? ' merged' : ''}${pr.needsAction ? ' action' : ''}"`
+  const prs = prd.prs.map(pr => `<button type="button" class="prd-pr${pr.state === 'merged' || pr.state === 'draft' ? ` ${pr.state}` : ''}${pr.needsAction ? ' action' : ''}"`
     + ` data-prd-pr="${escapeHtml(pr.url)}" title="${escapeHtml(t(pr.boardId ? 'prdPrBoard' : 'prdPrGithub'))}">`
     + `<span class="prd-ref">${escapeHtml(`${repoName(pr.repo ?? '')}#${pr.number ?? ''}`)}</span>${escapeHtml(pr.title ?? '')}</button>`).join('');
-  return `<div class="prd"><div class="prd-top">`
+  const waiting = prd.sessions.some(session => session.running && session.state === 'waiting');
+  return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
-    + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => pill('', escapeHtml(label.name))).join('')}</div>`
+    + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
     + `<div class="prd-meta">${escapeHtml(meta)}</div>`
     + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
     + `${prd.sessions.map(prdSessionRow).join('')}</div>`;
@@ -4553,7 +4570,7 @@ function renderPrd() {
     el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t(prdData.reason === 'demo' ? 'prdDemo' : 'prdNoKey'))}</div>`;
     return;
   }
-  const notices = [prdData.error && t('prdError', { message: prdData.error }), ...(prdData.warnings ?? []).map(warning => warning.message)]
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
     .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
   const prds = prdData.prds ?? [];
   if (!prds.length) {

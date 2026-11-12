@@ -28,7 +28,7 @@ function prEntry(url, title, board) {
 
 // One row per session: what its skill is doing from the stage lines, whether it runs and what
 // to call it from the session registry, and the folder `--resume` needs from its transcript.
-function sessionEntry(sessionId, { stage, record, cwd }) {
+function sessionEntry(sessionId, { stage, record, cwd, seen }) {
   const run = stage?.current ?? null;
   return {
     sessionId,
@@ -41,14 +41,18 @@ function sessionEntry(sessionId, { stage, record, cwd }) {
     state: run?.state ?? null,
     question: run?.question ?? null,
     outcome: run?.outcome ?? null,
-    at: run?.at ?? (record?.updatedAt ? new Date(record.updatedAt).toISOString() : null),
+    at: run?.at ?? (record?.updatedAt ? new Date(record.updatedAt).toISOString() : seen ?? null),
   };
 }
 
+// The ended sessions whose prompts or branch name a ticket that are kept: older ones are history.
+const ENDED_MENTIONS = 2;
+
 // A PRD's PRs are the ones Linear has attached and the board's PRs naming its ticket. Its
-// sessions are the ones whose stage lines name it or one of its PRs, and a running session
-// that opened one of its PRs: a finished one is already the Claude button on that PR's card.
-function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], sessionFor = () => null, cwdOf = () => null }) {
+// sessions are the ones whose stage lines name it or one of its PRs, a running session that
+// opened one of its PRs (a finished one is already the Claude button on that PR's card), and
+// those whose prompts or branch name the ticket: every running one, the newest ended ones.
+function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], sessionFor = () => null, sessionsOf = () => [], cwdOf = () => null }) {
   const board = new Map(boardPrs.map(pr => [pr.url, pr]));
   const liveById = new Map(live.map(record => [record.sessionId, record]));
   const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
@@ -63,8 +67,12 @@ function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], session
       const opened = sessionFor(url);
       if (opened && liveById.has(opened.sessionId)) ids.add(opened.sessionId);
     }
+    const mentions = sessionsOf(prd.ticket);
+    const seen = new Map(mentions.map(mention => [mention.sessionId, mention.at]));
+    for (const id of mentions.filter(mention => liveById.has(mention.sessionId)).map(mention => mention.sessionId)) ids.add(id);
+    for (const id of mentions.filter(mention => !liveById.has(mention.sessionId)).slice(0, ENDED_MENTIONS).map(mention => mention.sessionId)) ids.add(id);
     const sessions = [...ids]
-      .map(id => sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id), cwd: cwdOf(id) }))
+      .map(id => sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id), cwd: cwdOf(id), seen: seen.get(id) }))
       .sort((a, b) => b.running - a.running || String(b.at).localeCompare(String(a.at)));
     return { ...prd, prs: [...prs.values()], sessions };
   });
