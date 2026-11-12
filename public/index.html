@@ -4615,7 +4615,7 @@ function prdPrItem(pr) {
   if (!open) return `<div class="prd-pr-item">${chip}</div>`;
   const card = pr.boardId ? prById(pr.boardId) : null;
   const body = card
-    ? (card.side === 'mine' ? mineCard(card) : reviewCard(card))
+    ? (card.side === 'mine' ? mineCard(resolveMine(card)) : reviewCard(resolveReview(card)))
     : `<div class="prd-pr-away">${escapeHtml(t('prdPrAway'))} <a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(t('prdPrOnGithub'))}</a></div>`;
   return `<div class="prd-pr-item open">${chip}<div class="prd-pr-card">${body}</div></div>`;
 }
