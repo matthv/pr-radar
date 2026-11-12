@@ -794,12 +794,15 @@
   .prd-session.waiting { --session-tone: var(--amber); }
   .prd-session.closed { --session-tone: var(--border); }
   .prd-session.closed .prd-session-name { color: var(--text-soft); }
-  .prd-more {
-    margin-left: auto; font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1; cursor: pointer;
-    padding: 3px 8px; border-radius: 999px; color: var(--text-soft);
-    background: var(--sunken); border: 1px solid var(--hairline);
+  .prd-sessions {
+    position: relative; margin-top: 8px; overflow: hidden;
+    border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface);
   }
-  .prd-more:hover, .prd-more:focus-visible { color: var(--text); border-color: var(--border); }
+  .prd-sessions.has-caret .prd-session { padding-right: 40px; }
+  .prd-sessions .prd-session { margin-top: 0; border: 0; border-left: 3px solid var(--session-tone); border-radius: 0; background: none; }
+  .prd-sessions .prd-session + .prd-session { border-top: 1px solid var(--hairline); }
+  .prd-sessions .prd-caret { top: 7px; }
+  .prd-sessions.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
   /* The session most likely doing the ticket's work: first, a wider rail, a star. */
   .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); margin-left: -4px; }
   .prd-star {
@@ -4625,7 +4628,7 @@ const prdMains = (() => {
 // then, never under the click that starred it.
 let prdMainsShown = { ...prdMains };
 
-function prdSessionRow(session, ticket, tail = '') {
+function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4649,12 +4652,12 @@ function prdSessionRow(session, ticket, tail = '') {
     + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
     + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
     + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
-    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}${tail}</div>`;
+    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
 }
 
-// One session shows: the main one, or the first. The others fold behind a chip on its row,
-// but one running that waits on you or is at work never hides. Starring another folds them
-// back onto it.
+// The sessions share one box, folded like a PR card behind a caret: folded, it shows the main
+// session, or the first, and any running one waiting on you or at work. Starring another
+// folds the box back onto it.
 const prdOpenSessions = new Set();
 function prdSessionRows(prd) {
   const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMainsShown[prd.ticket]);
@@ -4663,12 +4666,12 @@ function prdSessionRows(prd) {
   const loud = session => ['waiting', 'busy'].includes(prdSessionStatus(session));
   const folded = sessions.filter(session => session !== lead && !loud(session));
   const open = prdOpenSessions.has(prd.ticket);
-  const chip = folded.length
-    ? `<button type="button" class="prd-more" data-prd-sessions="${escapeHtml(prd.ticket)}" aria-expanded="${open}"`
-      + ` title="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}">${open ? '−' : '+'}${folded.length}</button>`
+  const caret = folded.length
+    ? `<button type="button" class="prd-caret" data-prd-sessions="${escapeHtml(prd.ticket)}" aria-expanded="${open}"`
+      + ` title="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}"></button>`
     : '';
-  return sessions.filter(session => open || !folded.includes(session))
-    .map(session => prdSessionRow(session, prd.ticket, session === lead ? chip : '')).join('');
+  return `<div class="prd-sessions${folded.length && !open ? ' folded' : ''}${caret ? ' has-caret' : ''}">${caret}`
+    + `${sessions.filter(session => open || !folded.includes(session)).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
 }
 
 // A PR is the board's own card, drawn as the board draws it, folded to its top line behind a
