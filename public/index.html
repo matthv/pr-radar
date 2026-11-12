@@ -769,13 +769,8 @@
   .session-card .session-question { margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .session-card:not(.folded) .session-question { white-space: normal; }
   .session-card .session-meta { margin-top: 6px; }
-  /* A session that just turned to you, until you look at it. */
-  .session-card.calls {
-    border-color: var(--tone); box-shadow: 0 0 0 2px var(--tone), var(--shadow-md);
-    background: linear-gradient(260deg, color-mix(in srgb, var(--tone) 30%, var(--surface)) -10%, color-mix(in srgb, var(--tone) 8%, var(--surface)) 60%);
-  }
-  /* Nothing here blinks: a list of sessions watched all day has to stay calm. */
-  #prd .pill.running { animation: none; }
+  /* Nothing blinks in the Sessions view: a list watched all day has to stay calm. */
+  .session-card .pill.running { animation: none; }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
   .session-prd .title { font-weight: 600; }
@@ -2113,6 +2108,8 @@ const I18N = {
     sessUnfold: 'déplier : récap, dernier prompt, PRD et PR liés',
     sessFold: 'replier',
     sessUnderMinute: '< 1 min',
+    sessQuestion: 'question',
+    sessYourTurn: 'à toi',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
@@ -2505,6 +2502,8 @@ const I18N = {
     sessUnfold: 'unfold: recap, last prompt, linked PRDs and PRs',
     sessFold: 'fold',
     sessUnderMinute: '< 1 min',
+    sessQuestion: 'question',
+    sessYourTurn: 'your turn',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
@@ -4740,7 +4739,7 @@ const prdMains = (() => {
 })();
 
 // A session's pieces, for its row under a PRD and for its own card in the Sessions view.
-function prdSessionParts(session) {
+function prdSessionParts(session, { status = prdSessionStatus(session), label = null } = {}) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4748,8 +4747,8 @@ function prdSessionParts(session) {
   const pillButton = (kind, label, title) => (opens
     ? `<button type="button" class="pill ${kind}" data-prd-open="${id}" title="${escapeHtml(`${title} · ${action}`)}">${label}</button>`
     : pill(kind, label, title));
-  const status = prdSessionStatus(session);
-  const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
+  const [statusKind, defaultKey] = PRD_SESSION_STATUS[status];
+  const statusKey = label ?? defaultKey;
   const [skillKind, skillState] = prdSkillPill(session);
   // How long it has been in that state, while it runs.
   const since = session.running && session.since
@@ -4992,12 +4991,12 @@ function sessionPrdItem(prd, eye = '') {
 // recap, the last prompt and every PRD and PR it touches.
 const sessOpen = new Set();
 function sessionCard(session) {
-  const status = prdSessionStatus(session);
+  const status = sessStatus(session);
   const id = escapeHtml(session.sessionId);
   const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
   const folder = session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1) : null;
   const where = [folder, session.branch].filter(Boolean).join(' · ');
-  const parts = prdSessionParts(session);
+  const parts = prdSessionParts(session, { status, label: sessStatusLabel(session, status) });
   const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
   const opens = prdData.claudeSessions && session.resumable;
   // What it works on, at a glance: its main PRD, else its main PR.
@@ -5029,30 +5028,35 @@ function sessionCard(session) {
       + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
       + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`);
   }
-  return `<div class="prd session-card${open ? '' : ' folded'}${sessCalls.has(session.sessionId) ? ' calls' : ''}" data-session="${id}" style="--tone: ${SESSION_TONES[status]}">`
+  return `<div class="prd session-card${open ? '' : ' folded'}" data-session="${id}" style="--tone: ${SESSION_TONES[status]}">`
     + `<button type="button" class="prd-caret" data-sess-toggle="${id}" aria-expanded="${open}" aria-label="${escapeHtml(t(open ? 'sessFold' : 'sessUnfold'))}"></button>`
     + line + (parts.question ? `<div class="session-question">${parts.question}</div>` : '') + details + '</div>';
 }
 
 // Sessions change by the second while the board refreshes every few minutes: the Sessions view
-// polls their states and their skills' stages on their own, the links following the board. A
-// session that turns to you, waiting on you or done working, lights up and counts in the tab
-// title until you click it (a hover would not do: the row jumps to the top, under a resting
-// mouse), and chimes when PR_RADAR_SESSION_CHIME asks for it.
+// polls their states and their skills' stages on their own, the links following the board.
+// Waiting on you is a skill's question, or a session idle for less than YOUR_TURN_MS: it finished
+// its turn, or was started and given nothing yet. Idle longer, it is merely open. A session that
+// starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
+const YOUR_TURN_MS = 15 * 60_000;
+function sessStatus(session) {
+  const status = prdSessionStatus(session);
+  if (status !== 'open') return status;
+  return session.since && Date.now() - new Date(session.since) < YOUR_TURN_MS ? 'waiting' : 'open';
+}
+const sessStatusLabel = (session, status) => (status !== 'waiting' ? PRD_SESSION_STATUS[status][1]
+  : session.state === 'waiting' ? 'sessQuestion' : 'sessYourTurn');
+const sessSignature = sessions => sessions.map(session => `${session.sessionId}:${sessStatus(session)}`).join();
+let sessDrawn = '';
 const SESSION_POLL_MS = 5000;
 const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
 const sessLast = new Map();
-const sessCalls = new Set();
 function noteSessionChanges(sessions) {
   let ring = false;
   for (const session of sessions) {
-    const now = prdSessionStatus(session);
+    const now = sessStatus(session);
     const before = sessLast.get(session.sessionId);
-    if (before && before !== now && (now === 'waiting' || (before === 'busy' && now === 'open'))) {
-      sessCalls.add(session.sessionId);
-      ring = true;
-    }
-    if (now === 'busy' || now === 'closed') sessCalls.delete(session.sessionId);
+    if (before && before !== 'waiting' && now === 'waiting') ring = true;
     sessLast.set(session.sessionId, now);
   }
   if (ring && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
@@ -5086,7 +5090,8 @@ async function pollSessions() {
     return merged;
   });
   noteSessionChanges(prdData.sessions);
-  if (JSON.stringify(prdData.sessions) !== before) renderPrd();
+  // A session can also move by the clock alone: idle past YOUR_TURN_MS, it is merely open.
+  if (JSON.stringify(prdData.sessions) !== before || sessSignature(prdData.sessions) !== sessDrawn) renderPrd();
 }
 // The time each session has spent in its state, in whole minutes, moves on once a minute in the
 // page; a poll that brings news sets it right.
@@ -5096,11 +5101,6 @@ function sinceText(iso) {
 setInterval(() => {
   for (const span of document.querySelectorAll('#prd [data-since]')) span.textContent = sinceText(span.dataset.since);
 }, 60_000);
-function seeSession(sessionId) {
-  if (!sessCalls.delete(sessionId)) return;
-  document.querySelector(`.session-card[data-session="${CSS.escape(sessionId)}"]`)?.classList.remove('calls');
-  paintTitle();
-}
 setInterval(pollSessions, SESSION_POLL_MS);
 // Closed sessions start folded away; after that, their group is folded or not as you leave it.
 if (store.get('sessClosedFolded', '') !== '1') {
@@ -5110,9 +5110,11 @@ if (store.get('sessClosedFolded', '') !== '1') {
 }
 
 function renderSessions() {
-  const sessions = prdData?.sessions ?? [];
+  // In each group, the latest to have changed state first: the one that just finished leads.
+  const sessions = [...(prdData?.sessions ?? [])].sort((a, b) => String(b.since ?? b.at).localeCompare(String(a.since ?? a.at)));
+  sessDrawn = sessSignature(sessions);
   const counters = Object.keys(SESSION_TONES).map(key => {
-    const value = sessions.filter(session => prdSessionStatus(session) === key).length;
+    const value = sessions.filter(session => sessStatus(session) === key).length;
     const active = prdFocus === key;
     const classes = ['counter', SESSION_COUNT_KIND[key], value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
     return `<button type="button" class="${classes.join(' ')}" data-prd-focus="${key}"${value ? '' : ' disabled'}`
@@ -5131,13 +5133,13 @@ function renderSessions() {
   }
   const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
     .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
-  const shown = prdFocus ? sessions.filter(session => prdSessionStatus(session) === prdFocus) : sessions;
+  const shown = prdFocus ? sessions.filter(session => sessStatus(session) === prdFocus) : sessions;
   if (!shown.length) {
     el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('sessEmpty'))}</div>`;
     return;
   }
   el('prd').innerHTML = bar + notices + Object.keys(SESSION_TONES).map(key => {
-    const cards = shown.filter(session => prdSessionStatus(session) === key);
+    const cards = shown.filter(session => sessStatus(session) === key);
     if (!cards.length) return '';
     const group = `sessions:${key}`;
     const collapsed = collapsedGroups.has(group);
@@ -5154,8 +5156,6 @@ el('prd').addEventListener('change', event => {
   renderPrd();
 });
 el('prd').addEventListener('click', event => {
-  const called = event.target.closest('.session-card.calls');
-  if (called) seeSession(called.dataset.session);
   // The caret, or anywhere on a folded card but its links and buttons.
   const folded = event.target.closest('.prd-pr-item.folded');
   const pr = event.target.closest('[data-prd-pr]')
@@ -6356,7 +6356,8 @@ let hubWizzQueue = [];
 // A hidden tab cannot shake, so it says so in its title until someone looks.
 function paintTitle() {
   const waiting = document.hidden && (hubWizzQueue.length > 0 || hubKudosBatch.length > 0);
-  const calls = sessCalls.size ? `${t('sessCalls', { n: sessCalls.size })} · ` : '';
+  const waitingSessions = view === 'sessions' ? (prdData?.sessions ?? []).filter(session => sessStatus(session) === 'waiting').length : 0;
+  const calls = waitingSessions ? `${t('sessCalls', { n: waitingSessions })} · ` : '';
   document.title = `${waiting ? '● ' : ''}${calls}${state.titleBase ?? 'PR Radar'}`;
 }
 

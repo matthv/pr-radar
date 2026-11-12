@@ -1413,9 +1413,12 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 
 The fifth view turns the PRDs view inside out: a line per Claude Code session, every running one
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
-starts folded), each group a counter in the band that filters to it. A line is the session: its
+starts folded), each group a counter in the band that filters to it, the latest to change state
+first. *Waiting on you* holds a skill's *question*, until it is answered, and a session idle for
+less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
+Idle longer, it is merely *open*. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
-state and how long it has been in it (*waiting on you · 3 min*); its skill and stage; the PRD it
+state and how long it has been in it (*your turn · 3 min*); its skill and stage; the PRD it
 works on, or else its PR; its folder and branch; when it was last active, once closed; and below,
 the question it waits on. Its caret unfolds the rest: its name, its latest
 recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,
@@ -1427,9 +1430,8 @@ under *also linked* in *n more*, as above, where an eye brings back a wrong gues
 
 While the view is open, the sessions' states and their skills' stages are read every 5 seconds,
 from local files only (`GET /api/sessions/status`); what they link to follows the board's refresh.
-A session that turns to you, waiting on you or done working, lights up and counts in the tab
-title as `⚑ n` until you click it. With `PR_RADAR_SESSION_CHIME=true` it also chimes,
-unless the board is muted: three falling notes, apart from the board's rising two, and never
+The tab title counts the sessions waiting on you as `⚑ n`. With `PR_RADAR_SESSION_CHIME=true`, a
+session that starts waiting on you chimes, unless the board is muted: three falling notes, apart from the board's rising two, and never
 `PR_RADAR_SOUND`, which stays the board's.
 
 ## Reading the colours
