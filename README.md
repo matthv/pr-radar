@@ -1415,8 +1415,9 @@ The fifth view turns the PRDs view inside out: a line per Claude Code session, e
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
 starts folded), each group a counter in the band that filters to it. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
-state and skill pills; the PRD it works on, or else its PR; its folder and branch; its last
-activity; and below, the question it waits on. Its caret unfolds the rest: its name, its latest
+state and how long it has been in it (*waiting on you · 3 min*); its skill and stage; the PRD it
+works on, or else its PR; its folder and branch; when it was last active, once closed; and below,
+the question it waits on. Its caret unfolds the rest: its name, its latest
 recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,
 and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the
 session's work stay in the list: the PRs on the branch it is on, or else the PRDs it weighs most

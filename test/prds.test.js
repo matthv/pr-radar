@@ -185,7 +185,7 @@ test('a session\'s PRDs and PRs rank by how surely they are its work: its branch
 test('the sessions poll carries each running session and each reporting skill, states only', () => {
   const waiting = { skill: 'implement', stage: 'plan', state: 'waiting', question: 'Which repo?', at: '2026-11-12T10:00:00Z' };
   const statuses = sessionStatuses({
-    live: [{ sessionId: 's1', name: 'one', status: 'busy', updatedAt: Date.parse('2026-11-12T11:00:00Z') }, { sessionId: 's2', status: 'idle' }],
+    live: [{ sessionId: 's1', name: 'one', status: 'busy', updatedAt: Date.parse('2026-11-12T11:00:00Z'), statusUpdatedAt: Date.parse('2026-11-12T11:00:00Z') }, { sessionId: 's2', status: 'idle' }],
     stageSessions: [stage('s2', { tickets: ['PRD-1'], current: waiting }), stage('s3', { current: { ...waiting, state: 'done' } })],
   });
   assert.deepEqual(statuses.map(s => [s.sessionId, s.running, s.status, s.state, s.question, s.at]), [
@@ -194,4 +194,6 @@ test('the sessions poll carries each running session and each reporting skill, s
     ['s3', false, null, 'done', 'Which repo?', '2026-11-12T10:00:00Z'],
   ]);
   assert.equal('tickets' in statuses[1], false);
+  // Since when each is in its state: the status change, or the line that asked the question.
+  assert.deepEqual(statuses.map(s => s.since), ['2026-11-12T11:00:00.000Z', '2026-11-12T10:00:00Z', null]);
 });

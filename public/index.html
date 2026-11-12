@@ -4751,8 +4751,10 @@ function prdSessionParts(session) {
   const status = prdSessionStatus(session);
   const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
   const [skillKind, skillState] = prdSkillPill(session);
+  // How long it has been in that state, while it runs.
+  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey) + (session.running && session.since ? ` · ${ago(session.since)}` : '')), t(statusKey));
   const skill = session.skill
-    ? pillButton(skillKind, escapeHtml(`/${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
+    ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
     : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
   const open = opens
     ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${id}" title="${escapeHtml(action)}">${CLAUDE_ICON}</button>`
@@ -4763,9 +4765,9 @@ function prdSessionParts(session) {
     name: opens
       ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
       : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`,
-    pills: `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`,
+    pills: `${statusPill}${skill}`,
     // The card says nothing of a skill it does not run.
-    cardPills: `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${session.skill ? skill : ''}`,
+    cardPills: `${statusPill}${session.skill ? skill : ''}`,
     question: session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : '',
     at: session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : '',
   };
@@ -5008,7 +5010,8 @@ function sessionCard(session) {
       ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
       : `<span class="prd-title">${title}</span>`)
     + `${parts.cardPills}${key}<span class="sess-where">${escapeHtml(where)}</span>`
-    + (session.at ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + '</div>';
+    // A running session's time is in its state's pill; a closed one says when it was last active.
+    + (session.at && !(session.running && session.since) ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + '</div>';
   let details = '';
   if (open) {
     const recap = Boolean(session.summary) && (!session.promptAt || String(session.summaryAt) >= String(session.promptAt));
@@ -5035,7 +5038,7 @@ function sessionCard(session) {
 // title until you click it (a hover would not do: the row jumps to the top, under a resting
 // mouse), and chimes when PR_RADAR_SESSION_CHIME asks for it.
 const SESSION_POLL_MS = 5000;
-const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at'];
+const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
 const sessLast = new Map();
 const sessCalls = new Set();
 function noteSessionChanges(sessions) {
@@ -5081,7 +5084,8 @@ async function pollSessions() {
     return merged;
   });
   noteSessionChanges(prdData.sessions);
-  if (JSON.stringify(prdData.sessions) !== before) renderPrd();
+  // Unchanged, it still redraws now and then, so the time each has spent in its state moves on.
+  if (JSON.stringify(prdData.sessions) !== before || Date.now() - sessDrawnAt > 30_000) renderPrd();
 }
 function seeSession(sessionId) {
   if (!sessCalls.delete(sessionId)) return;
@@ -5096,7 +5100,9 @@ if (store.get('sessClosedFolded', '') !== '1') {
   store.set('sessClosedFolded', '1');
 }
 
+let sessDrawnAt = 0;
 function renderSessions() {
+  sessDrawnAt = Date.now();
   const sessions = prdData?.sessions ?? [];
   const counters = Object.keys(SESSION_TONES).map(key => {
     const value = sessions.filter(session => prdSessionStatus(session) === key).length;

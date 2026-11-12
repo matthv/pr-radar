@@ -43,6 +43,10 @@ function sessionEntry(sessionId, { stage, record, cwd, seen }) {
     question: run?.question ?? null,
     outcome: run?.outcome ?? null,
     at: run?.at ?? (record?.updatedAt ? new Date(record.updatedAt).toISOString() : seen ?? null),
+    // Since when it is in its state, while it runs: a skill's question from the line that asked it.
+    since: !record ? null
+      : run?.state === 'waiting' ? run.at ?? null
+        : record.statusUpdatedAt ? new Date(record.statusUpdatedAt).toISOString() : null,
   };
 }
 
