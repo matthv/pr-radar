@@ -767,7 +767,7 @@
   .prd-pr-item.folded .card { padding-top: 8px; padding-bottom: 8px; cursor: pointer; }
   .prd-pr-item.folded .card > :not(.card-top) { display: none; }
   .prd-caret {
-    position: absolute; right: 10px; top: 7px; z-index: 3; width: 22px; height: 22px;
+    position: absolute; right: 10px; top: 10px; z-index: 3; width: 22px; height: 22px;
     display: grid; place-items: center; padding: 0; cursor: pointer;
     background: none; border: 0; border-radius: 6px; color: var(--text-soft);
   }
@@ -778,7 +778,7 @@
     transform: translateY(-2px) rotate(45deg); transition: transform .15s;
   }
   .prd-pr-item.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
-  .prd-pr-item:not(.folded) .prd-caret { top: 12px; }
+  .prd-pr-item:not(.folded) .prd-caret { top: 16px; }
   .prd-caret:hover, .prd-caret:focus-visible { color: var(--text); background: var(--hairline); }
   .prd-session {
     --session-tone: var(--border);
