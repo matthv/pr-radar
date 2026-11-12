@@ -144,7 +144,7 @@ test('ordered by last update or opening, newest first, or by title A to Z', () =
 test('the sessions view has a card per running session and per session a PRD keeps, with its PRDs and every PR', () => {
   const prds = [
     prd('PRD-1', { prs: [{ url: PR7 }], sessions: [{ sessionId: 'a', running: true, at: '2026-11-12T10:00:00Z', weight: 3, main: true }] }),
-    prd('PRD-2', { prs: [{ url: PR7 }, { url: PR8 }], sessions: [{ sessionId: 'a', running: true, at: '2026-11-12T10:00:00Z', weight: 1, main: false }, { sessionId: 'c', running: false, at: '2026-11-10T00:00:00Z' }] }),
+    prd('PRD-2', { prs: [{ url: PR7 }, { url: PR8 }], sessions: [{ sessionId: 'a', running: true, at: '2026-11-12T10:00:00Z', weight: 1, main: false }, { sessionId: 'c', running: false, at: '2026-11-10T00:00:00Z', weight: 1 }] }),
   ];
   const details = { a: { title: 'Caret work', prUrls: [PR9], at: '2026-11-12T09:00:00Z' }, b: { title: 'Loose terminal', summary: 'Reading logs', prUrls: [], at: '2026-11-12T08:00:00Z' } };
   const cards = buildSessions({
@@ -152,11 +152,32 @@ test('the sessions view has a card per running session and per session a PRD kee
     live: [{ sessionId: 'a', name: 'dev-1' }, { sessionId: 'b', name: 'dev-2', updatedAt: Date.parse('2026-11-12T08:00:00Z') }],
     detailsOf: id => details[id] ?? null,
   });
-  assert.deepEqual(cards.map(card => [card.sessionId, card.title ?? null, card.tickets, card.prs.map(pr => pr.url)]), [
-    ['a', 'Caret work', ['PRD-1', 'PRD-2'], [PR7, PR8, PR9]],
+  assert.deepEqual(cards.map(card => [card.sessionId, card.title ?? null, card.tickets.map(link => link.ticket), card.prs.map(pr => pr.url)]), [
+    ['a', 'Caret work', ['PRD-1', 'PRD-2'], [PR9, PR7, PR8]],
     ['b', 'Loose terminal', [], []],
     ['c', null, ['PRD-2'], [PR7, PR8]],
   ]);
   assert.equal(cards[1].summary, 'Reading logs');
   assert.ok(cards.every(card => !('main' in card) && !('weight' in card)));
+});
+
+test('a session\'s PRDs and PRs rank by how surely they are its work: its branch first, then its heaviest PRD', () => {
+  const board = [{ id: 'A', url: PR7, title: 'seven', branch: 'feat/prd-1-caret' }, { id: 'B', url: PR8, title: 'eight', branch: 'fix/other' }];
+  const prds = [
+    prd('PRD-1', { prs: [{ url: PR7 }], sessions: [{ sessionId: 'a', running: true, weight: 1 }] }),
+    prd('PRD-2', { prs: [{ url: PR8 }], sessions: [{ sessionId: 'a', running: true, weight: 3 }] }),
+  ];
+  const [onBranch] = buildSessions({
+    prds: prds.map(p => ({ ...p, prs: p.prs.map(pr => ({ ...pr, branch: board.find(b => b.url === pr.url).branch })) })),
+    boardPrs: board, live: [{ sessionId: 'a' }],
+    detailsOf: () => ({ branch: 'feat/prd-1-caret', prUrls: [] }),
+  });
+  // The branch names PRD-1, which then ties PRD-2: both primary. Only the PR on the branch is.
+  assert.deepEqual(onBranch.tickets.map(link => [link.ticket, link.score, link.primary]), [['PRD-1', 4, true], ['PRD-2', 3, false]]);
+  assert.deepEqual(onBranch.prs.map(pr => [pr.url, pr.primary]), [[PR7, true], [PR8, false]]);
+
+  const [offBranch] = buildSessions({ prds, live: [{ sessionId: 'a' }], detailsOf: () => ({ branch: 'main', prUrls: [PR9] }) });
+  assert.deepEqual(offBranch.tickets.map(link => [link.ticket, link.primary]), [['PRD-2', true], ['PRD-1', false]]);
+  // Off a branch of its own: the latest PR it opened and the heaviest PRD's PRs are primary.
+  assert.deepEqual(offBranch.prs.map(pr => [pr.url, pr.primary]), [[PR9, true], [PR8, true], [PR7, false]]);
 });
