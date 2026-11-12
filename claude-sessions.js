@@ -337,9 +337,26 @@ async function readRecord(file) {
   }
 }
 
+// Claude Code's documented listing of its running sessions, `claude agents --json`: the same
+// status and waitingFor as the session files, without when the status began.
+function claudeAgents() {
+  return new Promise(resolve => {
+    execFile('claude', ['agents', '--json'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return resolve([]);
+      try {
+        const list = JSON.parse(stdout);
+        resolve(Array.isArray(list) ? list : []);
+      } catch {
+        resolve([]);
+      }
+    });
+  });
+}
+
 // The interactive copies running now, most recently active first: a session can be resumed
-// in several places.
-async function liveSessions(dir = RUNNING_DIR) {
+// in several places. A record with no status, which the session files do not promise, takes it
+// from `claude agents --json`, asked only then.
+async function liveSessions(dir = RUNNING_DIR, { agents = claudeAgents } = {}) {
   let names;
   try {
     names = await fs.readdir(dir);
@@ -352,6 +369,15 @@ async function liveSessions(dir = RUNNING_DIR) {
     const record = await readRecord(path.join(dir, name));
     if (!record || (record.kind ?? 'interactive') !== 'interactive') continue;
     if (record.pid > 0 && isAlive(record.pid)) running.push(record);
+  }
+  if (running.some(record => !record.status)) {
+    const listed = new Map((await agents()).map(agent => [agent.pid, agent]));
+    for (const [index, record] of running.entries()) {
+      const agent = listed.get(record.pid);
+      if (!record.status && agent?.sessionId === record.sessionId && agent.status) {
+        running[index] = { ...record, status: agent.status, waitingFor: agent.waitingFor ?? null };
+      }
+    }
   }
   return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }

@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume, liveSessions } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -470,4 +470,23 @@ test('a PR link new since the last scan is reported, none on the first scan or a
 
   await fs.writeFile(file, start('/Users/me/Projects') + prLink(OLDER, NEW_PR));
   assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, [], 'a transcript read again from its start');
+});
+
+test('a running session whose file has no status takes it from claude agents, asked only then', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-live-'));
+  const write = record => fs.writeFile(path.join(dir, `${record.pid}.json`), JSON.stringify({ kind: 'interactive', ...record }));
+  await write({ pid: process.pid, sessionId: 'with', status: 'busy', updatedAt: 2 });
+  let asked = 0;
+  const agents = async () => {
+    asked += 1;
+    return [{ pid: process.ppid, sessionId: 'without', status: 'waiting', waitingFor: 'permission prompt' }];
+  };
+  assert.deepEqual((await liveSessions(dir, { agents })).map(record => record.status), ['busy']);
+  assert.equal(asked, 0);
+  await write({ pid: process.ppid, sessionId: 'without', updatedAt: 1 });
+  const [, filled] = await liveSessions(dir, { agents });
+  assert.deepEqual([filled.status, filled.waitingFor, asked], ['waiting', 'permission prompt', 1]);
+  // Listed under another session id, the pid was reused: no status is taken.
+  const [, kept] = await liveSessions(dir, { agents: async () => [{ pid: process.ppid, sessionId: 'other', status: 'busy' }] });
+  assert.equal(kept.status, undefined);
 });

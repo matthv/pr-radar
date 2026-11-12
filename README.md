@@ -1415,7 +1415,7 @@ show only their own PRs.
 | Working | Claude is busy |
 | Open | Idle for more than 30 minutes |
 | Closed | No longer running; starts folded |
-| No status | Running, but Claude Code's session file doesn't say what it is doing. Shown only when it happens: an update to Claude Code may have changed that file, which it doesn't document |
+| No status | Running, but neither Claude Code's session file nor `claude agents --json`, which pr-radar asks when the file is silent, says what it is doing. Shown only when it happens: an update to Claude Code may have changed them |
 
 Each group has a counter in the band that filters to it. Fold any group from its header. Star a
 session (☆ on hover) to pin it in a *starred* list at the top.
