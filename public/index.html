@@ -744,11 +744,11 @@
   .prd {
     --tone: var(--border); position: relative; overflow: hidden;
     border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 10px 16px; margin-bottom: 10px;
-    background: linear-gradient(100deg, color-mix(in srgb, var(--tone) 16%, var(--surface)) -10%, var(--surface) 42%);
+    background: linear-gradient(100deg, color-mix(in srgb, var(--tone) 6%, var(--surface)) -10%, var(--surface) 42%);
     box-shadow: var(--shadow-sm); transition: box-shadow .15s, transform .15s;
   }
   .prd::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
-  .prd.waiting { background: linear-gradient(100deg, var(--amber-soft) -10%, var(--surface) 42%); }
+  .prd.waiting { background: linear-gradient(100deg, color-mix(in srgb, var(--amber-soft) 40%, var(--surface)) -10%, var(--surface) 42%); }
   .prd.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .prd:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
   .prd-label { background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 65%, var(--text)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent); }
