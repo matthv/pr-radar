@@ -1417,7 +1417,8 @@ starts folded), each group a counter in the band that filters to it. *Order by* 
 group: the latest to change state first (the default), the longest in its state first, or by
 title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, and a session idle for
 less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
-Idle longer, it is merely *open*. A line is the session: its
+Idle longer, it is merely *open*. A star puts a session in a *starred* list above the groups,
+kept in this browser until you unstar it or the session leaves the view. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
 badges, a skill at work saying what it does and for how long (*validator · review · 3 min*, or
 *working · 3 min* when it runs none), else its state, each its own colour (*question* amber, *your

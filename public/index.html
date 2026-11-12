@@ -762,11 +762,12 @@
   .sess-line .pill:not(button) { cursor: inherit; }
   .sess-line .session-title { flex: 0 1 auto; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sess-line .pill { flex: none; }
+  .sess-line .sess-star { flex: none; margin: 0 -4px 0 -6px; }
   .sess-key { flex: none; font-size: 12px; font-weight: 600; color: var(--text-soft); text-decoration: none; }
   .sess-key:hover { color: var(--indigo); }
   .sess-where { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-faint); }
   .sess-age { flex: none; margin-left: auto; font-size: 12px; color: var(--text-faint); }
-  .session-card .session-question { display: block; max-width: calc(100% - 30px); margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-card .session-question { display: block; max-width: calc(100% - 43px); margin: 2px 0 0 43px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   button.session-question { font: inherit; font-size: 12.5px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   button.session-question:hover .prd-question, button.session-question:focus-visible .prd-question { text-decoration: underline; }
   .session-card:not(.folded) .session-question { white-space: normal; }
@@ -2118,6 +2119,9 @@ const I18N = {
     sessOrder_folder: 'dossier',
     sessOrder_prd: 'PRD',
     sessOrder_skill: 'skill',
+    sessStarred: '★ favoris',
+    sessStar: 'mettre en favori : en tête de liste',
+    sessUnstar: 'retirer des favoris',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
@@ -2517,6 +2521,9 @@ const I18N = {
     sessOrder_folder: 'folder',
     sessOrder_prd: 'PRD',
     sessOrder_skill: 'skill',
+    sessStarred: '★ starred',
+    sessStar: 'star: keep it in the list at the top',
+    sessUnstar: 'unstar',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
@@ -4702,6 +4709,12 @@ function loadPrds(force = false) {
       prdData = payload;
       noteSessionChanges(payload.sessions ?? []);
       if (payload.enabled !== false && payload.linear !== false) {
+        if (payload.claudeSessions !== false) {
+          const ids = new Set((payload.sessions ?? []).map(session => session.sessionId));
+          const before = sessStars.size;
+          for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
+          if (sessStars.size !== before) saveStars();
+        }
         pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
       }
     })
@@ -5029,7 +5042,10 @@ function sessionCard(session) {
     ? `<a class="sess-key" href="${escapeHtml(byTicket.get(lead.ticket).url)}" target="_blank" rel="noopener" title="${escapeHtml(byTicket.get(lead.ticket).title)}">${escapeHtml(lead.ticket)}</a>`
     : leadPr ? `<a class="sess-key" href="${escapeHtml(leadPr.url)}" target="_blank" rel="noopener" title="${escapeHtml(leadPr.title ?? '')}">#${escapeHtml(String(leadPr.number ?? leadPr.url.split('/').pop()))}</a>` : '';
   const open = sessOpen.has(session.sessionId);
-  const line = `<div class="sess-line">${parts.open}`
+  const starred = sessStars.has(session.sessionId);
+  const star = `<button type="button" class="prd-star sess-star${starred ? ' on' : ''}" data-sess-star="${id}" aria-pressed="${starred}"`
+    + ` title="${escapeHtml(t(starred ? 'sessUnstar' : 'sessStar'))}">${starred ? '★' : '☆'}</button>`;
+  const line = `<div class="sess-line">${star}${parts.open}`
     + (opens
       ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
       : `<span class="prd-title">${title}</span>`)
@@ -5141,6 +5157,17 @@ if (store.get('sessClosedFolded', '') !== '1') {
   store.set('sessClosedFolded', '1');
 }
 
+// Sessions starred into the priority list above the groups, kept in this browser until unstarred
+// or until the session leaves the view.
+const sessStars = new Set((() => {
+  try {
+    return JSON.parse(store.get('sessStarred', '[]')) ?? [];
+  } catch {
+    return [];
+  }
+})());
+const saveStars = () => store.set('sessStarred', JSON.stringify([...sessStars]));
+
 // The order inside each state's group, kept in this browser: the latest to change state first
 // (the one that just finished leads), the longest in its state first, or by title, folder, PRD or
 // skill, those with none last.
@@ -5194,15 +5221,20 @@ function renderSessions() {
     el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('sessEmpty'))}</div>`;
     return;
   }
-  el('prd').innerHTML = bar + notices + Object.keys(SESSION_TONES).map(key => {
-    const cards = shown.filter(session => sessStatus(session) === key);
+  const groupOf = (key, label, tone, cards) => {
     if (!cards.length) return '';
     const group = `sessions:${key}`;
     const collapsed = collapsedGroups.has(group);
-    return `<button type="button" class="group-label prd-group${collapsed ? ' collapsed' : ''}" style="--tone: ${SESSION_TONES[key]}" data-group="${group}" aria-expanded="${!collapsed}">`
-      + `<span class="gdot"></span>${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="gcount">${cards.length}</span><span class="gchev"></span></button>`
+    return `<button type="button" class="group-label prd-group${collapsed ? ' collapsed' : ''}" style="--tone: ${tone}" data-group="${group}" aria-expanded="${!collapsed}">`
+      + `<span class="gdot"></span>${escapeHtml(label)}<span class="gcount">${cards.length}</span><span class="gchev"></span></button>`
       + `<div class="group-cards">${cards.map(sessionCard).join('')}</div>`;
-  }).join('');
+  };
+  // The starred ones first, in their own list; the others by state.
+  const rest = shown.filter(session => !sessStars.has(session.sessionId));
+  el('prd').innerHTML = bar + notices
+    + groupOf('starred', t('sessStarred'), 'var(--amber)', shown.filter(session => sessStars.has(session.sessionId)))
+    + Object.keys(SESSION_TONES).map(key => groupOf(key, t(PRD_SESSION_STATUS[key][1]), SESSION_TONES[key],
+      rest.filter(session => sessStatus(session) === key))).join('');
 }
 
 el('prd').addEventListener('change', event => {
@@ -5254,6 +5286,14 @@ el('prd').addEventListener('click', event => {
     prdMains[star.dataset.prdTicket] = star.dataset.prdMain;
     store.set('prdMain', JSON.stringify(prdMains));
     prdOpenSessions.delete(star.dataset.prdTicket);
+    renderPrd();
+    return;
+  }
+  const starButton = event.target.closest('[data-sess-star]');
+  if (starButton) {
+    const { sessStar: id } = starButton.dataset;
+    if (!sessStars.delete(id)) sessStars.add(id);
+    saveStars();
     renderPrd();
     return;
   }
