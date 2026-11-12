@@ -45,13 +45,14 @@
       .map(entry => ({ ...entry, prds: sortPrds(entry.prds, order) }));
   }
 
-  // The session you starred as a ticket's main one, when it is still among its sessions, comes
-  // first and alone is main; the others keep their order. Otherwise the weighed guess stands.
-  function withMain(sessions, chosen) {
-    if (!chosen || !sessions.some(session => session.sessionId === chosen)) return sessions;
-    return sessions
-      .map(session => ({ ...session, main: session.sessionId === chosen }))
-      .sort((a, b) => b.main - a.main);
+  // The session you starred as a ticket's main one, while it is still among its sessions, alone
+  // is main; otherwise the weighed guess stands. `first` is the one put first, the others keeping
+  // their order: the star as it stood at the last refresh, so a click never moves the lines.
+  function withMain(sessions, chosen, first) {
+    const has = id => Boolean(id) && sessions.some(session => session.sessionId === id);
+    const marked = has(chosen) ? sessions.map(session => ({ ...session, main: session.sessionId === chosen })) : sessions;
+    if (!has(first)) return marked;
+    return [...marked].sort((a, b) => (b.sessionId === first) - (a.sessionId === first));
   }
 
   return { group, sortPrds, runningSkills, withMain, GROUPS, ORDERS };

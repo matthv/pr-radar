@@ -104,9 +104,12 @@ test('the session that did most of a ticket\'s work comes first, marked main; a 
 
 test('a starred session becomes the main one and comes first; a star on a session gone is ignored', () => {
   const sessions = [{ sessionId: 'a', main: true }, { sessionId: 'b', main: false }, { sessionId: 'c', main: false }];
-  assert.deepEqual(withMain(sessions, 'c').map(session => [session.sessionId, session.main]), [['c', true], ['a', false], ['b', false]]);
-  assert.equal(withMain(sessions, 'gone'), sessions);
-  assert.equal(withMain(sessions, undefined), sessions);
+  assert.deepEqual(withMain(sessions, 'c', 'c').map(session => [session.sessionId, session.main]), [['c', true], ['a', false], ['b', false]]);
+  assert.equal(withMain(sessions, 'gone', 'gone'), sessions);
+  assert.equal(withMain(sessions, undefined, undefined), sessions);
+  // Starred since the last refresh: marked main where it stands, moved first only on the next one.
+  assert.deepEqual(withMain(sessions, 'c', undefined).map(session => [session.sessionId, session.main]), [['a', false], ['b', false], ['c', true]]);
+  assert.deepEqual(withMain(sessions, 'c', 'b').map(session => [session.sessionId, session.main]), [['b', false], ['a', false], ['c', true]]);
 });
 
 test('the tickets to ask Linear for come from the stages, directly or through a board PR', () => {
