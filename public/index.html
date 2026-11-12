@@ -729,6 +729,11 @@
   .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
   .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
+  /* A PRDs group takes its tone from Linear (a status, a label) or the theme's palette (a skill,
+     a project); only the group with no key stays grey, as the board's drafts do. */
+  .group-label.prd-group { color: color-mix(in srgb, var(--tone) 70%, var(--text)); }
+  .group-label.prd-group .gdot { background: var(--tone); }
+  .group-label.prd-group .gcount { background: color-mix(in srgb, var(--tone) 15%, var(--surface)); color: color-mix(in srgb, var(--tone) 70%, var(--text)); }
 
   /* PRDs: your tickets, each with its PRs and the Claude sessions working on it. */
   #prd { padding: 4px 28px 70px; max-width: 1180px; }
@@ -4570,6 +4575,16 @@ function prdCard(prd) {
     + `${prd.sessions.map(prdSessionRow).join('')}</div>`;
 }
 
+// Linear's own colour when the group has one; otherwise one of the theme's, the same for a
+// skill or a project from one refresh to the next.
+const PRD_TONES = ['var(--indigo)', 'var(--cyan)', 'var(--emerald)', 'var(--amber)', 'var(--rose)', 'var(--indigo-2)'];
+function prdGroupTone(entry) {
+  if (entry.key === null) return null;
+  if (entry.color) return safeColor(entry.color);
+  const hash = [...String(entry.key)].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7);
+  return PRD_TONES[hash % PRD_TONES.length];
+}
+
 function renderPrd() {
   if (view !== 'prd') return;
   const options = (list, current, prefix) => list
@@ -4596,9 +4611,9 @@ function renderPrd() {
     if (prdGroup === 'none') return cards;
     const key = `prd:${prdGroup}:${entry.key ?? ''}`;
     const collapsed = collapsedGroups.has(key);
-    const dot = entry.color ? ` style="background: ${safeColor(entry.color)}"` : '';
-    return `<button type="button" class="group-label idle${collapsed ? ' collapsed' : ''}" data-group="${escapeHtml(key)}" aria-expanded="${!collapsed}">`
-      + `<span class="gdot"${dot}></span>${escapeHtml(entry.key === null ? t(`prdNone_${prdGroup}`) : entry.label)}`
+    const tone = prdGroupTone(entry);
+    return `<button type="button" class="group-label ${tone ? 'prd-group' : 'idle'}${collapsed ? ' collapsed' : ''}"${tone ? ` style="--tone: ${tone}"` : ''} data-group="${escapeHtml(key)}" aria-expanded="${!collapsed}">`
+      + `<span class="gdot"></span>${escapeHtml(entry.key === null ? t(`prdNone_${prdGroup}`) : entry.label)}`
       + `<span class="gcount">${entry.prds.length}</span><span class="gchev"></span></button><div class="group-cards">${cards}</div>`;
   }).join('');
 }
