@@ -332,6 +332,20 @@ describe('the resume route', () => {
     assert.deepEqual(await resume(request({ readBody: async () => ({ id: 'PR_2' }) }), context()), [404, 'no Claude session linked to this PR']);
   });
 
+  test('the PRDs view resumes a session by its id, from the folder its transcript names', async () => {
+    const byId = sessionId => request({ readBody: async () => ({ sessionId }) });
+    assert.deepEqual(await resume(byId('not-an-id'), context()), [400, 'invalid session id']);
+    assert.deepEqual(await resume(byId('00000000-0000-4000-8000-000000000000'), context()), [404, 'no transcript of this session on this machine']);
+    const calls = [];
+    const exec = async (command, args) => {
+      calls.push(args.at(-1));
+      return '';
+    };
+    // No board needed: the session names itself.
+    assert.deepEqual(await resume(byId(OLDER), context({ exec, board: null })), [200, null]);
+    assert.deepEqual(calls, [resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() })]);
+  });
+
   test('a session not running opens in the terminal, the command as an argument', async () => {
     const calls = [];
     const exec = async (command, args) => {

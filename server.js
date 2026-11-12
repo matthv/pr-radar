@@ -35,6 +35,9 @@ const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
+const skillStages = require('./skill-stages');
+const linear = require('./linear');
+const { buildPrds, extraTickets } = require('./prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -70,6 +73,10 @@ const PAGE_REFRESH_SECONDS = 20;
 const FIRST_SEARCH_RETRY_MS = 60_000;
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
+// The PRDs view reads your tickets from Linear's API; without a key the view says how to set one.
+const LINEAR_API_KEY = (process.env.PR_RADAR_LINEAR_API_KEY ?? '').trim();
+// A session that has written no stage for a day is not working on anything any more.
+const STAGE_WINDOW_MS = 86_400_000;
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
@@ -236,6 +243,48 @@ function scanClaudeSessions() {
       return [];
     },
   );
+}
+
+// Linear is read on the board's cadence; the stage lines and the running sessions on every
+// request, since they move by the minute and cost a few small files.
+let linearCache = { at: 0, key: '', prds: null };
+let linearInFlight = null;
+function linearPrds(extra, force) {
+  const key = [...extra].sort().join(',');
+  if (!force && linearCache.prds && linearCache.key === key && Date.now() - linearCache.at < CACHE_TTL_MS) return Promise.resolve(linearCache.prds);
+  linearInFlight ??= linear.fetchPrds({ apiKey: LINEAR_API_KEY, extra })
+    .then(prds => {
+      linearCache = { at: Date.now(), key, prds };
+      return prds;
+    })
+    .finally(() => {
+      linearInFlight = null;
+    });
+  return linearInFlight;
+}
+
+async function prdView(force) {
+  const boardPrs = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : [];
+  const warnings = [];
+  const stageSessions = await skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }).catch(error => {
+    warnings.push({ source: 'stages', message: `${skillStages.STAGES_DIR}: ${error.message}` });
+    return [];
+  });
+  const live = await claudeSessions.liveSessions().catch(error => {
+    warnings.push({ source: 'claude', message: error.message });
+    return [];
+  });
+  const prds = await linearPrds(extraTickets(stageSessions, boardPrs), force);
+  return {
+    enabled: true,
+    claudeSessions: CLAUDE_SESSIONS,
+    warnings,
+    prds: buildPrds({
+      prds, boardPrs, stageSessions, live,
+      sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
+      cwdOf: claudeSessions.cwdOf,
+    }),
+  };
 }
 
 // Twins come with the board, Slack link on or off: the ticket and the title still find them.
@@ -713,6 +762,16 @@ const server = http.createServer(async (req, res) => {
       json(res, 502, { error: error.message }, version);
     }
     return;
+  }
+
+  if (url.pathname === '/api/prds') {
+    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
+    if (!LINEAR_API_KEY) return json(res, 200, { enabled: false, reason: 'noKey' });
+    try {
+      return json(res, 200, await prdView(url.searchParams.get('force') === '1'));
+    } catch (error) {
+      return json(res, 502, { error: error.message });
+    }
   }
 
   if (url.pathname === '/api/themes' && req.method === 'POST') {

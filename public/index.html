@@ -730,6 +730,37 @@
   .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
 
+  /* PRDs: your tickets, each with its PRs and the Claude sessions working on it. */
+  #prd { padding: 4px 28px 70px; max-width: 1180px; }
+  .prd-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 18px 0 4px; font-size: 12.5px; color: var(--text-soft); }
+  .prd-bar label { display: flex; align-items: center; gap: 6px; }
+  .prd-bar select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; }
+  .prd-notice { margin: 18px 0; color: var(--text-soft); font-size: 13px; }
+  .prd { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 10px 14px; margin-bottom: 10px; }
+  .prd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; font-size: 12px; color: var(--text-soft); text-decoration: none; }
+  .prd-key:hover { text-decoration: underline; }
+  .prd-title { flex: 1 1 260px; min-width: 0; font-weight: 600; font-size: 13.5px; }
+  .prd-status { display: inline-flex; align-items: center; gap: 5px; }
+  .prd-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--dot, var(--border)); }
+  .prd-meta { margin-top: 4px; font-size: 11.5px; color: var(--text-faint); }
+  .prd-prs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .prd-pr {
+    font: inherit; font-size: 12px; cursor: pointer; max-width: 100%; padding: 2px 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text); background: none; border: 1px solid var(--border); border-radius: 8px;
+  }
+  .prd-pr:hover, .prd-pr:focus-visible { border-color: var(--indigo); }
+  .prd-pr.action { border-color: var(--indigo); color: var(--indigo); }
+  .prd-pr.merged { color: var(--text-faint); }
+  .prd-ref { margin-right: 5px; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; opacity: .75; }
+  .prd-session { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; }
+  .prd-session .claude-link { margin-top: 0; }
+  .prd-session .prd-meta { margin-top: 0; }
+  .prd-session-name { font-weight: 600; }
+  .prd-question { color: var(--amber); }
+  .card.spotlit { outline: 2px solid var(--indigo); outline-offset: 2px; }
+
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
     flex: 1 1 auto; min-height: 0;
@@ -1411,6 +1442,7 @@
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
+      <span data-view="prd" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="3" rx="1"/><rect x="4" y="7" width="10.5" height="2.6" rx="1"/><rect x="4" y="11.4" width="10.5" height="2.6" rx="1"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <div class="picker" id="decorPicker">
@@ -1489,6 +1521,7 @@
 </div>
 <div id="orbits" hidden></div>
 <div id="kanban" hidden></div>
+<div id="prd" hidden></div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -1506,6 +1539,7 @@
 <script src="/since.js"></script>
 <script src="/versions.js"></script>
 <script src="/decor.js"></script>
+<script src="/prd.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
@@ -1907,7 +1941,41 @@ const I18N = {
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
-    viewTitle: 'vue tableau / vue par auteur / kanban',
+    viewTitle: 'vue tableau / vue par auteur / kanban / PRDs',
+    prdGroupBy: 'Grouper par',
+    prdOrderBy: 'Trier par',
+    prdGroup_skill: 'skill en cours',
+    prdGroup_status: 'statut',
+    prdGroup_project: 'projet',
+    prdGroup_label: 'label',
+    prdGroup_none: 'rien',
+    prdOrder_updated: 'mis à jour',
+    prdOrder_opened: 'ouvert le',
+    prdOrder_title: 'titre',
+    prdNone_skill: 'Aucun skill en cours',
+    prdNone_status: 'Sans statut',
+    prdNone_project: 'Sans projet',
+    prdNone_label: 'Sans label',
+    prdNoKey: 'La vue PRDs lit tes tickets dans Linear : renseigne PR_RADAR_LINEAR_API_KEY dans .env (une clé personnelle, Linear › Settings › Security & access), puis relance.',
+    prdDemo: 'La vue PRDs lit Linear : elle est vide dans la démo.',
+    prdError: 'Impossible de lire les PRDs : {message}',
+    prdEmpty: 'Aucun PRD en cours qui te soit assigné, et aucune session Claude sur un ticket.',
+    prdOpened: 'ouvert il y a {v}',
+    prdUpdated: 'mis à jour il y a {v}',
+    prdNotAssigned: 'pas à toi : une session Claude y travaille',
+    prdNoPrs: 'Aucune PR liée.',
+    prdPrBoard: 'voir cette PR sur le tableau',
+    prdPrGithub: 'pas sur le tableau : ouvrir sur GitHub',
+    prdRunning: 'en cours',
+    prdWaiting: 'attend ta réponse',
+    prdInterrupted: 'interrompu',
+    prdState_done: 'terminé',
+    prdState_stopped: 'arrêté',
+    prdNoSkill: 'aucun skill',
+    prdSessionOpen: 'ouverte',
+    prdSessionClosed: 'fermée',
+    prdFocusTitle: 'afficher cette session Claude',
+    prdResumeTitle: 'reprendre cette session Claude dans un terminal',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
     kanbanBot: 'En attente d’un bot',
@@ -2234,7 +2302,41 @@ const I18N = {
     reloadTitle: 'this page is running an older version of the tool',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
-    viewTitle: 'board view / by author / kanban',
+    viewTitle: 'board view / by author / kanban / PRDs',
+    prdGroupBy: 'Group by',
+    prdOrderBy: 'Order by',
+    prdGroup_skill: 'running skill',
+    prdGroup_status: 'status',
+    prdGroup_project: 'project',
+    prdGroup_label: 'label',
+    prdGroup_none: 'nothing',
+    prdOrder_updated: 'last updated',
+    prdOrder_opened: 'opened at',
+    prdOrder_title: 'title',
+    prdNone_skill: 'No skill running',
+    prdNone_status: 'No status',
+    prdNone_project: 'No project',
+    prdNone_label: 'No label',
+    prdNoKey: 'The PRDs view reads your tickets from Linear: set PR_RADAR_LINEAR_API_KEY in .env (a personal key, Linear › Settings › Security & access), then restart.',
+    prdDemo: 'The PRDs view reads Linear: it is empty in the demo.',
+    prdError: 'Could not read the PRDs: {message}',
+    prdEmpty: 'No PRD in progress assigned to you, and no Claude session on a ticket.',
+    prdOpened: 'opened {v} ago',
+    prdUpdated: 'updated {v} ago',
+    prdNotAssigned: 'not yours: a Claude session works on it',
+    prdNoPrs: 'No linked PR.',
+    prdPrBoard: 'show this PR on the board',
+    prdPrGithub: 'not on the board: open on GitHub',
+    prdRunning: 'running',
+    prdWaiting: 'waiting on you',
+    prdInterrupted: 'interrupted',
+    prdState_done: 'done',
+    prdState_stopped: 'stopped',
+    prdNoSkill: 'no skill',
+    prdSessionOpen: 'open',
+    prdSessionClosed: 'closed',
+    prdFocusTitle: 'bring this Claude session forward',
+    prdResumeTitle: 'resume this Claude session in a terminal',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
     kanbanBot: 'Waiting on a bot',
@@ -2429,7 +2531,7 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
-const VIEWS = ['board', 'orbits', 'kanban'];
+const VIEWS = ['board', 'orbits', 'kanban', 'prd'];
 let view = VIEWS.includes(store.get('view', 'board')) ? store.get('view', 'board') : 'board';
 
 const t = (key, vars) =>
@@ -2458,7 +2560,10 @@ function applyView(next) {
   document.querySelector('main').hidden = next !== 'board';
   el('kanban').hidden = next !== 'kanban';
   el('orbits').hidden = next !== 'orbits';
+  el('prd').hidden = next !== 'prd';
   if (switched && next === 'kanban') render();
+  if (next === 'prd') renderPrd();
+  if (switched && next === 'prd') loadPrds();
 }
 
 const viewRoot = () => (view === 'kanban' ? el('kanban') : document.querySelector('main'));
@@ -4026,6 +4131,7 @@ function render() {
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
   if (view === 'kanban') renderKanban(mine, reviews, focus);
+  if (view === 'prd') renderPrd();
   renderOrbits([...shownMine, ...shownReviews]);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
@@ -4280,6 +4386,7 @@ async function load(force, { check = false } = {}) {
     const unchanged = state.data && boardSignature(state.data) === boardSignature(payload);
     state.data = payload;
     scheduleRefresh(payload.pageRefreshSeconds ?? payload.refreshSeconds);
+    if (view === 'prd') loadPrds(force);
     if (unchanged) {
       renderStamp();
       return;
@@ -4336,16 +4443,18 @@ async function addLabel(button) {
   load(false);
 }
 
+// A card names its PR, a session row of the PRDs view its session.
 async function resumeClaudeSession(button) {
-  const id = button.dataset.claude;
-  if (resuming.has(id)) return;
-  resuming.add(id);
+  const { claude: id, claudeSession: sessionId } = button.dataset;
+  const key = sessionId ?? id;
+  if (resuming.has(key)) return;
+  resuming.add(key);
   button.classList.add('busy');
   try {
     const response = await fetch('/api/claude-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify(sessionId ? { sessionId } : { id }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -4354,12 +4463,138 @@ async function resumeClaudeSession(button) {
   } catch (error) {
     alert(t('claudeError', { message: error.message }));
   } finally {
-    resuming.delete(id);
-    document.querySelectorAll(`.claude-link[data-claude="${id}"]`).forEach(link => link.classList.remove('busy'));
+    resuming.delete(key);
+    document.querySelectorAll(sessionId ? `.claude-link[data-claude-session="${sessionId}"]` : `.claude-link[data-claude="${id}"]`)
+      .forEach(link => link.classList.remove('busy'));
   }
 }
 
 const prById = id => [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].find(pr => pr.id === id);
+
+// ── The PRDs view: your tickets from Linear, their PRs, and the Claude sessions on them ──
+let prdData = null;
+let prdLoading = null;
+let prdGroup = PRRadarPrd.GROUPS.includes(store.get('prdGroup', 'skill')) ? store.get('prdGroup', 'skill') : 'skill';
+let prdOrder = PRRadarPrd.ORDERS.includes(store.get('prdOrder', 'updated')) ? store.get('prdOrder', 'updated') : 'updated';
+
+// A colour from Linear goes into a style attribute: only a hex one is let through.
+const safeColor = color => (/^#[0-9a-f]{3,8}$/i.test(color ?? '') ? color : 'var(--border)');
+
+function loadPrds(force = false) {
+  prdLoading ??= fetch(`/api/prds${force ? '?force=1' : ''}`)
+    .then(async response => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || response.statusText);
+      prdData = payload;
+    })
+    .catch(error => {
+      prdData = { ...prdData, enabled: true, error: error.message };
+    })
+    .finally(() => {
+      prdLoading = null;
+      renderPrd();
+    });
+  return prdLoading;
+}
+
+// What the session's skill is doing: running or waiting while its process lives, interrupted
+// once it is gone mid-run, else how the run ended.
+function prdSkillState(session) {
+  if (session.state === 'waiting' && session.running) return pill('todo', escapeHtml(t('prdWaiting')));
+  if (session.state === 'running' && session.running) return pill('pending running', escapeHtml(t('prdRunning')));
+  if (session.state === 'running' || session.state === 'waiting') return pill('', escapeHtml(t('prdInterrupted')));
+  if (!session.state) return '';
+  return pill('', escapeHtml(t(`prdState_${session.state}`) + (session.outcome ? ` · ${session.outcome}` : '')));
+}
+
+function prdSessionRow(session) {
+  const name = session.name ?? session.sessionId.slice(0, 8);
+  const skill = session.skill
+    ? `<span>/${escapeHtml(session.skill)}${session.stage ? ` · ${escapeHtml(session.stage)}` : ''}</span>${prdSkillState(session)}`
+    : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
+  const where = t(session.running ? 'prdSessionOpen' : 'prdSessionClosed') + (session.at ? ` · ${t('activeAgo', { v: ago(session.at) })}` : '');
+  const open = prdData.claudeSessions && session.resumable
+    ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${escapeHtml(session.sessionId)}"`
+      + ` title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${CLAUDE_ICON}</button>`
+    : '';
+  return `<div class="prd-session">${open}<span class="prd-session-name" title="claude --resume ${escapeHtml(session.sessionId)}">${escapeHtml(name)}</span>`
+    + `${skill}${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
+    + `<span class="prd-meta">${escapeHtml(where)}</span></div>`;
+}
+
+function prdCard(prd) {
+  const status = prd.status
+    ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
+    : '';
+  const meta = [prd.project, t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
+    .filter(Boolean).join(' · ');
+  const prs = prd.prs.map(pr => `<button type="button" class="prd-pr${pr.state === 'merged' ? ' merged' : ''}${pr.needsAction ? ' action' : ''}"`
+    + ` data-prd-pr="${escapeHtml(pr.url)}" title="${escapeHtml(t(pr.boardId ? 'prdPrBoard' : 'prdPrGithub'))}">`
+    + `<span class="prd-ref">${escapeHtml(`${repoName(pr.repo ?? '')}#${pr.number ?? ''}`)}</span>${escapeHtml(pr.title ?? '')}</button>`).join('');
+  return `<div class="prd"><div class="prd-top">`
+    + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
+    + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => pill('', escapeHtml(label.name))).join('')}</div>`
+    + `<div class="prd-meta">${escapeHtml(meta)}</div>`
+    + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
+    + `${prd.sessions.map(prdSessionRow).join('')}</div>`;
+}
+
+function renderPrd() {
+  if (view !== 'prd') return;
+  const options = (list, current, prefix) => list
+    .map(value => `<option value="${value}"${value === current ? ' selected' : ''}>${escapeHtml(t(`${prefix}_${value}`))}</option>`).join('');
+  const bar = `<div class="prd-bar"><label>${escapeHtml(t('prdGroupBy'))} <select data-prd-group>${options(PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}</select></label>`
+    + `<label>${escapeHtml(t('prdOrderBy'))} <select data-prd-order>${options(PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}</select></label></div>`;
+  if (!prdData) {
+    el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
+    return;
+  }
+  if (prdData.enabled === false) {
+    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t(prdData.reason === 'demo' ? 'prdDemo' : 'prdNoKey'))}</div>`;
+    return;
+  }
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), ...(prdData.warnings ?? []).map(warning => warning.message)]
+    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+  const prds = prdData.prds ?? [];
+  if (!prds.length) {
+    el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
+    return;
+  }
+  el('prd').innerHTML = bar + notices + PRRadarPrd.group(prds, { by: prdGroup, order: prdOrder }).map(entry => {
+    const cards = entry.prds.map(prdCard).join('');
+    if (prdGroup === 'none') return cards;
+    const key = `prd:${prdGroup}:${entry.key ?? ''}`;
+    const collapsed = collapsedGroups.has(key);
+    const dot = entry.color ? ` style="background: ${safeColor(entry.color)}"` : '';
+    return `<button type="button" class="group-label idle${collapsed ? ' collapsed' : ''}" data-group="${escapeHtml(key)}" aria-expanded="${!collapsed}">`
+      + `<span class="gdot"${dot}></span>${escapeHtml(entry.key === null ? t(`prdNone_${prdGroup}`) : entry.label)}`
+      + `<span class="gcount">${entry.prds.length}</span><span class="gchev"></span></button><div class="group-cards">${cards}</div>`;
+  }).join('');
+}
+
+// A PR on the board is shown there, lit up for a moment; any other one opens on GitHub.
+function showPrOnBoard(url) {
+  const card = document.querySelector(`main .card[data-pr-url="${CSS.escape(url)}"]`);
+  if (!card) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  applyView('board');
+  card.scrollIntoView({ block: 'center', behavior: calm.matches ? 'auto' : 'smooth' });
+  card.classList.add('spotlit');
+  setTimeout(() => card.classList.remove('spotlit'), 2400);
+}
+
+el('prd').addEventListener('change', event => {
+  if (event.target.matches('[data-prd-group]')) store.set('prdGroup', (prdGroup = event.target.value));
+  else if (event.target.matches('[data-prd-order]')) store.set('prdOrder', (prdOrder = event.target.value));
+  else return;
+  renderPrd();
+});
+el('prd').addEventListener('click', event => {
+  const pr = event.target.closest('[data-prd-pr]');
+  if (pr) showPrOnBoard(pr.dataset.prdPr);
+});
 
 // Opening a PR from the board, left or middle click, is having seen what moved on it. The
 // link still opens; only the photo is retaken.

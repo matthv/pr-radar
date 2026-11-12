@@ -120,6 +120,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
+| `PR_RADAR_LINEAR_API_KEY` | — | A personal Linear API key (Linear › Settings › Security & access): the PRDs view reads your tickets with it — see [The PRDs view](#the-prds-view). Empty, the view says how to set it |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_CLAIM_EMOJI` | — | An emoji, `pr-radar` say: your reaction on an announcement puts that PR on your review side — see [Claiming a PR from Slack](#claiming-a-pr-from-slack). Empty, off |
@@ -397,6 +398,11 @@ that module exports and none of its network calls:
 - `test/kanban.test.js` — the kanban layout: one axis for both lanes, a bucket a side never
   has kept as an empty cell, a focused counter, folded columns and the "quiet" one folded by
   default;
+- `test/linear.test.js` — the PRDs view's tickets against a faked Linear: what each carries, the
+  extra tickets fetched by key, and a refused key;
+- `test/skill-stages.test.js` — reading the skills' stage lines: the run in front, a question
+  and its answer, a half-written line, and the age window;
+- `test/prds.test.js` — a ticket's PRs and sessions, and the view's grouping and ordering;
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
@@ -1327,7 +1333,7 @@ state line, which is the real last activity and doubles as the sort key.
 
 ## The kanban view
 
-The last icon of the view switch (board · by author · kanban) lays the same groups out as
+The third icon of the view switch (board · by author · kanban · PRDs) lays the same groups out as
 columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
 group the board would have put it in.
 
@@ -1353,6 +1359,32 @@ group the board would have put it in.
   on one line (all of it on hover), and a note shows as a dot on its icon, its text on hover.
   The bottom row keeps every action: note, copy, snooze, Linear, Claude and Slack.
 - Narrower than the columns need, the view scrolls sideways and snaps to each column.
+
+## The PRDs view
+
+The last icon of the view switch lists tickets rather than PRs: the PRDs you are working on,
+each with its PRs and the Claude Code sessions on it. It reads Linear with
+`PR_RADAR_LINEAR_API_KEY`; without one it says how to set it, and the board never needs it.
+
+- **Which tickets.** The ones assigned to you in a *started* state (In Progress, In Review and
+  the like), plus any ticket a local Claude session reported a stage on in the last day, marked
+  *not yours*. Linear is read on the board's refresh cadence.
+- **Its PRs** are the GitHub PRs Linear has attached to the ticket and the board's PRs naming
+  it. Clicking one shows its card on the board, lit for a moment; a PR not on the board, merged
+  long ago or someone else's, opens on GitHub.
+- **Its sessions** are the ones whose stage lines name the ticket or one of its PRs, and a
+  running session that opened one of its PRs. A row gives the session's name, the skill it runs
+  and the stage that skill is on, the question it waits on, and whether the session is open.
+  Its Claude button brings an open session forward, or resumes a closed one in
+  `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.
+- **The stages** come from claudine's skills, which append one line per stage to
+  `~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` overrides it). A skill running
+  inside another, `/validator` inside `/review-loop`, shows while it runs, then its caller again.
+  A run left mid-stage by a closed session shows as *interrupted*.
+- **Group by** the running skill, the status, the project or the label, or nothing; a ticket
+  with two skills running or two labels sits in both groups, and one with none in the last.
+  Statuses follow Linear's own order. **Order by** last update or opening date, newest first,
+  or by title. Both choices are kept per browser, and a group folds from its header.
 
 ## Reading the colours
 

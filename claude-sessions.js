@@ -118,6 +118,16 @@ function scan({ dir = PROJECTS_DIR, maxAgeDays }) {
   return scanning;
 }
 
+// The folder a session was started in, which `--resume` needs, from its latest transcript.
+function cwdOf(sessionId) {
+  let latest = null;
+  for (const entry of transcripts.values()) {
+    if (entry.sessionId !== sessionId || !entry.cwd) continue;
+    if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
+  }
+  return latest?.cwd ?? null;
+}
+
 function sessionFor(prUrl) {
   let latest = null;
   for (const entry of transcripts.values()) {
@@ -225,10 +235,9 @@ async function readRecord(file) {
   }
 }
 
-// A `/clear` gives the running process a new session id and moves the old one to
-// `formerNames`: that window no longer shows the PR's conversation, so only the current id
-// counts. Most recently active first, since a session can be resumed in several places.
-async function runningPids(sessionId, dir = RUNNING_DIR) {
+// The interactive copies running now, most recently active first: a session can be resumed
+// in several places.
+async function liveSessions(dir = RUNNING_DIR) {
   let names;
   try {
     names = await fs.readdir(dir);
@@ -239,10 +248,17 @@ async function runningPids(sessionId, dir = RUNNING_DIR) {
   const running = [];
   for (const name of names.filter(entry => entry.endsWith('.json'))) {
     const record = await readRecord(path.join(dir, name));
-    if (!record || record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
+    if (!record || (record.kind ?? 'interactive') !== 'interactive') continue;
     if (record.pid > 0 && isAlive(record.pid)) running.push(record);
   }
-  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(record => record.pid);
+  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+// A `/clear` gives the running process a new session id and moves the old one to
+// `formerNames`: that window no longer shows the PR's conversation, so only the current id
+// counts.
+async function runningPids(sessionId, dir = RUNNING_DIR) {
+  return (await liveSessions(dir)).filter(record => record.sessionId === sessionId).map(record => record.pid);
 }
 
 function parseProcesses(psOutput) {
@@ -395,16 +411,27 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   const refused = refusal({ contentType: headers['content-type'], remoteAddress, host: headers.host });
   if (refused) return [403, refused];
   let id;
+  let sessionId;
   try {
-    ({ id } = await readBody());
+    ({ id, sessionId } = await readBody());
   } catch {
     return [400, 'invalid JSON body'];
   }
-  if (!board) return [503, 'the board has not loaded yet'];
-  const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
-  if (!pr) return [404, 'this PR is not on the board'];
-  const session = sessionFor(pr.url);
-  if (!session) return [404, 'no Claude session linked to this PR'];
+  let session;
+  // The PRDs view names a session itself; the board names a PR, whose session it finds.
+  if (sessionId !== undefined) {
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [400, 'invalid session id'];
+    const record = (await liveSessions(runningDir).catch(() => [])).find(entry => entry.sessionId === sessionId);
+    const cwd = cwdOf(sessionId) ?? record?.cwd ?? null;
+    if (!cwd) return [404, 'no transcript of this session on this machine'];
+    session = { sessionId, cwd };
+  } else {
+    if (!board) return [503, 'the board has not loaded yet'];
+    const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
+    if (!pr) return [404, 'this PR is not on the board'];
+    session = sessionFor(pr.url);
+    if (!session) return [404, 'no Claude session linked to this PR'];
+  }
   try {
     if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins })) return [200, null];
     // A plugin may open it where its user runs Claude; when none does, the terminal of the setting.
@@ -418,6 +445,8 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
 module.exports = {
   scan,
   sessionFor,
+  cwdOf,
+  liveSessions,
   resumeCommand,
   openInTerminal,
   focusRunning,
