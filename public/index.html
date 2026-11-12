@@ -754,8 +754,7 @@
   .prd.waiting { background: linear-gradient(260deg, var(--amber-soft) -10%, var(--surface) 42%); }
   .prd.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
   .prd:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-  .prd-project { margin-right: 8px; font-size: 11px; text-decoration: none; }
-  a.prd-project:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 55%, transparent); }
+  .prd-project { margin-right: 8px; font-size: 11px; }
   .prd-label { background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 65%, var(--text)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent); }
   .prd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; font-size: 12px; font-weight: 600; color: var(--link); text-decoration: none; }
@@ -4698,7 +4697,7 @@ function prdCard(prd) {
     ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
     : '';
   const project = prd.project
-    ? `<a class="pill prd-label prd-project" style="--tone: ${safeColor(prd.projectColor)}"${prd.projectUrl ? ` href="${escapeHtml(prd.projectUrl)}"` : ''} target="_blank" rel="noopener">${escapeHtml(prd.project)}</a>`
+    ? `<span class="pill prd-label prd-project" style="--tone: ${safeColor(prd.projectColor)}">${escapeHtml(prd.project)}</span>`
     : '';
   const meta = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
