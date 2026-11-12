@@ -1541,6 +1541,12 @@
   /* Below the page's own content: the cards and the header cover it. */
   #decorBack { z-index: -1; }
   #decorFront:empty, #decorBack:empty { display: none; }
+  /* Thin scrollbars in the theme's colours. With a mouse connected, macOS otherwise gives a
+     WebKit view, such as cmux's browser pane, wide bars that are always on. */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--text-faint); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-soft); }
 </style>
 </head>
 <body>
