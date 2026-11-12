@@ -774,10 +774,8 @@
     border-color: var(--tone); box-shadow: 0 0 0 2px var(--tone), var(--shadow-md);
     background: linear-gradient(260deg, color-mix(in srgb, var(--tone) 30%, var(--surface)) -10%, color-mix(in srgb, var(--tone) 8%, var(--surface)) 60%);
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .session-card.calls { animation: sess-call 2.4s ease-in-out infinite; }
-    @keyframes sess-call { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--tone) 35%, transparent), var(--shadow-md); } }
-  }
+  /* Nothing here blinks: a list of sessions watched all day has to stay calm. */
+  #prd .pill.running { animation: none; }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
   .session-prd .title { font-weight: 600; }
@@ -2114,6 +2112,7 @@ const I18N = {
     sessFocusHint: 'cliquer pour n’afficher que ces sessions',
     sessUnfold: 'déplier : récap, dernier prompt, PRD et PR liés',
     sessFold: 'replier',
+    sessUnderMinute: '< 1 min',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
@@ -2505,6 +2504,7 @@ const I18N = {
     sessFocusHint: 'click to show only these sessions',
     sessUnfold: 'unfold: recap, last prompt, linked PRDs and PRs',
     sessFold: 'fold',
+    sessUnderMinute: '< 1 min',
     sessCalls: '⚑ {n}',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
@@ -4753,7 +4753,7 @@ function prdSessionParts(session) {
   const [skillKind, skillState] = prdSkillPill(session);
   // How long it has been in that state, while it runs.
   const since = session.running && session.since
-    ? ` · <span data-since="${escapeHtml(session.since)}">${escapeHtml(ago(session.since))}</span>` : '';
+    ? ` · <span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
   const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)) + since, t(statusKey));
   const skill = session.skill
     ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
@@ -5088,11 +5088,14 @@ async function pollSessions() {
   noteSessionChanges(prdData.sessions);
   if (JSON.stringify(prdData.sessions) !== before) renderPrd();
 }
-// The time each session has spent in its state counts on in the page between two polls; the
-// next poll sets it right.
+// The time each session has spent in its state, in whole minutes, moves on once a minute in the
+// page; a poll that brings news sets it right.
+function sinceText(iso) {
+  return Date.now() - new Date(iso) < 60_000 ? t('sessUnderMinute') : ago(iso);
+}
 setInterval(() => {
-  for (const span of document.querySelectorAll('#prd [data-since]')) span.textContent = ago(span.dataset.since);
-}, 1000);
+  for (const span of document.querySelectorAll('#prd [data-since]')) span.textContent = sinceText(span.dataset.since);
+}, 60_000);
 function seeSession(sessionId) {
   if (!sessCalls.delete(sessionId)) return;
   document.querySelector(`.session-card[data-session="${CSS.escape(sessionId)}"]`)?.classList.remove('calls');
