@@ -1413,7 +1413,9 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 
 The fifth view turns the PRDs view inside out: a line per Claude Code session, every running one
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
-starts folded), each group a counter in the band that filters to it. *Order by* sorts inside each
+starts folded), each group a counter in the band that filters to it. A running session whose Claude Code
+file records no status, which Claude Code does not document and an update could change, goes in a grey
+*no status* group at the bottom rather than being guessed open; fold it to hide it. *Order by* sorts inside each
 group: the latest to change state first (the default), the longest in its state first, or by
 title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, a session held on a
 prompt of Claude Code's own (a *permission prompt*, named as Claude Code names it), and a session idle for

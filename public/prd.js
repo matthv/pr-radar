@@ -52,12 +52,14 @@
 
   // A session as the Sessions view reads it: closed once its process is gone; waiting on you on a
   // skill's question or a prompt Claude Code blocks on (a permission), or idle for less than YOUR_TURN_MS (it finished its turn, or was started and
-  // given nothing yet); working while busy; merely open once idle longer.
+  // given nothing yet); working while busy; merely open once idle longer. Running with no status in its
+  // file, which Claude Code does not document, it is unknown rather than guessed open.
   const YOUR_TURN_MS = 30 * 60_000;
   function sessionStatus(session, now = Date.now()) {
     if (!session.running) return 'closed';
     if (session.state === 'waiting' || session.status === 'waiting') return 'waiting';
     if (session.status === 'busy') return 'busy';
+    if (!session.status) return 'unknown';
     return session.since && now - time(session.since) < YOUR_TURN_MS ? 'waiting' : 'open';
   }
 

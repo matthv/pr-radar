@@ -2141,6 +2141,8 @@ const I18N = {
     prdMakeMain: 'en faire la session principale de ce ticket',
     prdMainTitle: 'la session qui a fait le plus de travail sur ce ticket : skills lancés, commits, temps dans son dossier',
     prdSessionClosed: 'fermée',
+    sessNoStatus: 'sans statut',
+    sessNoStatusHint: 'Ouvertes, mais leur fichier de session Claude Code ne dit pas si elles travaillent ou t’attendent : une mise à jour de Claude Code a pu le changer.',
     prdFocusTitle: 'afficher cette session Claude',
     prdResumeTitle: 'reprendre cette session Claude dans un terminal',
     kanbanAction: 'À moi',
@@ -2542,6 +2544,8 @@ const I18N = {
     prdMakeMain: 'make this the ticket’s main session',
     prdMainTitle: 'the session that did most of this ticket’s work: skills run on it, commits, time in its folder',
     prdSessionClosed: 'closed',
+    sessNoStatus: 'no status',
+    sessNoStatusHint: 'Running, but their Claude Code session file does not say whether they are working or waiting on you: a Claude Code update may have changed it.',
     prdFocusTitle: 'bring this Claude session forward',
     prdResumeTitle: 'resume this Claude session in a terminal',
     kanbanAction: 'My move',
@@ -4740,6 +4744,7 @@ const PRD_SESSION_STATUS = {
   busy: ['todo running', 'prdSessionBusy'],
   open: ['good', 'prdSessionOpen'],
   closed: ['', 'prdSessionClosed'],
+  unknown: ['', 'sessNoStatus'],
 };
 // One status for both views (PRRadarPrd.sessionStatus): waiting on you, working, open or closed.
 const sessStatus = session => PRRadarPrd.sessionStatus(session);
@@ -4998,8 +5003,8 @@ function renderPrd() {
 
 
 // ── The Sessions view: a card per Claude Code session, with the PRDs and PRs it works on ──
-const SESSION_TONES = { waiting: 'var(--amber)', busy: 'var(--indigo)', open: 'var(--emerald)', closed: 'var(--border)' };
-const SESSION_COUNT_KIND = { waiting: 'pending', busy: 'todo', open: 'open', closed: 'idle' };
+const SESSION_TONES = { waiting: 'var(--amber)', busy: 'var(--indigo)', open: 'var(--emerald)', closed: 'var(--border)', unknown: 'var(--border)' };
+const SESSION_COUNT_KIND = { waiting: 'pending', busy: 'todo', open: 'open', closed: 'idle', unknown: 'idle' };
 
 // A PRD inside a session card: its top line folded, its project, labels and dates unfolded.
 function sessionPrdItem(prd, eye = '') {
@@ -5186,6 +5191,7 @@ function renderSessions() {
   sessDrawn = sessSignature(sessions);
   const counters = Object.keys(SESSION_TONES).map(key => {
     const value = sessions.filter(session => sessStatus(session) === key).length;
+    if (key === 'unknown' && !value) return '';
     const active = prdFocus === key;
     const classes = ['counter', SESSION_COUNT_KIND[key], value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
     return `<button type="button" class="${classes.join(' ')}" data-prd-focus="${key}"${value ? '' : ' disabled'}`
@@ -5211,11 +5217,11 @@ function renderSessions() {
     el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('sessEmpty'))}</div>`;
     return;
   }
-  const groupOf = (key, label, tone, cards) => {
+  const groupOf = (key, label, tone, cards, hint = '') => {
     if (!cards.length) return '';
     const group = `sessions:${key}`;
     const collapsed = collapsedGroups.has(group);
-    return `<button type="button" class="group-label prd-group${collapsed ? ' collapsed' : ''}" style="--tone: ${tone}" data-group="${group}" aria-expanded="${!collapsed}">`
+    return `<button type="button" class="group-label prd-group${collapsed ? ' collapsed' : ''}" style="--tone: ${tone}" data-group="${group}" aria-expanded="${!collapsed}"${hint ? ` title="${escapeHtml(hint)}"` : ''}>`
       + `<span class="gdot"></span>${escapeHtml(label)}<span class="gcount">${cards.length}</span><span class="gchev"></span></button>`
       + `<div class="group-cards">${cards.map(sessionCard).join('')}</div>`;
   };
@@ -5224,7 +5230,7 @@ function renderSessions() {
   el('prd').innerHTML = bar + notices
     + groupOf('starred', t('sessStarred'), 'var(--amber)', shown.filter(session => sessStars.has(session.sessionId)))
     + Object.keys(SESSION_TONES).map(key => groupOf(key, t(PRD_SESSION_STATUS[key][1]), SESSION_TONES[key],
-      rest.filter(session => sessStatus(session) === key))).join('');
+      rest.filter(session => sessStatus(session) === key), key === 'unknown' ? t('sessNoStatusHint') : '')).join('');
 }
 
 el('prd').addEventListener('change', event => {
