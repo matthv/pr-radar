@@ -760,15 +760,15 @@
   .prd-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--dot, var(--border)); }
   .prd-meta { margin-top: 4px; font-size: 11.5px; color: var(--text-faint); }
   .prd-prs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  /* A PR chip and a session row speak the board's colours, never the ticket's: they sit on the
-     plain surface with their own rail and glyph, so a ticket and its PRs in the same hue still
-     read apart. */
+  /* A PR chip wears its ticket's colour a shade darker than the card, and its own state as a
+     rail and glyph in the board's colours, so a ticket and its PRs in the same hue still read
+     apart. A session row sits on the plain surface with its own rail. */
   .prd-pr {
     --pr-tone: var(--border);
     font: inherit; font-size: 12px; cursor: pointer; max-width: 100%; padding: 2px 8px 2px 7px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--text); background: var(--surface); box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border); border-left: 3px solid var(--pr-tone); border-radius: 8px;
+    color: var(--text); background: color-mix(in srgb, var(--tone) 26%, var(--surface)); box-shadow: var(--shadow-sm);
+    border: 1px solid color-mix(in srgb, var(--tone) 45%, var(--border)); border-left: 3px solid var(--pr-tone); border-radius: 8px;
   }
   .prd-pr:hover, .prd-pr:focus-visible { border-color: var(--indigo); border-left-color: var(--pr-tone); }
   .prd-pr::before { margin-right: 5px; color: var(--pr-tone); font-weight: 700; }
