@@ -25,21 +25,53 @@ const knownLinks = new Map();
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it. The link is read from there rather than from a branch: a session
 // started in a folder above the repositories records none.
-// A ticket key in what the person typed, or in the branch the session worked on, ties the
-// session to that ticket. Tool output, injected skill text and compaction summaries are skipped:
-// they name tickets nobody is working on.
+// What ties a session to a ticket is where it declares the work, never a passing mention: tool
+// output, Linear activity and commit text name epics and neighbours nobody is working on.
+// - a skill run on the ticket, typed (`/implement PRD-1`) or, far more often, invoked by Claude
+//   with the key in its arguments;
+// - a folder named for it the session worked in, as /implement's worktrees are;
+// - a commit made on a branch named for it. The branch alone is not enough: a checkout left on an
+//   old branch hosts sessions on every other ticket.
 const TICKET_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/g;
-const isPrompt = line => line.includes('"type":"user"') && !line.includes('"tool_result"')
+const keysIn = text => String(text ?? '').toUpperCase().match(TICKET_KEY) ?? [];
+const fieldOf = (line, name) => {
+  const start = line.indexOf(`"${name}":"`);
+  if (start === -1) return null;
+  const from = start + name.length + 4;
+  return line.slice(from, line.indexOf('"', from));
+};
+const isTyped = line => line.includes('"type":"user"') && !line.includes('"tool_result"')
   && !line.includes('"isMeta":true') && !line.includes('"isCompactSummary":true');
-const promptText = content => typeof content === 'string'
+const declaresInPrompt = line => line.includes('<command-args>') && isTyped(line);
+const declaresInTools = line => line.includes('"type":"assistant"') && (line.includes('"name":"Skill"') || /git\s+commit\b/.test(line));
+const textOf = content => typeof content === 'string'
   ? content
   : Array.isArray(content) ? content.filter(part => part?.type === 'text').map(part => part.text).join('\n') : '';
 
+const promptTickets = text => [...text.matchAll(/<command-args>([\s\S]*?)<\/command-args>/g)].flatMap(match => keysIn(match[1]));
+
+function toolTickets(record) {
+  const tickets = [];
+  for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
+    if (part?.type !== 'tool_use') continue;
+    if (part.name === 'Skill') tickets.push(...keysIn(part.input?.args));
+    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? ''))) tickets.push(...keysIn(record.gitBranch));
+  }
+  return tickets;
+}
+
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
-    const wantsCwd = !entry.cwd && line.includes('"cwd":');
-    const prompt = isPrompt(line);
-    if (!wantsCwd && !prompt && !line.includes('"type":"pr-link"')) continue;
+    // Every record names the folder it ran in, ahead of its content; only a change is read again.
+    const cwd = fieldOf(line, 'cwd');
+    if (cwd && cwd !== entry.lastCwd) {
+      entry.lastCwd = cwd;
+      for (const key of keysIn(cwd.slice(cwd.lastIndexOf('/') + 1))) entry.tickets.add(key);
+    }
+    const wantsCwd = !entry.cwd && cwd !== null;
+    const inPrompt = declaresInPrompt(line);
+    const inTools = !inPrompt && declaresInTools(line);
+    if (!wantsCwd && !inPrompt && !inTools && !line.includes('"type":"pr-link"')) continue;
     let record;
     try {
       record = JSON.parse(line);
@@ -48,10 +80,8 @@ function readLines(text, entry) {
     }
     if (wantsCwd && typeof record.cwd === 'string') entry.cwd = record.cwd;
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
-    if (prompt && record.type === 'user') {
-      for (const key of promptText(record.message?.content).match(TICKET_KEY) ?? []) entry.tickets.add(key);
-      for (const key of String(record.gitBranch ?? '').toUpperCase().match(TICKET_KEY) ?? []) entry.tickets.add(key);
-    }
+    if (inPrompt && record.type === 'user') for (const key of promptTickets(textOf(record.message?.content))) entry.tickets.add(key);
+    if (inTools && record.type === 'assistant') for (const key of toolTickets(record)) entry.tickets.add(key);
   }
 }
 

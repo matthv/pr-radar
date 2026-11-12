@@ -1367,16 +1367,21 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 `PR_RADAR_LINEAR_API_KEY`; without one it says how to set it, and the board never needs it.
 
 - **Which tickets.** The ones assigned to you in a *started* state (In Progress, In Review and
-  the like), plus any ticket a local Claude session reported a stage on in the last day, marked
-  *not yours*. Linear is read on the board's refresh cadence.
+  the like), plus any ticket a local Claude session reported a stage on in the last day; one
+  assigned to someone else is marked *not yours*. Linear is read on the board's refresh cadence.
 - **Its PRs** are the GitHub PRs Linear has attached to the ticket and the board's PRs naming
   it. Clicking one shows its card on the board, lit for a moment; a PR not on the board, merged
   long ago or someone else's, opens on GitHub.
-- **Its sessions** are the ones whose stage lines name the ticket or one of its PRs, and a
-  running session that opened one of its PRs. A row gives the session's name, the skill it runs
+- **Its sessions** are the ones that declare work on the ticket, never ones that only mention
+  it: stage lines naming the ticket or one of its PRs; a skill run on it, typed
+  (`/implement PRD-1`) or invoked by Claude with the key in its arguments; a folder named for it
+  the session worked in, as `/implement`'s worktrees are; a commit made on a branch named for it
+  (the branch alone is not enough, a checkout left on an old one hosts sessions on other tickets);
+  and a running session that opened one of its PRs. Every running session shows, and the two
+  most recent closed ones. A row gives the session's name, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.
-  Its Claude button brings an open session forward, or resumes a closed one in
-  `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.
+  Its Claude button brings an open session forward, or resumes a closed one through a plugin's
+  `open()` or in `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.
 - **The stages** come from claudine's skills, which append one line per stage to
   `~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` overrides it). A skill running
   inside another, `/validator` inside `/review-loop`, shows while it runs, then its caller again.
