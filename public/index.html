@@ -2039,7 +2039,7 @@ const I18N = {
     prdNotAssigned: 'pas à toi : une session Claude y travaille',
     prdNoPrs: 'Aucune PR liée.',
     prdPrOnGithub: 'voir sur GitHub',
-    prdHideClosed: 'masquer les fermés',
+    prdShowClosed: 'Afficher les fermés',
     sessTotal: '{n} sessions',
     sessEmpty: 'Aucune session Claude ouverte, ni récente sur un de tes PRDs.',
     sessNoLinks: 'Aucun PRD ni PR lié.',
@@ -2419,7 +2419,7 @@ const I18N = {
     prdNotAssigned: 'not yours: a Claude session works on it',
     prdNoPrs: 'No linked PR.',
     prdPrOnGithub: 'see it on GitHub',
-    prdHideClosed: 'hide closed',
+    prdShowClosed: 'Show closed',
     sessTotal: '{n} sessions',
     sessEmpty: 'No Claude session open, and none lately on one of your PRDs.',
     sessNoLinks: 'No PRD or PR linked.',
@@ -4758,14 +4758,14 @@ const PRD_FOCUS = {
 };
 let prdFocus = null;
 
-// Hides the merged PRs, the ones off the board, and the PRDs Linear has completed or canceled,
-// in both views. Off by default, kept per browser.
-let prdHideClosed = store.get('prdHideClosed', 'false') === 'true';
+// The merged PRs, the ones off the board, and the PRDs Linear has completed or canceled are
+// hidden in both views until "Show closed" is on. Kept per browser.
+let prdShowClosed = store.get('prdShowClosed', 'false') === 'true';
 const prOpen = pr => pr.state === 'open' || pr.state === 'draft';
 const prdOpen = prd => !['completed', 'canceled'].includes(prd.status?.type);
-const shownPrs = prs => (prdHideClosed ? prs.filter(prOpen) : prs);
-const shownPrds = prds => (prdHideClosed ? prds.filter(prdOpen) : prds);
-const hideClosedToggle = () => `<button type="button" class="picker-trigger${prdHideClosed ? ' on' : ''}" data-prd-hide-closed aria-pressed="${prdHideClosed}">${escapeHtml(t('prdHideClosed'))}</button>`;
+const shownPrs = prs => (prdShowClosed ? prs : prs.filter(prOpen));
+const shownPrds = prds => (prdShowClosed ? prds : prds.filter(prdOpen));
+const showClosedToggle = () => `<button type="button" class="picker-trigger${prdShowClosed ? ' on' : ''}" data-prd-show-closed aria-pressed="${prdShowClosed}">${escapeHtml(t('prdShowClosed'))}</button>`;
 
 function prdBand(prds) {
   const options = (list, current, prefix) => list
@@ -4781,7 +4781,7 @@ function prdBand(prds) {
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(label))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
   return `<div class="summary prd-summary">${pick('prdGroupBy', 'data-prd-group', PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}`
-    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}${hideClosedToggle()}`
+    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}${showClosedToggle()}`
     + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div></div>`;
 }
 
@@ -4868,7 +4868,7 @@ function renderSessions() {
       + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'sessFocusHint'))}"` : ''}>`
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
-  const bar = `<div class="summary prd-summary">${hideClosedToggle()}<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
+  const bar = `<div class="summary prd-summary">${showClosedToggle()}<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
     + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
@@ -4913,9 +4913,9 @@ el('prd').addEventListener('click', event => {
     renderPrd();
     return;
   }
-  if (event.target.closest('[data-prd-hide-closed]')) {
-    prdHideClosed = !prdHideClosed;
-    store.set('prdHideClosed', String(prdHideClosed));
+  if (event.target.closest('[data-prd-show-closed]')) {
+    prdShowClosed = !prdShowClosed;
+    store.set('prdShowClosed', String(prdShowClosed));
     renderPrd();
     return;
   }
