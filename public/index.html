@@ -5022,10 +5022,12 @@ function sessionCard(session) {
     + line + (parts.question ? `<div class="session-question">${parts.question}</div>` : '') + details + '</div>';
 }
 
-// Sessions change by the second while the board refreshes every few minutes: they have their
-// own poll, in every view. A session that turns to you, waiting on you or done working, rings,
-// lights up and counts in the tab title until you look at it.
+// Sessions change by the second while the board refreshes every few minutes: the Sessions view
+// polls their states and their skills' stages on their own, the links following the board. A
+// session that turns to you, waiting on you or done working, lights up and counts in the tab
+// title until you look at it, and chimes when PR_RADAR_SESSION_CHIME asks for it.
 const SESSION_POLL_MS = 5000;
+const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at'];
 const sessLast = new Map();
 const sessCalls = new Set();
 function noteSessionChanges(sessions) {
@@ -5040,18 +5042,45 @@ function noteSessionChanges(sessions) {
     if (now === 'busy' || now === 'closed') sessCalls.delete(session.sessionId);
     sessLast.set(session.sessionId, now);
   }
-  if (ring) beep();
+  if (ring && prdData?.sessionChime) beep();
   paintTitle();
+}
+
+async function pollSessions() {
+  if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  let payload;
+  try {
+    const response = await fetch('/api/sessions/status');
+    payload = await response.json();
+    if (!response.ok || payload.enabled === false) return;
+  } catch {
+    return; // the next poll, or the board's refresh, tries again
+  }
+  if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  const fresh = new Map(payload.sessions.map(session => [session.sessionId, session]));
+  const known = new Set(prdData.sessions.map(session => session.sessionId));
+  // A session started since the last full read: that read gives it its PRDs and PRs.
+  if (payload.sessions.some(session => session.running && !known.has(session.sessionId))) {
+    loadPrds();
+    return;
+  }
+  const before = JSON.stringify(prdData.sessions);
+  prdData.sessions = prdData.sessions.map(session => {
+    const next = fresh.get(session.sessionId);
+    if (!next) return session.running ? { ...session, running: false, status: null } : session;
+    const merged = { ...session };
+    for (const field of SESSION_FIELDS) if (field !== 'at' || next.at) merged[field] = next[field];
+    return merged;
+  });
+  noteSessionChanges(prdData.sessions);
+  if (JSON.stringify(prdData.sessions) !== before) renderPrd();
 }
 function seeSession(sessionId) {
   if (!sessCalls.delete(sessionId)) return;
   document.querySelector(`.session-card[data-session="${CSS.escape(sessionId)}"]`)?.classList.remove('calls');
   paintTitle();
 }
-setInterval(() => {
-  if (prdData && (prdData.enabled === false || prdData.claudeSessions === false)) return;
-  loadPrds();
-}, SESSION_POLL_MS);
+setInterval(pollSessions, SESSION_POLL_MS);
 el('prd').addEventListener('mouseover', event => {
   const card = event.target.closest('.session-card.calls');
   if (card) seeSession(card.dataset.session);

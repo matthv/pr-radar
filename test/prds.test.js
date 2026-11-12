@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildPrds, buildSessions, extraTickets } = require('../prds');
+const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('../prds');
 const { group, sortPrds, withMain } = require('../public/prd');
 
 const PR7 = 'https://github.com/ForestAdmin/claudine/pull/7';
@@ -180,4 +180,18 @@ test('a session\'s PRDs and PRs rank by how surely they are its work: its branch
   assert.deepEqual(offBranch.tickets.map(link => [link.ticket, link.primary]), [['PRD-2', true], ['PRD-1', false]]);
   // Off a branch of its own: the latest PR it opened and the heaviest PRD's PRs are primary.
   assert.deepEqual(offBranch.prs.map(pr => [pr.url, pr.primary]), [[PR9, true], [PR8, true], [PR7, false]]);
+});
+
+test('the sessions poll carries each running session and each reporting skill, states only', () => {
+  const waiting = { skill: 'implement', stage: 'plan', state: 'waiting', question: 'Which repo?', at: '2026-11-12T10:00:00Z' };
+  const statuses = sessionStatuses({
+    live: [{ sessionId: 's1', name: 'one', status: 'busy', updatedAt: Date.parse('2026-11-12T11:00:00Z') }, { sessionId: 's2', status: 'idle' }],
+    stageSessions: [stage('s2', { tickets: ['PRD-1'], current: waiting }), stage('s3', { current: { ...waiting, state: 'done' } })],
+  });
+  assert.deepEqual(statuses.map(s => [s.sessionId, s.running, s.status, s.state, s.question, s.at]), [
+    ['s1', true, 'busy', null, null, '2026-11-12T11:00:00.000Z'],
+    ['s2', true, 'idle', 'waiting', 'Which repo?', '2026-11-12T10:00:00Z'],
+    ['s3', false, null, 'done', 'Which repo?', '2026-11-12T10:00:00Z'],
+  ]);
+  assert.equal('tickets' in statuses[1], false);
 });

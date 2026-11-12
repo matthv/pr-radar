@@ -112,6 +112,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Full search interval — see [How fresh the board is](#how-fresh-the-board-is) |
 | `PR_RADAR_CHECK_SECONDS` | `60` | Free change checks between two full searches; `0` goes back to a full refresh every `PR_RADAR_REFRESH_SECONDS` and nothing else |
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
+| `PR_RADAR_SESSION_CHIME` | `false` | The Sessions view chimes when a session starts waiting on you or stops working — see [The Sessions view](#the-sessions-view) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_THEME` | — | The theme worn on Auto outside the seasonal ones, a folder name in `public/themes/` or `custom-themes/` — see [Themes](#themes) |
@@ -1423,9 +1424,11 @@ on (a branch naming the ticket adds to it), their PRs and the latest PR it opene
 under *also linked* in *n more*, as above, where an eye brings back a wrong guess. It needs
 `PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the lines carry only their own PRs.
 
-Sessions are read every 5 seconds, whichever view is open. A session that turns to you, waiting on
-you or done working, plays the chime (muted with the board's), lights up, and counts in the tab
-title as `⚑ n` until you hover it or open it.
+While the view is open, the sessions' states and their skills' stages are read every 5 seconds,
+from local files only (`GET /api/sessions/status`); what they link to follows the board's refresh.
+A session that turns to you, waiting on you or done working, lights up and counts in the tab
+title as `⚑ n` until you hover it or open it. With `PR_RADAR_SESSION_CHIME=true` it also chimes,
+unless the board is muted.
 
 ## Reading the colours
 

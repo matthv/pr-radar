@@ -37,7 +37,7 @@ const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const skillStages = require('./skill-stages');
 const linear = require('./linear');
-const { buildPrds, buildSessions, extraTickets } = require('./prds');
+const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('./prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -102,6 +102,8 @@ const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
       ? `off (PR_RADAR_TERMINAL "${TERMINAL}" unknown: ${Object.keys(claudeSessions.TERMINALS).join(', ')})`
       : null;
 const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
+// The Sessions view chimes when a session turns to you only when asked to.
+const SESSION_CHIME = process.env.PR_RADAR_SESSION_CHIME === 'true';
 // The board waits this long for the transcripts on a refresh; a longer scan, the first one
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
@@ -286,6 +288,7 @@ async function prdView(force) {
     enabled: true,
     linear: Boolean(LINEAR_API_KEY),
     claudeSessions: CLAUDE_SESSIONS,
+    sessionChime: SESSION_CHIME,
     warnings,
     prds,
     sessions: buildSessions({ prds, boardPrs, stageSessions, live, detailsOf: CLAUDE_SESSIONS ? claudeSessions.sessionDetails : () => null, cwdOf: claudeSessions.cwdOf }),
@@ -773,6 +776,21 @@ const server = http.createServer(async (req, res) => {
     if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
     try {
       return json(res, 200, await prdView(url.searchParams.get('force') === '1'));
+    } catch (error) {
+      return json(res, 502, { error: error.message });
+    }
+  }
+
+  // The Sessions view's poll: the sessions' states and their skills' stages, from local files
+  // only, no Linear and no GitHub.
+  if (url.pathname === '/api/sessions/status') {
+    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
+    try {
+      const [stageSessions, live] = await Promise.all([
+        skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }),
+        claudeSessions.liveSessions(),
+      ]);
+      return json(res, 200, { enabled: true, sessions: sessionStatuses({ stageSessions, live }) });
     } catch (error) {
       return json(res, 502, { error: error.message });
     }
