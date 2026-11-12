@@ -4748,8 +4748,8 @@ function prdSessionParts(session, { status = prdSessionStatus(session), label = 
   const [statusKind, defaultKey] = PRD_SESSION_STATUS[status];
   const statusKey = label ?? defaultKey;
   const [skillKind, skillState] = prdSkillPill(session);
-  // How long it has been in that state, while it runs.
-  const since = session.running && session.since
+  // How long it has been at work; waiting and idle carry no clock.
+  const since = status === 'busy' && session.since
     ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
   const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)) + since, t(statusKey));
   const skill = session.skill
