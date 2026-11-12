@@ -4714,13 +4714,14 @@ function loadPrds(force = false) {
       changed = JSON.stringify(payload) !== JSON.stringify(prdData);
       prdData = payload;
       noteSessionChanges(payload.sessions ?? []);
+      // Stars go with sessions that left the view, Linear key or not.
+      if (payload.enabled !== false && payload.claudeSessions !== false) {
+        const ids = new Set((payload.sessions ?? []).map(session => session.sessionId));
+        const before = sessStars.size;
+        for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
+        if (sessStars.size !== before) saveStars();
+      }
       if (payload.enabled !== false && payload.linear !== false) {
-        if (payload.claudeSessions !== false) {
-          const ids = new Set((payload.sessions ?? []).map(session => session.sessionId));
-          const before = sessStars.size;
-          for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
-          if (sessStars.size !== before) saveStars();
-        }
         pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
       }
     })
@@ -4739,22 +4740,13 @@ function loadPrds(force = false) {
 // once it is gone mid-run, else how the run ended.
 // A session's state and its skill's are pills in the board's colours, and buttons when the
 // session can be opened from here: either brings it forward, or resumes it, as its Claude button.
-const PRD_SESSION_STATUS = {
-  waiting: ['pending', 'prdWaiting'],
-  busy: ['todo running', 'prdSessionBusy'],
-  open: ['good', 'prdSessionOpen'],
-  closed: ['', 'prdSessionClosed'],
-  unknown: ['', 'sessNoStatus'],
-};
+const PRD_SESSION_STATUS = PRRadarPrd.SESSION_STATES;
 // One status for both views (PRRadarPrd.sessionStatus): waiting on you, working, open or closed.
 const sessStatus = session => PRRadarPrd.sessionStatus(session);
-// Its badge: a skill's question amber, a prompt Claude Code blocks on amber under its own name
-// ("permission prompt"), your turn cyan; any other state as PRD_SESSION_STATUS says.
+// Its badge, as PRRadarPrd.stateBadge picks it: [colour, label].
 function sessStateBadge(session, status) {
-  if (status !== 'waiting') return [PRD_SESSION_STATUS[status][0], t(PRD_SESSION_STATUS[status][1])];
-  if (session.state === 'waiting') return ['pending', t('sessQuestion')];
-  if (session.status === 'waiting') return ['pending', session.waitingFor ?? t('sessQuestion')];
-  return ['turn', t('sessYourTurn')];
+  const { kind, key, text } = PRRadarPrd.stateBadge(session, status);
+  return [kind, text ?? t(key)];
 }
 
 // The skill's pill: indigo while it runs, amber waiting on you, green done, grey interrupted
@@ -5071,7 +5063,8 @@ function sessionCard(session) {
       ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
       : `<span class="prd-title">${title}</span>`)
     + `${sessPills(session, status, parts.pillButton)}${key}<span class="sess-where">${escapeHtml(where)}</span>`
-    // A running session's time is in its state's pill; a closed one says when it was last active.
+    // When it was last active, for a closed session or a running one with no state time; a working
+    // one carries its time on its badge.
     + (session.at && !(session.running && session.since) ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + `${star}</div>`;
   let details = '';
   if (open) {
@@ -5102,20 +5095,12 @@ function sessionCard(session) {
 // Waiting on you is a skill's question, or a session idle for less than YOUR_TURN_MS: it finished
 // its turn, or was started and given nothing yet. Idle longer, it is merely open. A session that
 // starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
-const sessSignature = sessions => sessions.map(session => `${session.sessionId}:${sessStatus(session)}`).join();
+const sessSignature = sessions => PRRadarPrd.sessionSignature(sessions);
 let sessDrawn = '';
 const SESSION_POLL_MS = 5000;
-const SESSION_FIELDS = ['running', 'status', 'waitingFor', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at', 'since'];
 const sessLast = new Map();
 function noteSessionChanges(sessions) {
-  let ring = false;
-  for (const session of sessions) {
-    const now = sessStatus(session);
-    const before = sessLast.get(session.sessionId);
-    if (before && before !== 'waiting' && now === 'waiting') ring = true;
-    sessLast.set(session.sessionId, now);
-  }
-  if (ring && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
+  if (PRRadarPrd.startedWaiting(sessLast, sessions) && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
   paintTitle();
 }
 
@@ -5130,21 +5115,14 @@ async function pollSessions() {
     return; // the next poll, or the board's refresh, tries again
   }
   if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
-  const fresh = new Map(payload.sessions.map(session => [session.sessionId, session]));
-  const known = new Set(prdData.sessions.map(session => session.sessionId));
+  const { sessions, unseen } = PRRadarPrd.mergeStatuses(prdData.sessions, payload.sessions);
   // A session started since the last full read: that read gives it its PRDs and PRs.
-  if (payload.sessions.some(session => session.running && !known.has(session.sessionId))) {
+  if (unseen) {
     loadPrds();
     return;
   }
   const before = JSON.stringify(prdData.sessions);
-  prdData.sessions = prdData.sessions.map(session => {
-    const next = fresh.get(session.sessionId);
-    if (!next) return session.running ? { ...session, running: false, status: null } : session;
-    const merged = { ...session };
-    for (const field of SESSION_FIELDS) if (field !== 'at' || next.at) merged[field] = next[field];
-    return merged;
-  });
+  prdData.sessions = sessions;
   noteSessionChanges(prdData.sessions);
   // A session can also move by the clock alone: idle past YOUR_TURN_MS, it is merely open.
   // A redraw would close a picker someone has open; picking redraws anyway.

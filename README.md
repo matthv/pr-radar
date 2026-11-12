@@ -112,7 +112,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Full search interval — see [How fresh the board is](#how-fresh-the-board-is) |
 | `PR_RADAR_CHECK_SECONDS` | `60` | Free change checks between two full searches; `0` goes back to a full refresh every `PR_RADAR_REFRESH_SECONDS` and nothing else |
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
-| `PR_RADAR_SESSION_CHIME` | `false` | The Sessions view chimes when a session starts waiting on you or stops working — see [The Sessions view](#the-sessions-view) |
+| `PR_RADAR_SESSION_CHIME` | `false` | The Sessions view chimes when a session starts waiting on you — see [The Sessions view](#the-sessions-view) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_THEME` | — | The theme worn on Auto outside the seasonal ones, a folder name in `public/themes/` or `custom-themes/` — see [Themes](#themes) |
@@ -403,7 +403,8 @@ that module exports and none of its network calls:
   extra tickets fetched by key, and a refused key;
 - `test/skill-stages.test.js` — reading the skills' stage lines: the run in front, a question
   and its answer, a half-written line, and the age window;
-- `test/prds.test.js` — a ticket's PRs and sessions, and the view's grouping and ordering;
+- `test/prds.test.js` — a ticket's PRs and sessions, the PRDs view's grouping and ordering, and the
+  Sessions view's states, badges, sorting, live merge and chime;
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
@@ -1334,7 +1335,7 @@ state line, which is the real last activity and doubles as the sort key.
 
 ## The kanban view
 
-The third icon of the view switch (board · by author · kanban · PRDs) lays the same groups out as
+The third icon of the view switch (board · by author · kanban · PRDs · sessions) lays the same groups out as
 columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
 group the board would have put it in.
 
@@ -1363,85 +1364,80 @@ group the board would have put it in.
 
 ## The PRDs view
 
-The last icon of the view switch lists tickets rather than PRs: the PRDs you are working on,
-each with its PRs and the Claude Code sessions on it. It reads Linear with
-`PR_RADAR_LINEAR_API_KEY`; without one it says how to set it, and the board never needs it.
+The fourth icon of the view switch lists the Linear tickets you are working on instead of PRs,
+each with its PRs and the Claude Code sessions working on it.
 
-- **Which tickets.** The ones assigned to you in a *started* state (In Progress, In Review and
-  the like), plus any ticket a local Claude session reported a stage on in the last day; one
-  assigned to someone else is marked *not yours*. Linear is read on the board's refresh cadence.
-- **Its PRs** are the GitHub PRs Linear has attached to the ticket and the board's PRs naming
-  it. Each is the board's own card for that PR, folded to its top line behind a caret: the caret,
-  or a click on the folded card, unfolds it whole, pills, threads and buttons included. A PR not
-  on the board, merged long ago or someone else's, gets a plain card that links to GitHub.
-- **Its sessions** are the ones that declare work on the ticket, never ones that only mention
-  it: stage lines naming the ticket or one of its PRs; a skill run on it, typed
-  (`/implement PRD-1`) or invoked by Claude with the key in its arguments; a folder named for it
-  the session worked in, as `/implement`'s worktrees are; a commit made on a branch named for it
-  (the branch alone is not enough, a checkout left on an old one hosts sessions on other tickets);
-  and a running session that opened one of its PRs. Every running session shows, and the two
-  heaviest closed ones. Sessions are ordered by how much of the ticket's work they show (stage
-  lines most, then a skill run on it, a commit on its branch or one of its PRs, then its folder),
-  and the first is starred *main* when it outweighs the next. Click another session's star to
-  make it the main one instead; the choice is kept per ticket, in this browser, and the session
-  moves first. The sessions share one box, folded
-  behind a caret like a PR card: folded, it shows the main session, or the first, and any running
-  one waiting on you or at work. Starring another moves it first and folds the box back onto it. Its state is a pill, as in the Sessions view below: green open,
-  indigo working, amber a question or permission prompt, cyan your turn, grey closed; so is its skill. Both are buttons that open
-  the session, like its Claude button. A row gives the session's title, the skill it runs
-  and the stage that skill is on, the question it waits on, and whether the session is open.
-  Its Claude button brings an open session forward, or resumes a closed one through a plugin's
-  `open()` or in `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.
-- **The stages** come from claudine's skills, which append one line per stage to
-  `~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` overrides it). A skill running
-  inside another, `/validator` inside `/review-loop`, shows while it runs, then its caller again.
-  A run left mid-stage by a closed session shows as *interrupted*.
-- **Group by** the status, the project or the label, or nothing; a ticket with two labels sits
-  in both groups, and one with none in the last.
-  Statuses follow Linear's own order. **Order by** last update or opening date, newest first,
-  or by title. Both choices are kept per browser, and a group folds from its header.
-- **The band** above the tickets replaces the board's: the two pickers, then counters of the
-  tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
-  counter filters the list to its tickets; a second click or Esc clears it.
-- **n more.** Any PR under a PRD, or PRD or PR under a session, has an eye on hover that moves it
-  into a folded *n more* line at the foot of the list; its eye there puts it back. Folded, each
-  sits under why it is there: *also linked* (a session's links ranked second), *closed* with its
-  reason (merged, off the board, or the ticket's Linear status), *hidden by you*. Closed ones
-  start folded; your choice either way beats the defaults, per card, in this browser.
+**Setup.** Put a personal Linear API key (Linear › Settings › Security & access) in
+`PR_RADAR_LINEAR_API_KEY`. Without one the view says how to set it; the rest of the board never
+needs it. The session buttons need `PR_RADAR_CLAUDE_SESSIONS=true`, as on the board's cards.
+
+**What a ticket shows**
+
+- **Which tickets:** those assigned to you in a started state (In Progress, In Review…), plus any
+  ticket a local Claude session reported a skill stage on in the last day. One assigned to someone
+  else is marked *not yours*.
+- **Its PRs:** the PRs Linear attached to it and the board's PRs naming it, each as the board's own
+  card folded to one line. Click to unfold it. A PR the board doesn't carry links to GitHub.
+- **Its sessions:** the Claude Code sessions working on it, with their state, their skill and the
+  stage it is on, and the question it is waiting on. Click any of them to bring the session forward,
+  or resume it if it is closed. The one doing most of the work is starred *main*; star another to
+  change it. Folded, the box shows the main session and any that is working or waiting on you.
+
+**Finding your way**
+
+- **Group by** status, project, label or nothing; **order by** last update, opening date or title.
+- **Counters** in the band filter to the tickets waiting on you, being worked on, needing you on a
+  PR, or with no open session. Click again, or press Esc, to clear.
+- **Hide** a PR or a ticket with the eye that shows on hover: it moves into a folded *n more* line,
+  under why it is there (*also linked*, *closed*, *hidden by you*). Its eye there brings it back.
+
+**How a session is tied to a ticket.** Only by work on it, never by a mention: a skill run on the
+ticket (`/implement PRD-1`), claudine stage lines naming it or one of its PRs, a worktree folder
+named for it, a commit on a branch named for it, or opening one of its PRs. Every running session
+shows, plus the two most involved closed ones.
+
+**Skill stages** come from claudine's skills, which write one line per stage to
+`~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` to move it). A skill run inside
+another, `/validator` inside `/review-loop`, shows while it runs. A run its session closed in the
+middle of shows as *interrupted*.
 
 ### The Sessions view
 
-The fifth view turns the PRDs view inside out: a line per Claude Code session, every running one
-and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed; closed
-starts folded), each group a counter in the band that filters to it. A running session whose Claude Code
-file records no status, which Claude Code does not document and an update could change, goes in a grey
-*no status* group at the bottom rather than being guessed open; fold it to hide it. *Order by* sorts inside each
-group: the latest to change state first (the default), the longest in its state first, or by
-title, folder, PRD or skill. *Waiting on you* holds a skill's *question*, until it is answered, a session held on a
-prompt of Claude Code's own (a *permission prompt*, named as Claude Code names it), and a session idle for
-less than 30 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
-Idle longer, it is merely *open*. A star puts a session in a *starred* list above the groups,
-kept in this browser until you unstar it or the session leaves the view. A line is the session: its
-Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
-badges, a skill at work saying what it does and for how long (*validator · review · 3 min*, or
-*working · 3 min* when it runs none), else its state, each its own colour (*question* and
-*permission prompt* amber, *your turn* cyan, *open* green), then its skill in grey, a finished one
-with its outcome (*validator · done · commented*); the PRD it
-works on, or else its PR; the folder it last worked in, a worktree it moved to rather than the one
-it started from, and its branch; when it was last active, once closed; and below,
-the question it waits on. Its caret unfolds the rest: its name, its latest
-recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,
-and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the
-session's work stay in the list: the PRs on the branch it is on, or else the PRDs it weighs most
-on (a branch naming the ticket adds to it), their PRs and the latest PR it opened. The rest start
-under *also linked* in *n more*, as above, where an eye brings back a wrong guess. It needs
-`PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the lines carry only their own PRs.
+The fifth icon shows one line per Claude Code session, to see at a glance which ones need you and
+jump to them. It needs `PR_RADAR_CLAUDE_SESSIONS=true`, but no Linear key: without one, sessions
+show only their own PRs.
 
-While the view is open, the sessions' states and their skills' stages are read every 5 seconds,
-from local files only (`GET /api/sessions/status`); what they link to follows the board's refresh.
-The tab title counts the sessions waiting on you as `⚑ n`. With `PR_RADAR_SESSION_CHIME=true`, a
-session that starts waiting on you chimes, unless the board is muted: three falling notes, apart from the board's rising two, and never
-`PR_RADAR_SOUND`, which stays the board's.
+**The groups**
+
+| Group | What it means |
+| --- | --- |
+| Waiting on you | A skill asked a *question*, Claude Code is at a *permission prompt*, or it is *your turn*: the session went idle less than 30 minutes ago |
+| Working | Claude is busy |
+| Open | Idle for more than 30 minutes |
+| Closed | No longer running; starts folded |
+| No status | Running, but Claude Code's session file doesn't say what it is doing. Shown only when it happens: an update to Claude Code may have changed that file, which it doesn't document |
+
+Each group has a counter in the band that filters to it. Fold any group from its header. Star a
+session (☆ on hover) to pin it in a *starred* list at the top.
+
+**A line** shows, left to right:
+
+- the session's title, as Claude Code named it: click it, or the Claude icon, to jump to it;
+- its badge: the skill at work with its stage and time (*validator · review · 3 min*), or
+  *question*, *permission prompt*, *your turn* or *open*. A skill that ended reads
+  *validator · done · commented*;
+- the ticket or PR it works on, the folder it is in (its worktree, if it moved into one) and branch;
+- underneath, the question it is waiting on: click it to jump to the session.
+
+Unfold a line for the session's latest recap or your last prompt, and the tickets and PRs it works
+on. Links that are less likely to be its work start in *n more*.
+
+**Order by** latest change (default), longest in its state, title, folder, ticket or skill.
+
+**Live updates.** While the view is open it rereads session states every 5 seconds, from local
+files only, so it costs no GitHub or Linear calls. The tab title shows `⚑ n` for the sessions
+waiting on you. Set `PR_RADAR_SESSION_CHIME=true` to hear three falling notes when a session starts
+waiting on you, distinct from the board's chime; the mute button silences both.
 
 ## Reading the colours
 
