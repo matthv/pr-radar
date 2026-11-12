@@ -213,6 +213,9 @@ test('a session waits on you on a question, or idle for less than its turn; idle
   assert.equal(status({ status: 'idle', since: ago(YOUR_TURN_MS - 1000) }), 'waiting');
   assert.equal(status({ status: 'idle', since: ago(YOUR_TURN_MS + 1000) }), 'open');
   assert.equal(status({ status: 'idle', since: null }), 'open');
+  // No status in its file: unknown, unless its skill's question says it waits on you.
+  assert.equal(status({ since: ago(1000) }), 'unknown');
+  assert.equal(status({ state: 'waiting' }), 'waiting');
 });
 
 test('sessions sort by latest change, longest in state, title, folder, PRD or skill, those without one last', () => {
