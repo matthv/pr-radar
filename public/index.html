@@ -4556,6 +4556,7 @@ function loadPrds(force = false) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || response.statusText);
       prdData = payload;
+      if (force) prdMainsShown = { ...prdMains };
     })
     .catch(error => {
       prdData = { ...prdData, enabled: true, error: error.message };
@@ -4601,6 +4602,10 @@ const prdMains = (() => {
     return {};
   }
 })();
+
+// The stars as they stood at the page's load or its last refresh: a session goes first only
+// then, never under the click that starred it.
+let prdMainsShown = { ...prdMains };
 
 function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
@@ -4659,7 +4664,7 @@ function prdCard(prd) {
     + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
     + `<div class="prd-meta">${escapeHtml(meta)}</div>`
     + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
-    + `${PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket]).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
+    + `${PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMainsShown[prd.ticket]).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
 }
 
 // Linear's own colour when the group has one; otherwise one of the theme's, the same for a
