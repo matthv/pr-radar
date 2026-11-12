@@ -50,6 +50,8 @@ test('a session is tied to the tickets it works on: a skill run on one, a worktr
     user('<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>'),
     tool('Skill', { skill: 'forest:review-loop', args: 'https://linear.app/x/issue/PRD-2' }),
     line({ type: 'user', cwd: '/Users/me/dev/claudine-prd-4-gating', message: { role: 'user', content: 'go' } }),
+    user('back up a level'),
+    line({ type: 'user', cwd: '/Users/me/dev/claudine-prd-4-gating', message: { role: 'user', content: 'and back in' } }),
     tool('Bash', { command: 'git commit -m "feat: x"' }, { gitBranch: 'feature/prd-5-thing' }),
   ].join(''), 1);
   await writeSession(dir, NEWER, [
@@ -65,6 +67,8 @@ test('a session is tied to the tickets it works on: a skill run on one, a worktr
   const ticketsOf = id => ['PRD-1', 'PRD-2', 'PRD-3', 'PRD-4', 'PRD-5', 'PRD-6', 'PRD-7', 'PRD-8', 'PRD-9', 'PRD-10', 'PRD-11', 'PRD-12', 'PRD-292']
     .filter(ticket => sessionsForTicket(ticket).some(session => session.sessionId === id));
   assert.deepEqual(ticketsOf(OLDER), ['PRD-1', 'PRD-2', 'PRD-4', 'PRD-5']);
+  // A skill run weighs most, then a commit on the ticket's branch, then a move into its folder.
+  assert.deepEqual(['PRD-1', 'PRD-2', 'PRD-5', 'PRD-4'].map(ticket => sessionsForTicket(ticket)[0].weight), [3, 3, 2, 1]);
   assert.deepEqual(ticketsOf(NEWER), []);
   assert.equal(sessionsForTicket('PRD-1')[0].cwd, '/Users/me/dev');
 });

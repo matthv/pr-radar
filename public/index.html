@@ -785,8 +785,14 @@
     border: 1px solid var(--hairline); border-left: 3px solid var(--session-tone); border-radius: 8px;
     background: var(--surface); font-size: 12.5px;
   }
-  .prd-session.live { --session-tone: var(--indigo); }
+  .prd-session.open { --session-tone: var(--emerald); }
+  .prd-session.busy { --session-tone: var(--indigo); }
   .prd-session.waiting { --session-tone: var(--amber); }
+  .prd-session.closed { --session-tone: var(--border); }
+  .prd-session.closed .prd-session-name { color: var(--text-soft); }
+  /* The session most likely doing the ticket's work: first, a wider rail, a star. */
+  .prd-session.main { border-left-width: 5px; padding-left: 9px; box-shadow: var(--shadow-sm); }
+  .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); }
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
@@ -2006,6 +2012,9 @@ const I18N = {
     prdState_stopped: 'arrêté',
     prdNoSkill: 'aucun skill',
     prdSessionOpen: 'ouverte',
+    prdSessionBusy: 'au travail',
+    prdMain: 'principale',
+    prdMainTitle: 'la session qui a fait le plus de travail sur ce ticket : skills lancés, commits, temps dans son dossier',
     prdSessionClosed: 'fermée',
     prdFocusTitle: 'afficher cette session Claude',
     prdResumeTitle: 'reprendre cette session Claude dans un terminal',
@@ -2368,6 +2377,9 @@ const I18N = {
     prdState_stopped: 'stopped',
     prdNoSkill: 'no skill',
     prdSessionOpen: 'open',
+    prdSessionBusy: 'working',
+    prdMain: 'main',
+    prdMainTitle: 'the session that did most of this ticket’s work: skills run on it, commits, time in its folder',
     prdSessionClosed: 'closed',
     prdFocusTitle: 'bring this Claude session forward',
     prdResumeTitle: 'resume this Claude session in a terminal',
@@ -4533,28 +4545,53 @@ function loadPrds(force = false) {
 
 // What the session's skill is doing: running or waiting while its process lives, interrupted
 // once it is gone mid-run, else how the run ended.
-function prdSkillState(session) {
-  if (session.state === 'waiting' && session.running) return pill('todo', escapeHtml(t('prdWaiting')));
-  if (session.state === 'running' && session.running) return pill('pending running', escapeHtml(t('prdRunning')));
-  if (session.state === 'running' || session.state === 'waiting') return pill('', escapeHtml(t('prdInterrupted')));
-  if (!session.state) return '';
-  return pill('', escapeHtml(t(`prdState_${session.state}`) + (session.outcome ? ` · ${session.outcome}` : '')));
+// A session's state and its skill's are pills in the board's colours, and buttons when the
+// session can be opened from here: either brings it forward, or resumes it, as its Claude button.
+const PRD_SESSION_STATUS = {
+  waiting: ['pending', 'prdWaiting'],
+  busy: ['todo running', 'prdSessionBusy'],
+  open: ['good', 'prdSessionOpen'],
+  closed: ['', 'prdSessionClosed'],
+};
+function prdSessionStatus(session) {
+  if (!session.running) return 'closed';
+  if (session.state === 'waiting') return 'waiting';
+  return session.status === 'busy' ? 'busy' : 'open';
+}
+
+// The skill's pill: indigo while it runs, amber waiting on you, green done, grey interrupted
+// (its session closed mid-stage) or stopped.
+function prdSkillPill(session) {
+  const live = session.running && (session.state === 'running' || session.state === 'waiting');
+  if (live) return session.state === 'waiting' ? ['pending', t('prdWaiting')] : ['todo running', t('prdRunning')];
+  if (session.state === 'running' || session.state === 'waiting') return ['', t('prdInterrupted')];
+  if (!session.state) return ['', ''];
+  return [session.state === 'done' ? 'good' : '', t(`prdState_${session.state}`) + (session.outcome ? ` · ${session.outcome}` : '')];
 }
 
 function prdSessionRow(session) {
+  const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
+  const opens = prdData.claudeSessions && session.resumable;
+  const action = t(session.running ? 'prdFocusTitle' : 'prdResumeTitle');
+  const pillButton = (kind, label, title) => (opens
+    ? `<button type="button" class="pill ${kind}" data-prd-open="${id}" title="${escapeHtml(`${title} · ${action}`)}">${label}</button>`
+    : pill(kind, label, title));
+  const status = prdSessionStatus(session);
+  const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
+  const [skillKind, skillState] = prdSkillPill(session);
   const skill = session.skill
-    ? `<span>/${escapeHtml(session.skill)}${session.stage ? ` · ${escapeHtml(session.stage)}` : ''}</span>${prdSkillState(session)}`
+    ? pillButton(skillKind, escapeHtml(`/${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
     : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
-  const where = t(session.running ? 'prdSessionOpen' : 'prdSessionClosed') + (session.at ? ` · ${t('activeAgo', { v: ago(session.at) })}` : '');
-  const open = prdData.claudeSessions && session.resumable
-    ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${escapeHtml(session.sessionId)}"`
-      + ` title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${CLAUDE_ICON}</button>`
+  const open = opens
+    ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${id}" title="${escapeHtml(action)}">${CLAUDE_ICON}</button>`
     : '';
-  const tone = session.running && session.state === 'waiting' ? ' waiting' : session.running ? ' live' : '';
-  return `<div class="prd-session${tone}">${open}<span class="prd-session-name" title="claude --resume ${escapeHtml(session.sessionId)}">${escapeHtml(name)}</span>`
-    + `${skill}${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
-    + `<span class="prd-meta">${escapeHtml(where)}</span></div>`;
+  const main = session.main ? `<span class="prd-main" title="${escapeHtml(t('prdMainTitle'))}">★ ${escapeHtml(t('prdMain'))}</span>` : '';
+  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${open}`
+    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
+    + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
+    + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
+    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
 }
 
 function prdCard(prd) {
@@ -4640,6 +4677,9 @@ el('prd').addEventListener('change', event => {
 el('prd').addEventListener('click', event => {
   const pr = event.target.closest('[data-prd-pr]');
   if (pr) showPrOnBoard(pr.dataset.prdPr);
+  const open = event.target.closest('[data-prd-open]');
+  const link = open?.closest('.prd-session')?.querySelector('.claude-link');
+  if (link) resumeClaudeSession(link);
 });
 
 // Opening a PR from the board, left or middle click, is having seen what moved on it. The

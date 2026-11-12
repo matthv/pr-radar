@@ -1378,7 +1378,11 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   the session worked in, as `/implement`'s worktrees are; a commit made on a branch named for it
   (the branch alone is not enough, a checkout left on an old one hosts sessions on other tickets);
   and a running session that opened one of its PRs. Every running session shows, and the two
-  most recent closed ones. A row gives the session's name, the skill it runs
+  heaviest closed ones. Sessions are ordered by how much of the ticket's work they show (stage
+  lines most, then a skill run on it, a commit on its branch or one of its PRs, then its folder),
+  and the first is starred *main* when it outweighs the next. Its state is a pill: green open,
+  indigo working, amber waiting on you, grey closed; so is its skill. Both are buttons that open
+  the session, like its Claude button. A row gives the session's name, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.
   Its Claude button brings an open session forward, or resumes a closed one through a plugin's
   `open()` or in `PR_RADAR_TERMINAL`; it needs `PR_RADAR_CLAUDE_SESSIONS`, like the card's.

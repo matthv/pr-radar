@@ -48,16 +48,22 @@ const textOf = content => typeof content === 'string'
   ? content
   : Array.isArray(content) ? content.filter(part => part?.type === 'text').map(part => part.text).join('\n') : '';
 
+// How much each declaration weighs toward a session being the one doing a ticket's work: a skill
+// run on it most, then a commit on its branch, then having worked in its folder at all (counted
+// once: a session moving in and out of folders would otherwise outweigh every skill).
+const WEIGHT = { skill: 3, commit: 2, folder: 1 };
+const credit = (entry, keys, weight) => {
+  for (const key of keys) entry.tickets.set(key, (entry.tickets.get(key) ?? 0) + weight);
+};
+
 const promptTickets = text => [...text.matchAll(/<command-args>([\s\S]*?)<\/command-args>/g)].flatMap(match => keysIn(match[1]));
 
-function toolTickets(record) {
-  const tickets = [];
+function creditTools(entry, record) {
   for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
     if (part?.type !== 'tool_use') continue;
-    if (part.name === 'Skill') tickets.push(...keysIn(part.input?.args));
-    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? ''))) tickets.push(...keysIn(record.gitBranch));
+    if (part.name === 'Skill') credit(entry, keysIn(part.input?.args), WEIGHT.skill);
+    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? ''))) credit(entry, keysIn(record.gitBranch), WEIGHT.commit);
   }
-  return tickets;
 }
 
 function readLines(text, entry) {
@@ -66,7 +72,9 @@ function readLines(text, entry) {
     const cwd = fieldOf(line, 'cwd');
     if (cwd && cwd !== entry.lastCwd) {
       entry.lastCwd = cwd;
-      for (const key of keysIn(cwd.slice(cwd.lastIndexOf('/') + 1))) entry.tickets.add(key);
+      const fresh = keysIn(cwd.slice(cwd.lastIndexOf('/') + 1)).filter(key => !entry.folders.has(key));
+      for (const key of fresh) entry.folders.add(key);
+      credit(entry, fresh, WEIGHT.folder);
     }
     const wantsCwd = !entry.cwd && cwd !== null;
     const inPrompt = declaresInPrompt(line);
@@ -80,15 +88,15 @@ function readLines(text, entry) {
     }
     if (wantsCwd && typeof record.cwd === 'string') entry.cwd = record.cwd;
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
-    if (inPrompt && record.type === 'user') for (const key of promptTickets(textOf(record.message?.content))) entry.tickets.add(key);
-    if (inTools && record.type === 'assistant') for (const key of toolTickets(record)) entry.tickets.add(key);
+    if (inPrompt && record.type === 'user') credit(entry, promptTickets(textOf(record.message?.content)), WEIGHT.skill);
+    if (inTools && record.type === 'assistant') creditTools(entry, record);
   }
 }
 
 async function readNewLines(file, stat) {
   let entry = transcripts.get(file);
   if (!entry || stat.size < entry.offset) {
-    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Set() };
+    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Map(), folders: new Set() };
     transcripts.set(file, entry);
   }
   entry.mtimeMs = stat.mtimeMs;
@@ -182,12 +190,12 @@ function sessionFor(prUrl) {
   return latest && { sessionId: latest.sessionId, cwd: latest.cwd };
 }
 
-// The sessions whose prompts or branch name a ticket, newest first.
+// The sessions that declared work on a ticket, newest first, each with the weight of what it did.
 function sessionsForTicket(ticket) {
   return [...transcripts.values()]
     .filter(entry => entry.cwd && SESSION_ID.test(entry.sessionId) && entry.tickets.has(ticket))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .map(entry => ({ sessionId: entry.sessionId, cwd: entry.cwd, at: new Date(entry.mtimeMs).toISOString() }));
+    .map(entry => ({ sessionId: entry.sessionId, cwd: entry.cwd, at: new Date(entry.mtimeMs).toISOString(), weight: entry.tickets.get(ticket) }));
 }
 
 const shellQuote = value => `'${value.replaceAll("'", `'\\''`)}'`;

@@ -80,6 +80,28 @@ test('every running session naming the ticket joins its PRD, and only the two ne
   assert.ok(built.sessions.every(session => session.resumable));
 });
 
+test('the session that did most of a ticket\'s work comes first, marked main; a lone session is not', () => {
+  const [built, lone] = buildPrds({
+    prds: [prd('PRD-1'), prd('PRD-2')],
+    stageSessions: [stage('staged', { tickets: ['PRD-1'], current: { skill: 'forest:implement', run: 'r', stage: 'build', state: 'running', at: '2026-11-01T00:00:00Z' } })],
+    live: [{ sessionId: 'glance', name: 'dev-1', updatedAt: Date.parse('2026-11-09T00:00:00Z') }],
+    sessionsOf: ticket => (ticket === 'PRD-1'
+      ? [{ sessionId: 'glance', cwd: '/w', at: '2026-11-09T00:00:00Z', weight: 1 }, { sessionId: 'built', cwd: '/w', at: '2026-11-02T00:00:00Z', weight: 8 }]
+      : [{ sessionId: 'only', cwd: '/w', at: '2026-11-02T00:00:00Z', weight: 3 }]),
+    cwdOf: () => '/w',
+  });
+  assert.deepEqual(built.sessions.map(session => [session.sessionId, session.weight, session.main]),
+    [['staged', 10, true], ['built', 8, false], ['glance', 1, false]]);
+  assert.deepEqual(lone.sessions.map(session => [session.sessionId, session.main]), [['only', false]]);
+
+  const [tie] = buildPrds({
+    prds: [prd('PRD-1')],
+    sessionsOf: () => [{ sessionId: 'a', cwd: '/w', at: '2026-11-02T00:00:00Z', weight: 3 }, { sessionId: 'b', cwd: '/w', at: '2026-11-01T00:00:00Z', weight: 3 }],
+    cwdOf: () => '/w',
+  });
+  assert.ok(tie.sessions.every(session => !session.main), 'a tie names no main session');
+});
+
 test('the tickets to ask Linear for come from the stages, directly or through a board PR', () => {
   const tickets = extraTickets(
     [stage('a', { tickets: ['PRD-5'], prUrls: [PR7] }), stage('b', { prUrls: [PR8] })],
