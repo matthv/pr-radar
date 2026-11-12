@@ -234,11 +234,16 @@ function withClaudeSessions(payload) {
   };
 }
 
+// The PRs made or opened in a session since the change check last asked: a scan the PRD view
+// runs in between keeps them for it.
+let touchedSince = new Set();
 function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
     ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
-      return touched;
+      const all = [...new Set([...touchedSince, ...touched])];
+      touchedSince = new Set();
+      return all;
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
@@ -276,6 +281,12 @@ async function prdView(force) {
     warnings.push({ source: 'claude', message: error.message });
     return [];
   });
+  // A session started since the last scan has no title, folder or branch until its transcript is read.
+  if (CLAUDE_SESSIONS) {
+    await claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(({ touched }) => {
+      for (const url of touched) touchedSince.add(url);
+    }, () => {});
+  }
   // The Sessions view needs no Linear: without a key it shows the sessions and their own PRs.
   const fetched = LINEAR_API_KEY ? await linearPrds(extraTickets(stageSessions, boardPrs), force) : [];
   const prds = buildPrds({
