@@ -42,23 +42,31 @@ test('a PR worked on in two sessions resumes the most recently active one, from 
   assert.equal(sessionFor('https://github.com/ForestAdmin/agent-nodejs/pull/1'), null);
 });
 
-test('a session is tied to the tickets typed in its prompts or on its branch, never those in tool output or injected text', async () => {
+test('a session is tied to the tickets it works on: a skill run on one, a worktree, a commit on its branch', async () => {
   const dir = await projectsDir();
-  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/Projects', message: { role: 'user', content }, ...extra });
-  await writeSession(dir, OLDER, user('/implement PRD-1932 please') + user([{ type: 'text', text: 'also PRD-7' }]), 1);
+  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/dev', message: { role: 'user', content }, ...extra });
+  const tool = (name, input, extra = {}) => line({ type: 'assistant', cwd: '/Users/me/dev', message: { role: 'assistant', content: [{ type: 'tool_use', name, input }] }, ...extra });
+  await writeSession(dir, OLDER, [
+    user('<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>'),
+    tool('Skill', { skill: 'forest:review-loop', args: 'https://linear.app/x/issue/PRD-2' }),
+    line({ type: 'user', cwd: '/Users/me/dev/claudine-prd-4-gating', message: { role: 'user', content: 'go' } }),
+    tool('Bash', { command: 'git commit -m "feat: x"' }, { gitBranch: 'feature/prd-5-thing' }),
+  ].join(''), 1);
   await writeSession(dir, NEWER, [
-    user('hi', { gitBranch: 'feat/prd-2145-feedback' }),
-    user([{ type: 'tool_result', content: 'PRD-1932 PRD-7' }]),
-    user('skill body naming PRD-1932', { isMeta: true }),
-    user('summary naming PRD-7', { isCompactSummary: true }),
+    user('like we did on PRD-6, compare with PRD-7', { gitBranch: 'fix/prd-8-old-checkout' }),
+    user([{ type: 'tool_result', content: '<command-args>PRD-9</command-args>' }]),
+    user('<command-args>PRD-10</command-args>', { isMeta: true }),
+    tool('Bash', { command: 'git commit -m "Refs: PRD-11"' }, { gitBranch: 'main' }),
+    tool('mcp__linear__save_issue', { id: 'PRD-12' }),
   ].join(''), 0);
 
   await scan({ dir, maxAgeDays: 60 });
 
-  assert.deepEqual(sessionsForTicket('PRD-1932').map(session => session.sessionId), [OLDER]);
-  assert.deepEqual(sessionsForTicket('PRD-7').map(session => session.sessionId), [OLDER]);
-  assert.deepEqual(sessionsForTicket('PRD-2145').map(session => session.sessionId), [NEWER]);
-  assert.equal(sessionsForTicket('PRD-2145')[0].cwd, '/Users/me/Projects');
+  const ticketsOf = id => ['PRD-1', 'PRD-2', 'PRD-3', 'PRD-4', 'PRD-5', 'PRD-6', 'PRD-7', 'PRD-8', 'PRD-9', 'PRD-10', 'PRD-11', 'PRD-12', 'PRD-292']
+    .filter(ticket => sessionsForTicket(ticket).some(session => session.sessionId === id));
+  assert.deepEqual(ticketsOf(OLDER), ['PRD-1', 'PRD-2', 'PRD-4', 'PRD-5']);
+  assert.deepEqual(ticketsOf(NEWER), []);
+  assert.equal(sessionsForTicket('PRD-1')[0].cwd, '/Users/me/dev');
 });
 
 test('a session past the age limit, without a cwd, or not named by a session id is never offered', async () => {
