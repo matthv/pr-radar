@@ -1427,7 +1427,7 @@ under *also linked* in *n more*, as above, where an eye brings back a wrong gues
 While the view is open, the sessions' states and their skills' stages are read every 5 seconds,
 from local files only (`GET /api/sessions/status`); what they link to follows the board's refresh.
 A session that turns to you, waiting on you or done working, lights up and counts in the tab
-title as `⚑ n` until you hover it or open it. With `PR_RADAR_SESSION_CHIME=true` it also chimes,
+title as `⚑ n` until you click it. With `PR_RADAR_SESSION_CHIME=true` it also chimes,
 unless the board is muted: three falling notes, apart from the board's rising two, and never
 `PR_RADAR_SOUND`, which stays the board's.
 

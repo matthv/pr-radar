@@ -770,10 +770,13 @@
   .session-card:not(.folded) .session-question { white-space: normal; }
   .session-card .session-meta { margin-top: 6px; }
   /* A session that just turned to you, until you look at it. */
-  .session-card.calls { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tone) 55%, transparent), var(--shadow-md); }
+  .session-card.calls {
+    border-color: var(--tone); box-shadow: 0 0 0 2px var(--tone), var(--shadow-md);
+    background: linear-gradient(260deg, color-mix(in srgb, var(--tone) 30%, var(--surface)) -10%, color-mix(in srgb, var(--tone) 8%, var(--surface)) 60%);
+  }
   @media (prefers-reduced-motion: no-preference) {
     .session-card.calls { animation: sess-call 2.4s ease-in-out infinite; }
-    @keyframes sess-call { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone) 30%, transparent), var(--shadow-md); } }
+    @keyframes sess-call { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--tone) 35%, transparent), var(--shadow-md); } }
   }
   .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
   .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
@@ -5029,7 +5032,8 @@ function sessionCard(session) {
 // Sessions change by the second while the board refreshes every few minutes: the Sessions view
 // polls their states and their skills' stages on their own, the links following the board. A
 // session that turns to you, waiting on you or done working, lights up and counts in the tab
-// title until you look at it, and chimes when PR_RADAR_SESSION_CHIME asks for it.
+// title until you click it (a hover would not do: the row jumps to the top, under a resting
+// mouse), and chimes when PR_RADAR_SESSION_CHIME asks for it.
 const SESSION_POLL_MS = 5000;
 const SESSION_FIELDS = ['running', 'status', 'name', 'skill', 'stage', 'state', 'question', 'outcome', 'at'];
 const sessLast = new Map();
@@ -5085,10 +5089,6 @@ function seeSession(sessionId) {
   paintTitle();
 }
 setInterval(pollSessions, SESSION_POLL_MS);
-el('prd').addEventListener('mouseover', event => {
-  const card = event.target.closest('.session-card.calls');
-  if (card) seeSession(card.dataset.session);
-});
 // Closed sessions start folded away; after that, their group is folded or not as you leave it.
 if (store.get('sessClosedFolded', '') !== '1') {
   collapsedGroups.add('sessions:closed');
@@ -5141,6 +5141,8 @@ el('prd').addEventListener('change', event => {
   renderPrd();
 });
 el('prd').addEventListener('click', event => {
+  const called = event.target.closest('.session-card.calls');
+  if (called) seeSession(called.dataset.session);
   // The caret, or anywhere on a folded card but its links and buttons.
   const folded = event.target.closest('.prd-pr-item.folded');
   const pr = event.target.closest('[data-prd-pr]')
@@ -5197,7 +5199,6 @@ el('prd').addEventListener('click', event => {
   }
   const open = event.target.closest('[data-prd-open], .claude-link');
   const card = open?.closest('.prd-session, .session-card');
-  if (card?.dataset.session) seeSession(card.dataset.session);
   const link = open?.matches('[data-prd-open]') ? card?.querySelector('.claude-link') : null;
   if (link) resumeClaudeSession(link);
 });
