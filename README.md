@@ -1418,7 +1418,9 @@ first. *Waiting on you* holds a skill's *question*, until it is answered, and a 
 less than 15 minutes, *your turn*: it finished its turn, or was started and given nothing yet.
 Idle longer, it is merely *open*. A line is the session: its
 Claude button and Claude Code's title for it, both of which bring it forward or resume it; its
-state, and how long it has been at work while it works (*working · 3 min*); its skill and stage; the PRD it
+badges, a skill at work saying what it does and for how long (*validator · review · 3 min*, or
+*working · 3 min* when it runs none), else its state, each its own colour (*question* amber, *your
+turn* cyan, *open* green), then its skill in grey; the PRD it
 works on, or else its PR; its folder and branch; when it was last active, once closed; and below,
 the question it waits on. Its caret unfolds the rest: its name, its latest
 recap or the last prompt you typed when that is newer, then the PRDs it works on and their PRs,

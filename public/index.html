@@ -1141,6 +1141,7 @@
   .pill.todo { background: var(--indigo-soft); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
   .pill.ready { background: linear-gradient(90deg, var(--indigo-soft), var(--emerald-soft)); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
   .pill.pending { background: var(--amber-soft); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent); }
+  .pill.turn { background: color-mix(in srgb, var(--cyan) 12%, var(--surface)); color: var(--cyan); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 22%, transparent); }
   .pill.good { background: var(--emerald-soft); color: var(--emerald); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--emerald) 18%, transparent); }
   .pill.alert { background: var(--rose-soft); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 18%, transparent); }
   /* A running pipeline breathes: the card is a live thing until the verdict lands. */
@@ -4737,7 +4738,7 @@ const prdMains = (() => {
 })();
 
 // A session's pieces, for its row under a PRD and for its own card in the Sessions view.
-function prdSessionParts(session, { status = prdSessionStatus(session), label = null } = {}) {
+function prdSessionParts(session) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4745,13 +4746,10 @@ function prdSessionParts(session, { status = prdSessionStatus(session), label = 
   const pillButton = (kind, label, title) => (opens
     ? `<button type="button" class="pill ${kind}" data-prd-open="${id}" title="${escapeHtml(`${title} · ${action}`)}">${label}</button>`
     : pill(kind, label, title));
-  const [statusKind, defaultKey] = PRD_SESSION_STATUS[status];
-  const statusKey = label ?? defaultKey;
+  const status = prdSessionStatus(session);
+  const [statusKind, statusKey] = PRD_SESSION_STATUS[status];
   const [skillKind, skillState] = prdSkillPill(session);
-  // How long it has been at work; waiting and idle carry no clock.
-  const since = status === 'busy' && session.since
-    ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
-  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)) + since, t(statusKey));
+  const statusPill = pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey));
   const skill = session.skill
     ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
     : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
@@ -4760,13 +4758,12 @@ function prdSessionParts(session, { status = prdSessionStatus(session), label = 
     : '';
   return {
     status,
+    pillButton,
     open,
     name: opens
       ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
       : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`,
     pills: `${statusPill}${skill}`,
-    // The card says nothing of a skill it does not run.
-    cardPills: `${statusPill}${session.skill ? skill : ''}`,
     question: session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : '',
     at: session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : '',
   };
@@ -4988,13 +4985,27 @@ function sessionPrdItem(prd, eye = '') {
 // Folded, a session is one line plus the question it waits on; its caret brings back the
 // recap, the last prompt and every PRD and PR it touches.
 const sessOpen = new Set();
+// A session's badges in the Sessions view. At work, its skill says what it does and for how long,
+// or a plain *working* badge when it runs none; otherwise its state, each its own colour (a
+// question amber, your turn cyan, open green), then its skill in grey.
+function sessPills(session, status, pillButton) {
+  const skill = session.skill ? `${session.skill}${session.stage ? ` · ${session.stage}` : ''}` : null;
+  if (status === 'busy') {
+    const clock = session.since ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
+    return pillButton('todo', escapeHtml(skill ?? t('prdSessionBusy')) + clock, skill ?? t('prdSessionBusy'));
+  }
+  const key = sessStatusLabel(session, status);
+  const kind = { sessQuestion: 'pending', sessYourTurn: 'turn', prdSessionOpen: 'good' }[key] ?? '';
+  return pillButton(kind, escapeHtml(t(key)), t(key)) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
+}
+
 function sessionCard(session) {
   const status = sessStatus(session);
   const id = escapeHtml(session.sessionId);
   const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
   const folder = session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1) : null;
   const where = [folder, session.branch].filter(Boolean).join(' · ');
-  const parts = prdSessionParts(session, { status, label: sessStatusLabel(session, status) });
+  const parts = prdSessionParts(session);
   const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
   const opens = prdData.claudeSessions && session.resumable;
   // What it works on, at a glance: its main PRD, else its main PR.
@@ -5008,7 +5019,7 @@ function sessionCard(session) {
     + (opens
       ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
       : `<span class="prd-title">${title}</span>`)
-    + `${parts.cardPills}${key}<span class="sess-where">${escapeHtml(where)}</span>`
+    + `${sessPills(session, status, parts.pillButton)}${key}<span class="sess-where">${escapeHtml(where)}</span>`
     // A running session's time is in its state's pill; a closed one says when it was last active.
     + (session.at && !(session.running && session.since) ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + '</div>';
   let details = '';
