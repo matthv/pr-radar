@@ -1401,7 +1401,9 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   or by title. Both choices are kept per browser, and a group folds from its header.
 - **The band** above the tickets replaces the board's: the two pickers, then counters of the
   tickets waiting on you, being worked on, needing you on a PR, and with no open session. A
-  counter filters the list to its tickets; a second click or Esc clears it.
+  counter filters the list to its tickets; a second click or Esc clears it. **Hide closed**, off
+  by default and kept per browser, hides in both views the merged PRs, the ones no longer on the
+  board, and the tickets Linear has completed or canceled.
 
 ### The Sessions view
 

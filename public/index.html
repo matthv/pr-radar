@@ -2017,7 +2017,6 @@ const I18N = {
     prdCountBusy: 'en cours de travail',
     prdCountPrs: 't’attendent sur une PR',
     prdCountIdle: 'sans session ouverte',
-    prdTotal: '{n} PRDs',
     prdFocusHint: 'cliquer pour n’afficher que ces PRDs',
     prdOrderBy: 'Trier par',
     prdGroup_status: 'statut',
@@ -2040,6 +2039,7 @@ const I18N = {
     prdNotAssigned: 'pas à toi : une session Claude y travaille',
     prdNoPrs: 'Aucune PR liée.',
     prdPrOnGithub: 'voir sur GitHub',
+    prdHideClosed: 'masquer les fermés',
     sessTotal: '{n} sessions',
     sessEmpty: 'Aucune session Claude ouverte, ni récente sur un de tes PRDs.',
     sessNoLinks: 'Aucun PRD ni PR lié.',
@@ -2397,7 +2397,6 @@ const I18N = {
     prdCountBusy: 'being worked on',
     prdCountPrs: 'need you on a PR',
     prdCountIdle: 'no open session',
-    prdTotal: '{n} PRDs',
     prdFocusHint: 'click to show only these PRDs',
     prdOrderBy: 'Order by',
     prdGroup_status: 'status',
@@ -2420,6 +2419,7 @@ const I18N = {
     prdNotAssigned: 'not yours: a Claude session works on it',
     prdNoPrs: 'No linked PR.',
     prdPrOnGithub: 'see it on GitHub',
+    prdHideClosed: 'hide closed',
     sessTotal: '{n} sessions',
     sessEmpty: 'No Claude session open, and none lately on one of your PRDs.',
     sessNoLinks: 'No PRD or PR linked.',
@@ -4724,7 +4724,7 @@ function prdCard(prd) {
     : '';
   const meta = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
-  const prs = prd.prs.map(prdPrItem).join('');
+  const prs = shownPrs(prd.prs).map(prdPrItem).join('');
   const waiting = prd.sessions.some(session => session.running && session.state === 'waiting');
   return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
@@ -4758,6 +4758,15 @@ const PRD_FOCUS = {
 };
 let prdFocus = null;
 
+// Hides the merged PRs, the ones off the board, and the PRDs Linear has completed or canceled,
+// in both views. Off by default, kept per browser.
+let prdHideClosed = store.get('prdHideClosed', 'false') === 'true';
+const prOpen = pr => pr.state === 'open' || pr.state === 'draft';
+const prdOpen = prd => !['completed', 'canceled'].includes(prd.status?.type);
+const shownPrs = prs => (prdHideClosed ? prs.filter(prOpen) : prs);
+const shownPrds = prds => (prdHideClosed ? prds.filter(prdOpen) : prds);
+const hideClosedToggle = () => `<button type="button" class="picker-trigger${prdHideClosed ? ' on' : ''}" data-prd-hide-closed aria-pressed="${prdHideClosed}">${escapeHtml(t('prdHideClosed'))}</button>`;
+
 function prdBand(prds) {
   const options = (list, current, prefix) => list
     .map(value => `<option value="${value}"${value === current ? ' selected' : ''}>${escapeHtml(t(`${prefix}_${value}`))}</option>`).join('');
@@ -4772,15 +4781,14 @@ function prdBand(prds) {
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(label))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
   return `<div class="summary prd-summary">${pick('prdGroupBy', 'data-prd-group', PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}`
-    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}`
-    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
-    + `${prds.length ? `<span class="stale">${escapeHtml(t('prdTotal', { n: prds.length }))}</span>` : ''}</div>`;
+    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}${hideClosedToggle()}`
+    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div></div>`;
 }
 
 function renderPrd() {
   if (view === 'sessions') return renderSessions();
   if (view !== 'prd') return;
-  const bar = prdBand(prdData?.prds ?? []);
+  const bar = prdBand(shownPrds(prdData?.prds ?? []));
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
     return;
@@ -4791,7 +4799,7 @@ function renderPrd() {
   }
   const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
     .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
-  const prds = prdData.prds ?? [];
+  const prds = shownPrds(prdData.prds ?? []);
   if (!prds.length) {
     el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
     return;
@@ -4834,13 +4842,13 @@ function sessionPrdItem(prd) {
 function sessionCard(session) {
   const status = prdSessionStatus(session);
   const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
-  const prds = session.tickets.map(ticket => byTicket.get(ticket)).filter(Boolean);
+  const prds = shownPrds(session.tickets.map(ticket => byTicket.get(ticket)).filter(Boolean));
   const folder = session.cwd ? session.cwd.slice(session.cwd.lastIndexOf('/') + 1) : null;
   const meta = [folder, session.branch].filter(Boolean).join(' · ');
   const recap = Boolean(session.summary) && (!session.promptAt || String(session.summaryAt) >= String(session.promptAt));
   const about = recap ? session.summary : session.prompt;
   const aboutAt = recap ? session.summaryAt : session.promptAt;
-  const items = prds.map(sessionPrdItem).join('') + session.prs.map(prdPrItem).join('');
+  const items = prds.map(sessionPrdItem).join('') + shownPrs(session.prs).map(prdPrItem).join('');
   return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">`
     + `<span class="prd-title">${escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8))}</span></div>`
     + (meta ? `<div class="prd-meta">${escapeHtml(meta)}</div>` : '')
@@ -4860,7 +4868,7 @@ function renderSessions() {
       + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'sessFocusHint'))}"` : ''}>`
       + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="go">${active ? '×' : '›'}</span></button>`;
   }).join('');
-  const bar = `<div class="summary prd-summary"><div class="counters">${counters}</div>`
+  const bar = `<div class="summary prd-summary">${hideClosedToggle()}<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
     + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
@@ -4902,6 +4910,12 @@ el('prd').addEventListener('click', event => {
   if (pr) {
     const { prdPr: url } = pr.dataset;
     if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
+    renderPrd();
+    return;
+  }
+  if (event.target.closest('[data-prd-hide-closed]')) {
+    prdHideClosed = !prdHideClosed;
+    store.set('prdHideClosed', String(prdHideClosed));
     renderPrd();
     return;
   }
