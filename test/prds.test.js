@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildPrds, extraTickets } = require('../prds');
-const { group, sortPrds, runningSkills } = require('../public/prd');
+const { group, sortPrds, runningSkills, withMain } = require('../public/prd');
 
 const PR7 = 'https://github.com/ForestAdmin/claudine/pull/7';
 const PR8 = 'https://github.com/ForestAdmin/claudine/pull/8';
@@ -100,6 +100,13 @@ test('the session that did most of a ticket\'s work comes first, marked main; a 
     cwdOf: () => '/w',
   });
   assert.ok(tie.sessions.every(session => !session.main), 'a tie names no main session');
+});
+
+test('a starred session becomes the main one and comes first; a star on a session gone is ignored', () => {
+  const sessions = [{ sessionId: 'a', main: true }, { sessionId: 'b', main: false }, { sessionId: 'c', main: false }];
+  assert.deepEqual(withMain(sessions, 'c').map(session => [session.sessionId, session.main]), [['c', true], ['a', false], ['b', false]]);
+  assert.equal(withMain(sessions, 'gone'), sessions);
+  assert.equal(withMain(sessions, undefined), sessions);
 });
 
 test('the tickets to ask Linear for come from the stages, directly or through a board PR', () => {

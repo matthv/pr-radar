@@ -45,5 +45,14 @@
       .map(entry => ({ ...entry, prds: sortPrds(entry.prds, order) }));
   }
 
-  return { group, sortPrds, runningSkills, GROUPS, ORDERS };
+  // The session you starred as a ticket's main one, when it is still among its sessions, comes
+  // first and alone is main; the others keep their order. Otherwise the weighed guess stands.
+  function withMain(sessions, chosen) {
+    if (!chosen || !sessions.some(session => session.sessionId === chosen)) return sessions;
+    return sessions
+      .map(session => ({ ...session, main: session.sessionId === chosen }))
+      .sort((a, b) => b.main - a.main);
+  }
+
+  return { group, sortPrds, runningSkills, withMain, GROUPS, ORDERS };
 });
