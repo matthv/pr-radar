@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildPrds, extraTickets } = require('../prds');
-const { group, sortPrds, runningSkills, withMain } = require('../public/prd');
+const { buildPrds, buildSessions, extraTickets } = require('../prds');
+const { group, sortPrds, withMain } = require('../public/prd');
 
 const PR7 = 'https://github.com/ForestAdmin/claudine/pull/7';
 const PR8 = 'https://github.com/ForestAdmin/claudine/pull/8';
@@ -120,23 +120,6 @@ test('the tickets to ask Linear for come from the stages, directly or through a 
   assert.deepEqual(tickets, ['PRD-5', 'PRD-6']);
 });
 
-const session = (skill, state) => ({ skill, state });
-
-test('grouped by running skill, a PRD sits in each skill its sessions run, and one with none last', () => {
-  const prds = [
-    prd('PRD-1', { sessions: [session('validator', 'running'), session('review-loop', 'running')] }),
-    prd('PRD-2', { sessions: [session('implement', 'waiting'), session('adr', 'done')] }),
-    prd('PRD-3', { sessions: [session('adr', 'done')] }),
-  ];
-  assert.deepEqual(runningSkills(prds[1]), ['implement']);
-  assert.deepEqual(group(prds, { by: 'skill' }).map(entry => [entry.key, entry.prds.map(p => p.ticket)]), [
-    ['implement', ['PRD-2']],
-    ['review-loop', ['PRD-1']],
-    ['validator', ['PRD-1']],
-    [null, ['PRD-3']],
-  ]);
-});
-
 test('statuses follow Linear\'s own order, labels and projects their names', () => {
   const prds = [
     prd('PRD-1', { status: { name: 'In Review', position: 3 }, labels: [{ name: 'Front' }, { name: 'Back' }], project: 'Zeta' }),
@@ -156,4 +139,24 @@ test('ordered by last update or opening, newest first, or by title A to Z', () =
   assert.deepEqual(sortPrds(prds, 'updated').map(p => p.ticket), ['PRD-2', 'PRD-1']);
   assert.deepEqual(sortPrds(prds, 'opened').map(p => p.ticket), ['PRD-1', 'PRD-2']);
   assert.deepEqual(sortPrds(prds, 'title').map(p => p.ticket), ['PRD-2', 'PRD-1']);
+});
+
+test('the sessions view has a card per running session and per session a PRD keeps, with its PRDs and every PR', () => {
+  const prds = [
+    prd('PRD-1', { prs: [{ url: PR7 }], sessions: [{ sessionId: 'a', running: true, at: '2026-11-12T10:00:00Z', weight: 3, main: true }] }),
+    prd('PRD-2', { prs: [{ url: PR7 }, { url: PR8 }], sessions: [{ sessionId: 'a', running: true, at: '2026-11-12T10:00:00Z', weight: 1, main: false }, { sessionId: 'c', running: false, at: '2026-11-10T00:00:00Z' }] }),
+  ];
+  const details = { a: { title: 'Caret work', prUrls: [PR9], at: '2026-11-12T09:00:00Z' }, b: { title: 'Loose terminal', summary: 'Reading logs', prUrls: [], at: '2026-11-12T08:00:00Z' } };
+  const cards = buildSessions({
+    prds,
+    live: [{ sessionId: 'a', name: 'dev-1' }, { sessionId: 'b', name: 'dev-2', updatedAt: Date.parse('2026-11-12T08:00:00Z') }],
+    detailsOf: id => details[id] ?? null,
+  });
+  assert.deepEqual(cards.map(card => [card.sessionId, card.title ?? null, card.tickets, card.prs.map(pr => pr.url)]), [
+    ['a', 'Caret work', ['PRD-1', 'PRD-2'], [PR7, PR8, PR9]],
+    ['b', 'Loose terminal', [], []],
+    ['c', null, ['PRD-2'], [PR7, PR8]],
+  ]);
+  assert.equal(cards[1].summary, 'Reading logs');
+  assert.ok(cards.every(card => !('main' in card) && !('weight' in card)));
 });

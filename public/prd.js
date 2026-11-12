@@ -3,17 +3,12 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.PRRadarPrd = api;
 })(this, () => {
-  const GROUPS = ['skill', 'status', 'project', 'label', 'none'];
+  const GROUPS = ['status', 'project', 'label', 'none'];
   const ORDERS = ['updated', 'opened', 'title'];
-  const ACTIVE = new Set(['running', 'waiting']);
 
-  // The skills a PRD's sessions are running now: one that ended has nothing left to show.
-  const runningSkills = prd => [...new Set(prd.sessions.filter(session => ACTIVE.has(session.state) && session.skill).map(session => session.skill))];
-
-  // The groups a PRD sits in. Several skills or several labels put it in each of theirs; none
-  // puts it in the group with no key, shown last.
+  // The groups a PRD sits in. Several labels put it in each of theirs; none puts it in the
+  // group with no key, shown last.
   function keysOf(prd, by) {
-    if (by === 'skill') return runningSkills(prd).map(skill => ({ key: skill, label: skill }));
     if (by === 'status') return prd.status ? [{ key: prd.status.name, label: prd.status.name, rank: prd.status.position ?? 0, color: prd.status.color }] : [];
     if (by === 'project') return prd.project ? [{ key: prd.project, label: prd.project }] : [];
     if (by === 'label') return prd.labels.map(label => ({ key: label.name, label: label.name, color: label.color }));
@@ -31,7 +26,7 @@
   // from one refresh to the next.
   const sortPrds = (prds, order) => [...prds].sort((a, b) => (COMPARE[order] ?? COMPARE.updated)(a, b) || a.ticket.localeCompare(b.ticket));
 
-  function group(prds, { by = 'skill', order = 'updated' } = {}) {
+  function group(prds, { by = 'status', order = 'updated' } = {}) {
     const groups = new Map();
     for (const prd of prds) {
       const keys = keysOf(prd, by);
@@ -47,7 +42,7 @@
 
   // The session you starred as a ticket's main one, while it is still among its sessions, alone
   // is main; otherwise the weighed guess stands. `first` is the one put first, the others keeping
-  // their order: the star as it stood at the last refresh, so a click never moves the lines.
+  // their order.
   function withMain(sessions, chosen, first) {
     const has = id => Boolean(id) && sessions.some(session => session.sessionId === id);
     const marked = has(chosen) ? sessions.map(session => ({ ...session, main: session.sessionId === chosen })) : sessions;
@@ -55,5 +50,5 @@
     return [...marked].sort((a, b) => (b.sessionId === first) - (a.sessionId === first));
   }
 
-  return { group, sortPrds, runningSkills, withMain, GROUPS, ORDERS };
+  return { group, sortPrds, withMain, GROUPS, ORDERS };
 });

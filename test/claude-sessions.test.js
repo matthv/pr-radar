@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, sessionsForTicket, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -71,6 +71,39 @@ test('a session is tied to the tickets it works on: a skill run on one, a worktr
   assert.deepEqual(['PRD-1', 'PRD-2', 'PRD-5', 'PRD-4'].map(ticket => sessionsForTicket(ticket)[0].weight), [3, 3, 2, 1]);
   assert.deepEqual(ticketsOf(NEWER), []);
   assert.equal(sessionsForTicket('PRD-1')[0].cwd, '/Users/me/dev');
+});
+
+test('a session says what it is about: its latest title, recap, typed prompt and branch, and its PRs', async () => {
+  const dir = await projectsDir();
+  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/dev', gitBranch: 'feat/caret', message: { role: 'user', content }, ...extra });
+  await writeSession(dir, OLDER, [
+    line({ type: 'ai-title', aiTitle: 'First title' }),
+    user('<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>', { timestamp: '2026-11-12T10:00:00Z', gitBranch: 'main' }),
+    line({ type: 'system', subtype: 'away_summary', content: 'Older recap', timestamp: '2026-11-12T10:30:00Z' }),
+    line({ type: 'ai-title', aiTitle: 'Better title' }),
+    user('fix   the\n  caret', { timestamp: '2026-11-12T11:00:00Z' }),
+    user([{ type: 'tool_result', content: 'tool output' }]),
+    user('<system-reminder>injected</system-reminder>'),
+    user('a meta line', { isMeta: true }),
+    line({ type: 'system', subtype: 'away_summary', content: 'You asked for the caret; it is done.', timestamp: '2026-11-12T11:30:00Z' }),
+    prLink(OLDER, PR),
+  ].join(''), 0);
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  const details = sessionDetails(OLDER);
+  assert.deepEqual({ ...details, at: undefined }, {
+    title: 'Better title',
+    summary: 'You asked for the caret; it is done.',
+    summaryAt: '2026-11-12T11:30:00Z',
+    prompt: 'fix the caret',
+    promptAt: '2026-11-12T11:00:00Z',
+    branch: 'feat/caret',
+    cwd: '/Users/me/dev',
+    prUrls: [PR],
+    at: undefined,
+  });
+  assert.equal(sessionDetails(NEWER), null);
 });
 
 test('a session past the age limit, without a cwd, or not named by a session id is never offered', async () => {
