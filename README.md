@@ -1417,7 +1417,9 @@ newer, its folder and branch. Below sit its session row, then the PRDs it works 
 and the PRs it made or opened itself, each folded behind a caret and hidden as above. The most
 likely to be the session's work come first, outlined, ahead of an *also linked* line with the rest
 dimmed: the PRs on the branch the session is on, or else the PRDs it weighs most on (a branch
-naming the ticket adds to it), their PRs and the latest PR it opened. It needs
+naming the ticket adds to it), their PRs and the latest PR it opened. A wrong guess is yours to
+fix: each item's star, filled on the primary ones, moves it across, per session, in this browser.
+It needs
 `PR_RADAR_CLAUDE_SESSIONS`, but no Linear key: without one the cards carry only their own PRs.
 
 ## Reading the colours
