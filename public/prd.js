@@ -124,10 +124,11 @@
   }
 
   // Whether a session started needing you since the last call, which chimes: a skill's new question
-  // or a prompt Claude Code blocks on, at once; your turn only once Claude stopped working and stayed
-  // idle TURN_SETTLE_MS, so a pause between a skill's steps stays quiet. Typing into an idle session,
-  // or a session seen for the first time, never chimes. `last` keeps what each was between calls.
-  const TURN_SETTLE_MS = 5000;
+  // or a prompt Claude Code blocks on, at once; your turn once Claude stopped working and stayed
+  // idle TURN_SETTLE_MS, counted from when it stopped (its `since`) rather than from when a poll
+  // first saw it, so a pause between a skill's steps stays quiet. Typing into an idle session, or a
+  // session seen for the first time, never chimes. `last` keeps what each was between calls.
+  const TURN_SETTLE_MS = 1000;
   function startedWaiting(last, sessions, now = Date.now()) {
     let ring = false;
     for (const session of sessions) {
@@ -137,7 +138,7 @@
       let doneAt = null;
       if (before && why && why !== 'turn' && before.why !== why) ring = true;
       if (before && why === 'turn') {
-        doneAt = before.status === 'busy' ? now : before.why === 'turn' ? before.doneAt : null;
+        doneAt = before.status === 'busy' ? time(session.since) || now : before.why === 'turn' ? before.doneAt : null;
         if (doneAt !== null && now - doneAt >= TURN_SETTLE_MS) {
           ring = true;
           doneAt = null;

@@ -270,15 +270,18 @@ test('the chime rings only when a session needs you', () => {
   assert.equal(startedWaiting(last, [asks], now), false);
   assert.equal(startedWaiting(last, [busy], now), false);
   assert.equal(startedWaiting(last, [{ ...busy, status: 'waiting', waitingFor: 'permission prompt' }], now), true);
-  // Your turn rings once Claude stopped working and stayed idle a few seconds.
+  // Your turn rings once Claude stopped working and stayed idle a second, counted from when it stopped.
   assert.equal(startedWaiting(last, [busy], now), false);
-  assert.equal(startedWaiting(last, [idle(now)], now), false);
-  assert.equal(startedWaiting(last, [idle(now)], now + 5000), true);
-  assert.equal(startedWaiting(last, [idle(now)], now + 10000), false);
-  // A pause between a skill's steps, idle then busy again within those seconds: quiet.
+  assert.equal(startedWaiting(last, [idle(now)], now + 500), false);
+  assert.equal(startedWaiting(last, [idle(now)], now + 1000), true);
+  assert.equal(startedWaiting(last, [idle(now)], now + 2000), false);
+  // A poll that first sees the turn over after the second has passed rings at once.
+  assert.equal(startedWaiting(last, [busy], now + 3000), false);
+  assert.equal(startedWaiting(last, [idle(now + 3000)], now + 4500), true);
+  // A pause between a skill's steps, idle then busy again within the second: quiet.
   assert.equal(startedWaiting(last, [busy], now + 11000), false);
   assert.equal(startedWaiting(last, [idle(now + 12000)], now + 12000), false);
-  assert.equal(startedWaiting(last, [busy], now + 14000), false);
+  assert.equal(startedWaiting(last, [busy], now + 12800), false);
   // Typing into a long-idle session refreshes its idle time: your turn again, but quiet.
   const quiet = new Map();
   const later = now + YOUR_TURN_MS * 2;
