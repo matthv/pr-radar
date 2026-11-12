@@ -1412,9 +1412,10 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
 
 The fifth view turns the PRDs view inside out: a card per Claude Code session, every running one
 and the closed ones a PRD keeps, grouped by state (waiting on you, working, open, closed), each
-group a counter in the band that filters to it. A card gives what the session's transcript says it
-is about: Claude Code's title for it, its latest recap, or the last prompt you typed when that is
-newer, its folder and branch. Below sit its session row, then the PRDs it works on and their PRs,
+group a counter in the band that filters to it. A card is the session: its Claude button, Claude
+Code's title for it, its state and skill pills; its name, folder, branch and last activity; the
+question it waits on; its latest recap, or the last prompt you typed when that is newer. Below sit
+the PRDs it works on and their PRs,
 and the PRs it made or opened itself, each folded behind a caret. Only the likeliest to be the
 session's work stay in the list: the PRs on the branch it is on, or else the PRDs it weighs most
 on (a branch naming the ticket adds to it), their PRs and the latest PR it opened. The rest start

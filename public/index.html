@@ -749,6 +749,11 @@
   }
   .session-about-when { margin-right: 6px; font-size: 11px; font-weight: 600; color: var(--text-faint); }
   .session-prd .card-top { gap: 8px; }
+  .session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .session-meta .prd-session-name { color: var(--text-soft); }
+  .session-meta .prd-meta { margin-top: 0; }
+  .session-question { margin-top: 6px; font-size: 12.5px; }
+  .session-card .prd-top .claude-link { flex: none; }
   .session-prd .title { font-weight: 600; }
   .prd-pick { display: flex; align-items: center; gap: 6px; cursor: default; }
   .prd-pick select { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
@@ -4694,7 +4699,8 @@ const prdMains = (() => {
   }
 })();
 
-function prdSessionRow(session, ticket) {
+// A session's pieces, for its row under a PRD and for its own card in the Sessions view.
+function prdSessionParts(session) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4711,16 +4717,27 @@ function prdSessionRow(session, ticket) {
   const open = opens
     ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${id}" title="${escapeHtml(action)}">${CLAUDE_ICON}</button>`
     : '';
-  const main = !ticket ? '' : `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
+  return {
+    status,
+    open,
+    name: opens
+      ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
+      : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`,
+    pills: `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`,
+    // The card says nothing of a skill it does not run.
+    cardPills: `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${session.skill ? skill : ''}`,
+    question: session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : '',
+    at: session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : '',
+  };
+}
+
+function prdSessionRow(session, ticket) {
+  const id = escapeHtml(session.sessionId);
+  const { status, open, name, pills, question, at } = prdSessionParts(session);
+  const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
     + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
     + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
-  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${open}`
-    + (opens
-      ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
-      : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`) + `${main}`
-    + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
-    + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
-    + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
+  return `<div class="prd-session ${status}">${open}${name}${main}${pills}${question}${at}</div>`;
 }
 
 // The sessions share one box, folded like a PR card behind a caret: folded, it shows the main
@@ -4941,11 +4958,12 @@ function sessionCard(session) {
   });
   const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
   const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
-  return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">`
-    + `<span class="prd-title">${escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8))}</span></div>`
-    + (meta ? `<div class="prd-meta">${escapeHtml(meta)}</div>` : '')
+  const parts = prdSessionParts(session);
+  return `<div class="prd session-card" style="--tone: ${SESSION_TONES[status]}"><div class="prd-top">${parts.open}`
+    + `<span class="prd-title">${escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8))}</span>${parts.cardPills}</div>`
+    + `<div class="prd-meta session-meta">${parts.name}${meta ? `<span>${escapeHtml(meta)}</span>` : ''}${parts.at}</div>`
+    + (parts.question ? `<div class="session-question">${parts.question}</div>` : '')
     + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
-    + `<div class="prd-sessions">${prdSessionRow(session)}</div>`
     + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`)
     + '</div>';
 }
@@ -5040,7 +5058,7 @@ el('prd').addEventListener('click', event => {
     return;
   }
   const open = event.target.closest('[data-prd-open]');
-  const link = open?.closest('.prd-session')?.querySelector('.claude-link');
+  const link = open?.closest('.prd-session, .session-card')?.querySelector('.claude-link');
   if (link) resumeClaudeSession(link);
 });
 
