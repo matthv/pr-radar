@@ -1370,8 +1370,9 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   the like), plus any ticket a local Claude session reported a stage on in the last day; one
   assigned to someone else is marked *not yours*. Linear is read on the board's refresh cadence.
 - **Its PRs** are the GitHub PRs Linear has attached to the ticket and the board's PRs naming
-  it. Clicking one shows its card on the board, lit for a moment; a PR not on the board, merged
-  long ago or someone else's, opens on GitHub.
+  it. Each is a folded line: a click unfolds the board's own card for that PR in place, pills,
+  threads and buttons included, and folds it again. A PR not on the board, merged long ago or
+  someone else's, unfolds to its GitHub link.
 - **Its sessions** are the ones that declare work on the ticket, never ones that only mention
   it: stage lines naming the ticket or one of its PRs; a skill run on it, typed
   (`/implement PRD-1`) or invoked by Claude with the key in its arguments; a folder named for it

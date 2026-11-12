@@ -797,7 +797,12 @@
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
   .prd-question { color: var(--amber); }
-  .card.spotlit { outline: 2px solid var(--indigo); outline-offset: 2px; }
+  .prd-pr-item { display: contents; }
+  .prd-pr-item.open { display: block; flex-basis: 100%; }
+  .prd-pr-item.open > .prd-pr { margin-bottom: 6px; }
+  .prd-chev { margin-right: 4px; color: var(--text-faint); }
+  .prd-pr-card .card { margin-bottom: 0; }
+  .prd-pr-away { font-size: 12px; color: var(--text-soft); padding: 4px 2px; }
 
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
@@ -2003,8 +2008,10 @@ const I18N = {
     prdUpdated: 'mis à jour il y a {v}',
     prdNotAssigned: 'pas à toi : une session Claude y travaille',
     prdNoPrs: 'Aucune PR liée.',
-    prdPrBoard: 'voir cette PR sur le tableau',
-    prdPrGithub: 'pas sur le tableau : ouvrir sur GitHub',
+    prdPrUnfold: 'déplier la carte de cette PR',
+    prdPrFold: 'replier la carte de cette PR',
+    prdPrAway: 'Cette PR n’est pas sur le tableau (fusionnée il y a longtemps, ou celle de quelqu’un d’autre) :',
+    prdPrOnGithub: 'l’ouvrir sur GitHub',
     prdRunning: 'en cours',
     prdWaiting: 'attend ta réponse',
     prdInterrupted: 'interrompu',
@@ -2368,8 +2375,10 @@ const I18N = {
     prdUpdated: 'updated {v} ago',
     prdNotAssigned: 'not yours: a Claude session works on it',
     prdNoPrs: 'No linked PR.',
-    prdPrBoard: 'show this PR on the board',
-    prdPrGithub: 'not on the board: open on GitHub',
+    prdPrUnfold: 'unfold this PR’s card',
+    prdPrFold: 'fold this PR’s card',
+    prdPrAway: 'This PR is not on the board (merged long ago, or someone else’s):',
+    prdPrOnGithub: 'open it on GitHub',
     prdRunning: 'running',
     prdWaiting: 'waiting on you',
     prdInterrupted: 'interrupted',
@@ -4594,15 +4603,30 @@ function prdSessionRow(session) {
     + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
 }
 
+// A PR line is the board's card for that PR, folded: a click unfolds the same card, with the same
+// pills, threads and buttons, in place. Folded by default, kept unfolded across refreshes. A PR the
+// board does not hold, merged long ago or someone else's, unfolds to its GitHub link.
+const prdOpenPrs = new Set();
+function prdPrItem(pr) {
+  const open = prdOpenPrs.has(pr.url);
+  const chip = `<button type="button" class="prd-pr${pr.state === 'merged' || pr.state === 'draft' ? ` ${pr.state}` : ''}${pr.needsAction ? ' action' : ''}"`
+    + ` data-prd-pr="${escapeHtml(pr.url)}" aria-expanded="${open}" title="${escapeHtml(t(open ? 'prdPrFold' : 'prdPrUnfold'))}">`
+    + `<span class="prd-chev">${open ? '▾' : '▸'}</span><span class="prd-ref">${escapeHtml(`${repoName(pr.repo ?? '')}#${pr.number ?? ''}`)}</span>${escapeHtml(pr.title ?? '')}</button>`;
+  if (!open) return `<div class="prd-pr-item">${chip}</div>`;
+  const card = pr.boardId ? prById(pr.boardId) : null;
+  const body = card
+    ? (card.side === 'mine' ? mineCard(card) : reviewCard(card))
+    : `<div class="prd-pr-away">${escapeHtml(t('prdPrAway'))} <a href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(t('prdPrOnGithub'))}</a></div>`;
+  return `<div class="prd-pr-item open">${chip}<div class="prd-pr-card">${body}</div></div>`;
+}
+
 function prdCard(prd) {
   const status = prd.status
     ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
     : '';
   const meta = [prd.project, t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
     .filter(Boolean).join(' · ');
-  const prs = prd.prs.map(pr => `<button type="button" class="prd-pr${pr.state === 'merged' || pr.state === 'draft' ? ` ${pr.state}` : ''}${pr.needsAction ? ' action' : ''}"`
-    + ` data-prd-pr="${escapeHtml(pr.url)}" title="${escapeHtml(t(pr.boardId ? 'prdPrBoard' : 'prdPrGithub'))}">`
-    + `<span class="prd-ref">${escapeHtml(`${repoName(pr.repo ?? '')}#${pr.number ?? ''}`)}</span>${escapeHtml(pr.title ?? '')}</button>`).join('');
+  const prs = prd.prs.map(prdPrItem).join('');
   const waiting = prd.sessions.some(session => session.running && session.state === 'waiting');
   return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
     + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
@@ -4655,18 +4679,6 @@ function renderPrd() {
   }).join('');
 }
 
-// A PR on the board is shown there, lit up for a moment; any other one opens on GitHub.
-function showPrOnBoard(url) {
-  const card = document.querySelector(`main .card[data-pr-url="${CSS.escape(url)}"]`);
-  if (!card) {
-    window.open(url, '_blank', 'noopener');
-    return;
-  }
-  applyView('board');
-  card.scrollIntoView({ block: 'center', behavior: calm.matches ? 'auto' : 'smooth' });
-  card.classList.add('spotlit');
-  setTimeout(() => card.classList.remove('spotlit'), 2400);
-}
 
 el('prd').addEventListener('change', event => {
   if (event.target.matches('[data-prd-group]')) store.set('prdGroup', (prdGroup = event.target.value));
@@ -4676,7 +4688,12 @@ el('prd').addEventListener('change', event => {
 });
 el('prd').addEventListener('click', event => {
   const pr = event.target.closest('[data-prd-pr]');
-  if (pr) showPrOnBoard(pr.dataset.prdPr);
+  if (pr) {
+    const { prdPr: url } = pr.dataset;
+    if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
+    renderPrd();
+    return;
+  }
   const open = event.target.closest('[data-prd-open]');
   const link = open?.closest('.prd-session')?.querySelector('.claude-link');
   if (link) resumeClaudeSession(link);
