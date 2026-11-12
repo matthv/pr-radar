@@ -4668,7 +4668,7 @@ function prdSessionRows(prd) {
   const open = prdOpenSessions.has(prd.ticket);
   const caret = folded.length
     ? `<button type="button" class="prd-caret" data-prd-sessions="${escapeHtml(prd.ticket)}" aria-expanded="${open}"`
-      + ` title="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}"></button>`
+      + ` aria-label="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}"></button>`
     : '';
   return `<div class="prd-sessions${folded.length && !open ? ' folded' : ''}${caret ? ' has-caret' : ''}">${caret}`
     + `${sessions.filter(session => open || !folded.includes(session)).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
