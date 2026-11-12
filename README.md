@@ -1381,7 +1381,8 @@ each with its PRs and the Claude Code sessions on it. It reads Linear with
   and a running session that opened one of its PRs. Every running session shows, and the two
   heaviest closed ones. Sessions are ordered by how much of the ticket's work they show (stage
   lines most, then a skill run on it, a commit on its branch or one of its PRs, then its folder),
-  and the first is starred *main* when it outweighs the next. Its state is a pill: green open,
+  and the first is starred *main* when it outweighs the next. Click another session's star to
+  make it the main one instead; the choice is kept per ticket, in this browser. Its state is a pill: green open,
   indigo working, amber waiting on you, grey closed; so is its skill. Both are buttons that open
   the session, like its Claude button. A row gives the session's name, the skill it runs
   and the stage that skill is on, the question it waits on, and whether the session is open.

@@ -793,7 +793,13 @@
   .prd-session.closed .prd-session-name { color: var(--text-soft); }
   /* The session most likely doing the ticket's work: first, a wider rail, a star. */
   .prd-session.main { border-left-width: 5px; padding-left: 9px; box-shadow: var(--shadow-sm); }
-  .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); }
+  .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); margin-left: -4px; }
+  .prd-star {
+    font: inherit; font-size: 15px; line-height: 1; padding: 0 1px; cursor: pointer;
+    background: none; border: 0; color: var(--text-faint); transition: color .15s, transform .15s;
+  }
+  .prd-star:hover, .prd-star:focus-visible { color: var(--amber); transform: scale(1.15); }
+  .prd-star.on { color: var(--amber); }
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
@@ -2021,6 +2027,7 @@ const I18N = {
     prdSessionOpen: 'ouverte',
     prdSessionBusy: 'au travail',
     prdMain: 'principale',
+    prdMakeMain: 'en faire la session principale de ce ticket',
     prdMainTitle: 'la session qui a fait le plus de travail sur ce ticket : skills lancés, commits, temps dans son dossier',
     prdSessionClosed: 'fermée',
     prdFocusTitle: 'afficher cette session Claude',
@@ -2388,6 +2395,7 @@ const I18N = {
     prdSessionOpen: 'open',
     prdSessionBusy: 'working',
     prdMain: 'main',
+    prdMakeMain: 'make this the ticket’s main session',
     prdMainTitle: 'the session that did most of this ticket’s work: skills run on it, commits, time in its folder',
     prdSessionClosed: 'closed',
     prdFocusTitle: 'bring this Claude session forward',
@@ -4585,7 +4593,16 @@ function prdSkillPill(session) {
   return [session.state === 'done' ? 'good' : '', t(`prdState_${session.state}`) + (session.outcome ? ` · ${session.outcome}` : '')];
 }
 
-function prdSessionRow(session) {
+// The session starred as main, per ticket, kept in this browser.
+const prdMains = (() => {
+  try {
+    return JSON.parse(store.get('prdMain', '{}')) ?? {};
+  } catch {
+    return {};
+  }
+})();
+
+function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
   const name = session.name ?? session.sessionId.slice(0, 8);
   const opens = prdData.claudeSessions && session.resumable;
@@ -4602,9 +4619,11 @@ function prdSessionRow(session) {
   const open = opens
     ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${id}" title="${escapeHtml(action)}">${CLAUDE_ICON}</button>`
     : '';
-  const main = session.main ? `<span class="prd-main" title="${escapeHtml(t('prdMainTitle'))}">★ ${escapeHtml(t('prdMain'))}</span>` : '';
-  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${open}`
-    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>${main}`
+  const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
+    + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
+    + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
+  return `<div class="prd-session ${status}${session.main ? ' main' : ''}">${main}${open}`
+    + `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`
     + `${pillButton(statusKind, escapeHtml(t(statusKey)), t(statusKey))}${skill}`
     + `${session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : ''}`
     + `${session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : ''}</div>`;
@@ -4640,7 +4659,7 @@ function prdCard(prd) {
     + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
     + `<div class="prd-meta">${escapeHtml(meta)}</div>`
     + (prs ? `<div class="prd-prs">${prs}</div>` : `<div class="prd-meta">${escapeHtml(t('prdNoPrs'))}</div>`)
-    + `${prd.sessions.map(prdSessionRow).join('')}</div>`;
+    + `${PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket]).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
 }
 
 // Linear's own colour when the group has one; otherwise one of the theme's, the same for a
@@ -4698,6 +4717,13 @@ el('prd').addEventListener('click', event => {
   if (pr) {
     const { prdPr: url } = pr.dataset;
     if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
+    renderPrd();
+    return;
+  }
+  const star = event.target.closest('[data-prd-main]');
+  if (star) {
+    prdMains[star.dataset.prdTicket] = star.dataset.prdMain;
+    store.set('prdMain', JSON.stringify(prdMains));
     renderPrd();
     return;
   }
