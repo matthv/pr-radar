@@ -116,6 +116,7 @@ const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
 // the update touched no file the asset version is made of.
 const BOOT_ID = randomUUID().slice(0, 8);
+const openTabs = new Set();
 
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
@@ -758,7 +759,15 @@ const server = http.createServer(async (req, res) => {
     return json(res, status, error ? { error } : { ok: true });
   }
 
-  if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID });
+  if (url.pathname === '/api/tabs') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+    res.write('retry: 1000\n\n');
+    openTabs.add(res);
+    res.once('close', () => openTabs.delete(res));
+    return;
+  }
+
+  if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID, tabs: openTabs.size });
 
   if (url.pathname === '/api/hub' && req.method === 'POST') {
     const refused = claudeSessions.refusal({

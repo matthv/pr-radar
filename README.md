@@ -55,7 +55,7 @@ replying, resolving or asking for your review again leaves the PR in *Waiting* u
 
 ```bash
 cd pr-radar
-./pr-radar          # starts the server and opens the browser
+./pr-radar          # starts the server and opens the browser, unless a PR Radar tab is already open
 # or: node server.js
 ```
 

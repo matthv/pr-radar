@@ -5693,6 +5693,7 @@ function scheduleHubBeat() {
 }
 scheduleHubBeat();
 hubBeat();
+new EventSource('/api/tabs');
 
 applyLang(lang);
 renderSkeleton();

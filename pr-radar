@@ -5,6 +5,10 @@ cd "$(dirname "$0")"
 PORT="${PORT:-4321}"
 # /api/boot answers at once and only a PR Radar answers it, unlike / on a port taken by another app.
 radar_up() { curl -sf "http://localhost:$PORT/api/boot" 2>/dev/null | grep -q '"boot"'; }
+tab_open() { curl -sf "http://localhost:$PORT/api/boot" 2>/dev/null | grep -q '"tabs":[1-9]'; }
+# A tab left open reconnects to a fresh server within a second or two: give it the time
+# before opening another.
+TAB_WAIT=0
 if radar_up; then
   echo "PR Radar tourne déjà sur le port $PORT."
 else
@@ -14,6 +18,15 @@ else
     kill -0 "$SERVER" 2>/dev/null || exit 1
     sleep 0.3
   done
+  TAB_WAIT=10
 fi
-open "http://localhost:$PORT/"
+until tab_open || [ "$TAB_WAIT" -le 0 ]; do
+  sleep 0.5
+  TAB_WAIT=$((TAB_WAIT - 1))
+done
+if tab_open; then
+  echo "Un onglet PR Radar est déjà ouvert."
+else
+  open "http://localhost:$PORT/"
+fi
 wait
