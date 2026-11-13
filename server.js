@@ -620,21 +620,6 @@ async function demoHubAction(body) {
 const themeFailure = (res, status, error) =>
   json(res, status, { error: error.message, reason: error.reason, params: error.params });
 
-// gh hands back GitHub's error body on stdout and runGh returns it as if it had worked: only the
-// label list GitHub answers a successful add with counts.
-async function addLabel(pr, label) {
-  const out = await watch.runGh(['api', '-X', 'POST', `repos/${pr.repo}/issues/${pr.number}/labels`, '-f', `labels[]=${label}`]);
-  let answer;
-  try {
-    answer = JSON.parse(out);
-  } catch {
-    throw new Error(`GitHub answered something other than JSON: ${out.trim().slice(0, 80)}`);
-  }
-  if (!Array.isArray(answer) || !answer.some(added => added?.name === label)) {
-    throw new Error(answer?.message ?? 'GitHub did not add the label');
-  }
-}
-
 async function serveStatic(res, urlPath) {
   const relative = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   const target = path.join(PUBLIC_DIR, relative);
@@ -842,34 +827,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // A plugin's label button. Only a label a plugin offers on that PR, as the board last showed it,
-  // and only ever added: taking one off and putting it back would start its workflow again.
   if (url.pathname === '/api/label' && req.method === 'POST') {
-    const refused = claudeSessions.refusal({
-      contentType: req.headers['content-type'], remoteAddress: req.socket.remoteAddress, host: req.headers.host,
-    });
-    if (refused) return json(res, 403, { error: refused });
-    if (DEMO) return json(res, 200, { ok: true });
-    let body;
-    try {
-      body = await readJsonBody(req);
-    } catch (error) {
-      return json(res, 400, { error: error.message });
-    }
-    const pr = cache.payload && [...cache.payload.mine, ...cache.payload.reviews].find(candidate => candidate.id === body.id);
-    if (!pr?.plugins?.labels.some(label => label.name === body.label)) {
-      return json(res, 409, { error: 'no plugin offers this label on this PR any more' });
-    }
-    try {
-      await addLabel(pr, body.label);
-    } catch (error) {
-      logger.fail('plugins', `${body.label} on ${pr.repo}#${pr.number}: ${error.message}`);
-      return json(res, 502, { error: error.message });
-    }
-    logger.info('plugins', `${body.label} added to ${pr.repo}#${pr.number}`);
-    // Answered once the card shows the label, so the button the page drew disappears with it.
-    await patchOrForget(new Set([pr.id])).catch(error => logger.fail('plugins', `reload after the label: ${error.message}`));
-    return json(res, 200, { ok: true });
+    const [status, error] = await plugins.labelRoute(
+      { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
+      { refusal: claudeSessions.refusal, demo: DEMO, board: cache.payload, runGh: watch.runGh, reload: id => patchOrForget(new Set([id])), logger },
+    );
+    return json(res, status, error ? { error } : { ok: true });
   }
 
   if (url.pathname === '/api/digest' && req.method === 'POST') {

@@ -1012,7 +1012,8 @@ function decorateReview(pr, me, reviewOwedByMe) {
   // has the turn, until my first review or remark after the claim; then the rules above take over.
   // A bot's turn is a group of its own: "waiting on the author" would name the wrong party.
   const claim = pr.plugins?.review;
-  const since = claim?.claimedBy === me ? Date.parse(claim.since) : NaN;
+  // Logins compare whatever their case, as GitHub's do.
+  const since = claim?.claimedBy.toLowerCase() === me.toLowerCase() ? Date.parse(claim.since) : NaN;
   const reviewedSince = [...myReviews.map(r => r.submittedAt), ...myThreads.map(t => t.myLastAt)]
     .some(at => at && Date.parse(at) >= since);
   if (!pr.merged && !Number.isNaN(since) && !reviewedSince) {

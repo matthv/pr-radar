@@ -251,7 +251,8 @@ function reviewPrs() {
       author: 'christophebrun-forest', createdMin: 3 * 24 * 60, commitMin: 30,
       reviews: [[ME, 'CHANGES_REQUESTED', 20 * 60]],
       threads: [{ path: 'src/services/inbox/automation-check.ts', line: 42, resolved: true, messages: [[ME, 20 * 60, 'The check must also run when the workflow is edited, not only when the inbox is saved.'], ['christophebrun-forest', 40, 'Done, the workflow update route runs it too.']] }],
-    }), false],
+    // A plugin's label button: the demo answers the click and adds nothing.
+    }), false, false, { pills: [], labels: [{ name: 'validate', text: 'validate', title: 'add the validate label: starts the validator' }], review: null }],
     [node({
       repo: 'ForestAdmin/agent-ruby', number: 404,
       title: 'feat(search): extended search on related string fields',

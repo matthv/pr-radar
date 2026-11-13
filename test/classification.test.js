@@ -1577,6 +1577,18 @@ test('board: a claimed review is held by whoever the plugin says has the turn, u
   assert.equal(card(turn('bot'), reviewed(ago(0.5))).bucket, 'idle');
   assert.equal(card(turn('bot'), reviewed(ago(2))).bucket, 'bot');
 
+  // A remark of mine in a thread releases it like a review does.
+  const remarked = at => ({ reviewThreads: { nodes: [thread({ comments: [[ME, at]] })] } });
+  assert.equal(card(turn('bot'), remarked(ago(0.5))).bucket, 'waiting', 'my remark now waits on the author');
+  assert.equal(card(turn('bot'), remarked(ago(2))).bucket, 'bot');
+
+  // My login in another case is still me; a merged PR is history, and a claim from the future is none.
+  assert.equal(card(turn('bot', null, ME.toUpperCase())).bucket, 'bot');
+  const merged = shapeBoard(new Map([[id, node({ id, merged: true, mergedAt: ago(0.1), state: 'MERGED' })]]), { ...context, mergedReviewedIds: new Set([id]) }, [], turn('me')).reviews[0];
+  assert.deepEqual([merged.bucket, merged.needsAction], ['merged', false]);
+  const future = [{ name: 'p', decorate: () => ({ review: { claimedBy: ME, since: '12345', turn: 'bot' } }) }];
+  assert.equal(card(future).bucket, 'idle');
+
   // A plugin that throws leaves the card to the usual rules and says so once.
   const broken = [{ name: 'broken', decorate: () => { throw new Error('boom'); } }];
   const board = shapeBoard(new Map([[id, node({ id })]]), { ...context, warnings: [] }, [{ source: 'plugin', message: 'old' }], broken);

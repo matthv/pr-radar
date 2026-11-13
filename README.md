@@ -700,7 +700,8 @@ A team can add to the cards without a change to this repo: a plugin is a CommonJ
 anywhere on disk, listed in `PR_RADAR_PLUGINS` (comma-separated paths, `~` for your home folder).
 The radar loads them at start and refuses to start on one it cannot load.
 
-A plugin exports a name and one function:
+A plugin exports any of three hooks, `decorate` here, `focus` and `open` [below](#bringing-a-session-forward-from-an-app-the-radar-does-not-know), and
+an optional `name`, its file name when left out:
 
 ```js
 module.exports = {
@@ -729,13 +730,26 @@ module.exports = {
 - **It runs on every board the server builds**, a full search or a few PRs reloaded, before the
   board sorts the cards, so it reads what is already loaded and asks GitHub nothing itself. It reads its own settings from the
   environment, `.env` included.
+- **`decorate` must be synchronous.** The board is sorted as soon as it returns, so one that
+  returns a promise, an `async` function included, counts as a failure on that PR.
+- **`node` holds the last of each list, not all of it**: the last 30 comments, the last 10 labels
+  and the last 10 label-added events.
 - **A plugin that throws loses its pills on that PR, never the board.** The banner names it and
   the first PR it failed on.
 - **A label button only ever adds the label.** The server adds only a label a plugin offers on
   that PR, as the board last showed it, and never takes one off: removing it and putting it back
-  would start the workflow it triggers again. The plugin hides the button once the label is on.
-  The card reloads once GitHub has the label.
-- **A claim holds the card on someone else's PR until your first review after it.** When the
+  would start the workflow it triggers again. The card reloads once GitHub has the label, and it
+  is up to the plugin to stop offering a label the PR already carries: the radar does not hide
+  the button for it.
+- **A click on a label button writes to GitHub at once, with no confirmation.**
+  - It is added as you: your `gh` token, your name on the PR's timeline.
+  - GitHub creates a label the repo does not have, so a typo in a plugin's `name` adds a new
+    label to the repo.
+  - The radar cannot take it off again: that is done on GitHub.
+  - It may start whatever the repo runs on that label, a CI or a deploy workflow included.
+- **A claim holds the card on someone else's PR until your first review after it.** It applies
+  only to an open PR already on your reviews side, never to a merged one or one of your own, and
+  one dated in the future is ignored. When the
   claim is yours (`claimedBy` is you), the plugin's turn picks the group: yours is **On my plate**
   with `why` as its pill, the author's is **Waiting on the author**, a bot's is **Waiting on a
   bot**, a group of its own, after the author's. Once you review or comment after `since`, the
@@ -764,12 +778,15 @@ module.exports = {
 };
 ```
 
-The first `true` wins. A plugin that throws is passed over, and its message joins the error the
-click shows when none could. It runs only for a session already running.
+The first `true` wins. A plugin that throws, or has not answered after 5 seconds, is passed over,
+and its message joins the error the click shows when none could. It runs only for a session
+already running.
 
 **A session that is not running** is offered to `open(session)` the same way, with
 `{ sessionId, cwd }`, before the radar opens it in `PR_RADAR_TERMINAL`. A plugin opening it in the
-app its user runs Claude in answers true; one that declines or throws leaves it to the terminal.
+app its user runs Claude in answers true; one that declines or throws leaves it to the terminal,
+and a throw is written to the server's log. One that has not answered after 5 seconds may still
+be opening the session, so the click reports it and nothing else opens a second copy.
 
 ## The Slack announcement link
 
