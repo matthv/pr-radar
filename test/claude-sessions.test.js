@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume, liveSessions } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -40,6 +40,72 @@ test('a PR worked on in two sessions resumes the most recently active one, from 
 
   assert.deepEqual(sessionFor(PR), { sessionId: NEWER, cwd: '/Users/me/Projects/agent-nodejs' });
   assert.equal(sessionFor('https://github.com/ForestAdmin/agent-nodejs/pull/1'), null);
+});
+
+test('a session is tied to the tickets it works on: a skill run on one, a worktree, a commit on its branch', async () => {
+  const dir = await projectsDir();
+  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/dev', message: { role: 'user', content }, ...extra });
+  const tool = (name, input, extra = {}) => line({ type: 'assistant', cwd: '/Users/me/dev', message: { role: 'assistant', content: [{ type: 'tool_use', name, input }] }, ...extra });
+  await writeSession(dir, OLDER, [
+    user('<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>'),
+    tool('Skill', { skill: 'forest:review-loop', args: 'https://linear.app/x/issue/PRD-2' }),
+    line({ type: 'user', cwd: '/Users/me/dev/claudine-prd-4-gating', message: { role: 'user', content: 'go' } }),
+    user('back up a level'),
+    line({ type: 'user', cwd: '/Users/me/dev/claudine-prd-4-gating', message: { role: 'user', content: 'and back in' } }),
+    tool('Bash', { command: 'git commit -m "feat: x"' }, { gitBranch: 'feature/prd-5-thing' }),
+  ].join(''), 1);
+  await writeSession(dir, NEWER, [
+    user('like we did on PRD-6, compare with PRD-7', { gitBranch: 'fix/prd-8-old-checkout' }),
+    user([{ type: 'tool_result', content: '<command-args>PRD-9</command-args>' }]),
+    user('<command-args>PRD-10</command-args>', { isMeta: true }),
+    tool('Bash', { command: 'git commit -m "Refs: PRD-11"' }, { gitBranch: 'main' }),
+    tool('mcp__linear__save_issue', { id: 'PRD-12' }),
+  ].join(''), 0);
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  const ticketsOf = id => ['PRD-1', 'PRD-2', 'PRD-3', 'PRD-4', 'PRD-5', 'PRD-6', 'PRD-7', 'PRD-8', 'PRD-9', 'PRD-10', 'PRD-11', 'PRD-12', 'PRD-292']
+    .filter(ticket => sessionsForTicket(ticket).some(session => session.sessionId === id));
+  assert.deepEqual(ticketsOf(OLDER), ['PRD-1', 'PRD-2', 'PRD-4', 'PRD-5']);
+  // A skill run weighs most, then a commit on the ticket's branch, then a move into its folder.
+  assert.deepEqual(['PRD-1', 'PRD-2', 'PRD-5', 'PRD-4'].map(ticket => sessionsForTicket(ticket)[0].weight), [3, 3, 2, 1]);
+  assert.deepEqual(ticketsOf(NEWER), []);
+  assert.equal(sessionsForTicket('PRD-1')[0].cwd, '/Users/me/dev');
+});
+
+test('a session says what it is about: its latest title, recap, typed prompt, folder and branch, and its PRs', async () => {
+  const dir = await projectsDir();
+  const user = (content, extra = {}) => line({ type: 'user', cwd: '/Users/me/dev', gitBranch: 'feat/caret', message: { role: 'user', content }, ...extra });
+  await writeSession(dir, OLDER, [
+    line({ type: 'ai-title', aiTitle: 'First title' }),
+    user('<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>', { timestamp: '2026-11-12T10:00:00Z', gitBranch: 'main' }),
+    line({ type: 'system', subtype: 'away_summary', content: 'Older recap', timestamp: '2026-11-12T10:30:00Z' }),
+    line({ type: 'ai-title', aiTitle: 'Better title' }),
+    user('fix   the\n  caret', { timestamp: '2026-11-12T11:00:00Z' }),
+    user([{ type: 'tool_result', content: 'tool output' }]),
+    user('<system-reminder>injected</system-reminder>'),
+    user('a meta line', { isMeta: true }),
+    line({ type: 'system', subtype: 'away_summary', content: 'You asked for the caret; it is done.', timestamp: '2026-11-12T11:30:00Z' }),
+    line({ type: 'assistant', cwd: '/Users/me/dev/claudine-prd-1', message: { role: 'assistant', content: [] } }),
+    prLink(OLDER, PR),
+  ].join(''), 0);
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  const details = sessionDetails(OLDER);
+  assert.deepEqual({ ...details, at: undefined }, {
+    title: 'Better title',
+    summary: 'You asked for the caret; it is done.',
+    summaryAt: '2026-11-12T11:30:00Z',
+    prompt: 'fix the caret',
+    promptAt: '2026-11-12T11:00:00Z',
+    branch: 'feat/caret',
+    cwd: '/Users/me/dev',
+    folder: '/Users/me/dev/claudine-prd-1',
+    prUrls: [PR],
+    at: undefined,
+  });
+  assert.equal(sessionDetails(NEWER), null);
 });
 
 test('a session past the age limit, without a cwd, or not named by a session id is never offered', async () => {
@@ -332,6 +398,20 @@ describe('the resume route', () => {
     assert.deepEqual(await resume(request({ readBody: async () => ({ id: 'PR_2' }) }), context()), [404, 'no Claude session linked to this PR']);
   });
 
+  test('the PRDs view resumes a session by its id, from the folder its transcript names', async () => {
+    const byId = sessionId => request({ readBody: async () => ({ sessionId }) });
+    assert.deepEqual(await resume(byId('not-an-id'), context()), [400, 'invalid session id']);
+    assert.deepEqual(await resume(byId('00000000-0000-4000-8000-000000000000'), context()), [404, 'no transcript of this session on this machine']);
+    const calls = [];
+    const exec = async (command, args) => {
+      calls.push(args.at(-1));
+      return '';
+    };
+    // No board needed: the session names itself.
+    assert.deepEqual(await resume(byId(OLDER), context({ exec, board: null })), [200, null]);
+    assert.deepEqual(calls, [resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() })]);
+  });
+
   test('a session not running opens in the terminal, the command as an argument', async () => {
     const calls = [];
     const exec = async (command, args) => {
@@ -400,4 +480,23 @@ test('a PR link new since the last scan is reported, none on the first scan or a
 
   await fs.writeFile(file, start('/Users/me/Projects') + prLink(OLDER, NEW_PR));
   assert.deepEqual((await scan({ dir, maxAgeDays: 60 })).touched, [], 'a transcript read again from its start');
+});
+
+test('a running session whose file has no status takes it from claude agents, asked only then', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-live-'));
+  const write = record => fs.writeFile(path.join(dir, `${record.pid}.json`), JSON.stringify({ kind: 'interactive', ...record }));
+  await write({ pid: process.pid, sessionId: 'with', status: 'busy', updatedAt: 2 });
+  let asked = 0;
+  const agents = async () => {
+    asked += 1;
+    return [{ pid: process.ppid, sessionId: 'without', status: 'waiting', waitingFor: 'permission prompt' }];
+  };
+  assert.deepEqual((await liveSessions(dir, { agents })).map(record => record.status), ['busy']);
+  assert.equal(asked, 0);
+  await write({ pid: process.ppid, sessionId: 'without', updatedAt: 1 });
+  const [, filled] = await liveSessions(dir, { agents });
+  assert.deepEqual([filled.status, filled.waitingFor, asked], ['waiting', 'permission prompt', 1]);
+  // Listed under another session id, the pid was reused: no status is taken.
+  const [, kept] = await liveSessions(dir, { agents: async () => [{ pid: process.ppid, sessionId: 'other', status: 'busy' }] });
+  assert.equal(kept.status, undefined);
 });

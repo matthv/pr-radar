@@ -729,6 +729,163 @@
   .group-label.action .gcount { background: var(--indigo-soft); color: var(--indigo); }
   .group-label.waiting .gcount, .group-label.bot .gcount,
   .group-label.merged .gcount { background: var(--amber-soft); color: var(--amber); }
+  /* A PRDs group takes its tone from Linear (a status, a label) or the theme's palette (a skill,
+     a project); only the group with no key stays grey, as the board's drafts do. */
+  .group-label.prd-group { color: color-mix(in srgb, var(--tone) 70%, var(--text)); }
+  .group-label.prd-group .gdot { background: var(--tone); }
+  .group-label.prd-group .gcount { background: color-mix(in srgb, var(--tone) 15%, var(--surface)); color: color-mix(in srgb, var(--tone) 70%, var(--text)); }
+
+  /* PRDs: your tickets, each with its PRs and the Claude sessions working on it. */
+  #prd { padding: 4px 28px 70px; max-width: 1180px; }
+  /* The PRDs view's own band, in the board's shape: its pickers, then counters that filter. */
+  .summary.prd-off { display: none; }
+  .prd-summary { padding: 20px 0 4px; }
+  .counter.idle .dot { background: var(--text-faint); }
+  .counter.open b { color: var(--emerald); }
+  .counter.open .dot { background: var(--emerald); }
+  .session-about {
+    margin-top: 6px; font-size: 12.5px; color: var(--text-soft); line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .session-about-when { margin-right: 6px; font-size: 11px; font-weight: 600; color: var(--text-faint); }
+  .session-prd .card-top { gap: 8px; }
+  .session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .session-meta .prd-session-name { color: var(--text-soft); }
+  .session-meta .prd-meta { margin-top: 0; }
+  .session-question { margin-top: 6px; font-size: 12.5px; }
+  .session-card .claude-link { flex: none; margin: 0 -2px 0 -4px; }
+  /* A session is one line: what it is, where it runs, what it works on, and how long ago. */
+  .prd.session-card { padding: 6px 40px 6px 14px; margin-bottom: 6px; }
+  .session-card .prd-caret { top: 8px; }
+  .session-card.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
+  .sess-line { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
+  .sess-line .pill:not(button) { cursor: inherit; }
+  .sess-line .session-title { flex: 0 1 auto; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-line .pill { flex: none; }
+  .sess-line .sess-star { flex: none; margin-left: auto; }
+  /* An empty star waits for the hover; a lit one stays, so the starred list reads at a glance. */
+  .sess-star:not(.on) { opacity: 0; }
+  .session-card:hover .sess-star, .sess-star:focus-visible { opacity: 1; }
+  .sess-key { flex: none; font-size: 12px; font-weight: 600; color: var(--text-soft); text-decoration: none; }
+  .sess-key:hover { color: var(--indigo); }
+  .sess-where { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--text-faint); }
+  .sess-age { flex: none; margin-left: auto; font-size: 12px; color: var(--text-faint); }
+  .session-card .session-question { display: block; max-width: calc(100% - 30px); margin: 2px 0 0 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.session-question { font: inherit; font-size: 12.5px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+  button.session-question:hover .prd-question, button.session-question:focus-visible .prd-question { text-decoration: underline; }
+  .session-card:not(.folded) .session-question { white-space: normal; }
+  .session-card .session-meta { margin-top: 6px; }
+  .session-card .sess-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; user-select: all; }
+  /* A session's badges never blink, in either view: a list watched all day has to stay calm. */
+  .session-card .pill.running, .prd-session .pill.running { animation: none; }
+  .session-title { font: inherit; font-weight: 600; font-size: 13.5px; color: inherit; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+  .session-title:hover, .session-title:focus-visible { text-decoration: underline; }
+  .session-prd .title { font-weight: 600; }
+  .prd-pick { display: flex; align-items: center; gap: 6px; cursor: default; }
+  .prd-pick select { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
+  .prd-notice { margin: 18px 0; color: var(--text-soft); font-size: 13px; }
+  .prd {
+    --tone: var(--border); position: relative; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 10px 16px; margin-bottom: 10px;
+    background: linear-gradient(260deg, color-mix(in srgb, var(--tone) 16%, var(--surface)) -10%, var(--surface) 42%);
+    box-shadow: var(--shadow-sm); transition: box-shadow .15s;
+  }
+  .prd::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
+  .prd.waiting { background: linear-gradient(260deg, var(--amber-soft) -10%, var(--surface) 42%); }
+  .prd.waiting::before { background: linear-gradient(180deg, var(--amber), var(--amber-2)); }
+  .prd:hover { box-shadow: var(--shadow-md); }
+  #prd .card:hover { transform: none; }
+  .prd-project { margin-right: 8px; font-size: 11px; }
+  .prd-label { background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 65%, var(--text)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 28%, transparent); }
+  .prd-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .prd-key { flex: none; font-family: ui-monospace, SFMono-Regular, "SF Mono", monospace; font-size: 12px; font-weight: 600; color: var(--link); text-decoration: none; }
+  .prd-key:hover { text-decoration: underline; }
+  .prd-title { flex: 1 1 260px; min-width: 0; font-weight: 600; font-size: 13.5px; }
+  .prd-status { display: inline-flex; align-items: center; gap: 5px; }
+  .prd-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--dot, var(--border)); }
+  .prd-meta { margin-top: 4px; font-size: 11.5px; color: var(--text-faint); }
+  .prd-prs { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  /* A PR is the board's own card, folded to its top line behind a caret: the same element, the
+     same colours and rules. A session row sits on the plain surface with its own rail. */
+  .prd-pr-item { position: relative; }
+  .prd-pr-item .card { margin-bottom: 0; padding-right: 66px; }
+  .prd-eye {
+    position: absolute; right: 36px; top: 10px; z-index: 3; width: 22px; height: 22px;
+    display: grid; place-items: center; padding: 0; cursor: pointer; opacity: 0;
+    background: none; border: 0; border-radius: 6px; color: var(--text-faint); transition: opacity .15s;
+  }
+  .prd-eye svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+  .prd-pr-item:hover .prd-eye, .prd-eye:focus-visible, .prd-hidden .prd-eye { opacity: 1; }
+  .prd-eye:hover { color: var(--text); background: var(--hairline); }
+  .prd-pr-item:not(.folded) .prd-eye { top: 16px; }
+  .prd-also { margin: 4px 0 -2px 2px; font-size: 10.5px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; color: var(--text-faint); }
+  .prd-hidden { display: flex; flex-direction: column; gap: 6px; }
+  .prd-hidden .prd-pr-item { opacity: .75; transition: opacity .15s; }
+  .prd-hidden .prd-pr-item:hover { opacity: 1; }
+  .prd-hidden .prd-pr-item:has(.prd-why) .card { padding-right: 170px; }
+  .prd-why {
+    position: absolute; right: 62px; top: 12px; z-index: 3; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10.5px; font-weight: 600; color: var(--text-soft); padding: 2px 7px; border-radius: 999px; background: var(--sunken);
+  }
+  .prd-pr-item:not(.folded) .prd-why { top: 18px; }
+  .prd-hidden-head {
+    align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 2px 4px; cursor: pointer;
+    font: inherit; font-size: 11.5px; color: var(--text-faint); background: none; border: 0; border-radius: 6px;
+  }
+  .prd-hidden-head:hover, .prd-hidden-head:focus-visible { color: var(--text); background: var(--hairline); }
+  .prd-hidden-caret { width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-1px) rotate(45deg); }
+  .prd-hidden.folded .prd-hidden-caret { transform: rotate(-45deg); }
+  .prd-pr-item.folded .card { padding-top: 8px; padding-bottom: 8px; cursor: pointer; }
+  .prd-pr-item.folded .card > :not(.card-top) { display: none; }
+  .prd-caret {
+    position: absolute; right: 10px; top: 10px; z-index: 3; width: 22px; height: 22px;
+    display: grid; place-items: center; padding: 0; cursor: pointer;
+    background: none; border: 0; border-radius: 6px; color: var(--text-faint);
+  }
+  /* The group headers' chevron: down when unfolded, right when folded. */
+  .prd-caret::before {
+    content: ""; width: 5px; height: 5px;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
+  }
+  .prd-pr-item.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
+  .prd-pr-item:not(.folded) .prd-caret { top: 16px; }
+  .prd-caret:hover, .prd-caret:focus-visible { color: var(--text); background: var(--hairline); }
+  .prd-session {
+    --session-tone: var(--border);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding: 5px 8px 5px 7px;
+    border: 1px solid var(--hairline); border-left: 3px solid var(--session-tone); border-radius: 8px;
+    background: var(--surface); font-size: 12.5px;
+  }
+  .prd-session.open { --session-tone: var(--emerald); }
+  .prd-session.busy { --session-tone: var(--indigo); }
+  .prd-session.waiting { --session-tone: var(--amber); }
+  .prd-session.closed { --session-tone: var(--border); }
+  .prd-session.closed .prd-session-name { color: var(--text-soft); }
+  .prd-sessions {
+    position: relative; margin-top: 8px; overflow: hidden;
+    border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface);
+  }
+  .prd-sessions.has-caret .prd-session { padding-right: 40px; }
+  .prd-sessions .prd-session { margin-top: 0; border: 0; border-left: 3px solid var(--session-tone); border-radius: 0; background: none; }
+  .prd-sessions .prd-session + .prd-session { border-top: 1px solid var(--hairline); }
+  .prd-sessions .prd-caret { top: 7px; }
+  .prd-sessions.folded .prd-caret::before { transform: translateX(-2px) rotate(-45deg); }
+  /* The session most likely doing the ticket's work: first, a wider rail, a star. */
+  .prd-main { font-size: 11px; font-weight: 650; color: var(--amber); margin-left: -4px; }
+  .prd-star {
+    font: inherit; font-size: 15px; line-height: 1; padding: 0 1px; cursor: pointer;
+    background: none; border: 0; color: var(--text-faint); transition: color .15s, transform .15s;
+  }
+  .prd-star:hover, .prd-star:focus-visible { color: var(--amber); transform: scale(1.15); }
+  .prd-star.on { color: var(--amber); }
+  .prd-session .claude-link { margin-top: 0; }
+  .prd-session .prd-meta { margin-top: 0; }
+  .prd-session-name { font-weight: 600; }
+  .prd-session .prd-session-name { max-width: 42ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.prd-session-name { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button.prd-session-name:hover, button.prd-session-name:focus-visible { text-decoration: underline; }
+  .prd-question { color: var(--amber); }
 
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
@@ -992,6 +1149,7 @@
   .pill.todo { background: var(--indigo-soft); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
   .pill.ready { background: linear-gradient(90deg, var(--indigo-soft), var(--emerald-soft)); color: var(--indigo); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--indigo) 18%, transparent); }
   .pill.pending { background: var(--amber-soft); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 18%, transparent); }
+  .pill.turn { background: color-mix(in srgb, var(--cyan) 12%, var(--surface)); color: var(--cyan); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cyan) 22%, transparent); }
   .pill.good { background: var(--emerald-soft); color: var(--emerald); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--emerald) 18%, transparent); }
   .pill.alert { background: var(--rose-soft); color: var(--rose); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rose) 18%, transparent); }
   /* A running pipeline breathes: the card is a live thing until the verdict lands. */
@@ -1411,6 +1569,8 @@
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
+      <span data-view="prd" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="3" rx="1"/><rect x="4" y="7" width="10.5" height="2.6" rx="1"/><rect x="4" y="11.4" width="10.5" height="2.6" rx="1"/></svg></span>
+      <span data-view="sessions" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 6.5 6.8 8.5 4.5 10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="8.2" y="9.8" width="3.6" height="1.5" rx=".6"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
     <div class="picker" id="decorPicker">
@@ -1489,6 +1649,7 @@
 </div>
 <div id="orbits" hidden></div>
 <div id="kanban" hidden></div>
+<div id="prd" hidden></div>
 <main>
   <section class="col-mine">
     <h2 class="column-title"><span class="bar"></span><span id="titleMine"></span></h2>
@@ -1506,6 +1667,7 @@
 <script src="/since.js"></script>
 <script src="/versions.js"></script>
 <script src="/decor.js"></script>
+<script src="/prd.js"></script>
 <script>
 // Refresh fetches data, it does not reload the page: the token the server stamps on
 // every response says whether the assets this tab booted with are still current.
@@ -1907,7 +2069,83 @@ const I18N = {
     reloadTitle: 'cette page tourne sur une version antérieure de l’outil',
     focusHint: 'cliquer pour n’afficher que ces PRs',
     focusClear: 'cliquer (ou Échap) pour retirer le filtre',
-    viewTitle: 'vue tableau / vue par auteur / kanban',
+    viewTitle: 'vue tableau / vue par auteur / kanban / PRDs / sessions',
+    prdGroupBy: 'Grouper par',
+    prdCountWaiting: 'en attente de toi',
+    prdSessionsUnfold: 'afficher les {n} autres sessions, pour en choisir une autre comme principale',
+    prdSessionsFold: 'replier les {n} autres sessions',
+    prdCountBusy: 'en cours de travail',
+    prdCountPrs: 't’attendent sur une PR',
+    prdCountIdle: 'sans session ouverte',
+    prdFocusHint: 'cliquer pour n’afficher que ces PRDs',
+    prdOrderBy: 'Trier par',
+    prdGroup_status: 'statut',
+    prdGroup_project: 'projet',
+    prdGroup_label: 'label',
+    prdGroup_none: 'rien',
+    prdOrder_updated: 'mis à jour',
+    prdOrder_opened: 'ouvert le',
+    prdOrder_title: 'titre',
+    prdNone_status: 'Sans statut',
+    prdNone_project: 'Sans projet',
+    prdNone_label: 'Sans label',
+    prdSessionsOff: 'Les sessions Claude sont désactivées : mets PR_RADAR_CLAUDE_SESSIONS=true dans .env pour les voir et les ouvrir depuis chaque PRD, puis relance.',
+    prdNoKey: 'La vue PRDs lit tes tickets dans Linear : renseigne PR_RADAR_LINEAR_API_KEY dans .env (une clé personnelle, Linear › Settings › Security & access), puis relance.',
+    prdDemo: 'La vue PRDs lit Linear : elle est vide dans la démo.',
+    prdError: 'Impossible de lire les PRDs : {message}',
+    prdEmpty: 'Aucun PRD en cours qui te soit assigné, et aucune session Claude sur un ticket.',
+    prdOpened: 'ouvert il y a {v}',
+    prdUpdated: 'mis à jour il y a {v}',
+    prdNotAssigned: 'pas à toi : une session Claude y travaille',
+    prdPrOnGithub: 'voir sur GitHub',
+    prdHide: 'masquer',
+    prdUnhide: 'remettre dans la liste',
+    prdMoreCount: '{n} de plus',
+    prdMore_linked: 'aussi liés',
+    prdMore_closed: 'fermés',
+    prdMore_mine: 'masqués par toi',
+    prdWhyMerged: 'fusionnée',
+    prdWhyAway: 'hors tableau',
+    prdWhyDone: 'terminé',
+    sessTotal: '{n} sessions',
+    sessEmpty: 'Aucune session Claude ouverte, ni récente sur un de tes PRDs.',
+    sessNoLinks: 'Aucun PRD ni PR lié.',
+    sessRecap: 'récap · il y a {v}',
+    sessAsked: 'ta dernière demande · il y a {v}',
+    sessFocusHint: 'cliquer pour n’afficher que ces sessions',
+    sessUnfold: 'déplier : récap, dernier prompt, PRD et PR liés',
+    sessFold: 'replier',
+    sessQuestion: 'question',
+    sessYourTurn: 'à toi',
+    sessOrder_changed: 'dernier changement',
+    sessOrder_longest: 'le plus long dans son état',
+    sessOrder_title: 'titre',
+    sessOrder_folder: 'dossier',
+    sessOrder_prd: 'PRD',
+    sessOrder_skill: 'skill',
+    sessStarred: '★ favoris',
+    sessStar: 'mettre en favori : en tête de liste',
+    sessUnstar: 'retirer des favoris',
+    sessCalls: '⚑ {n}',
+    prdPrUnfold: 'déplier la carte de cette PR',
+    prdPrFold: 'replier la carte de cette PR',
+    prdPrAway: 'pas sur le tableau : fusionnée il y a longtemps, ou celle de quelqu’un d’autre',
+    prdRunning: 'en cours',
+    prdWaiting: 'attend ta réponse',
+    prdInterrupted: 'interrompu',
+    prdState_done: 'terminé',
+    prdState_stopped: 'arrêté',
+    prdNoSkill: 'aucun skill',
+    prdSessionOpen: 'ouverte',
+    prdSessionBusy: 'au travail',
+    prdMain: 'principale',
+    prdMakeMain: 'en faire la session principale de ce ticket',
+    prdMainTitle: 'la session qui a fait le plus de travail sur ce ticket : skills lancés, commits, temps dans son dossier',
+    prdSessionClosed: 'fermée',
+    sessNoStatus: 'sans statut',
+    sessNoStatusHint: 'Ouvertes, mais leur fichier de session Claude Code ne dit pas si elles travaillent ou t’attendent : une mise à jour de Claude Code a pu le changer.',
+    prdFocusTitle: 'afficher cette session Claude',
+    prdResumeTitle: 'reprendre cette session Claude dans un terminal',
     kanbanAction: 'À moi',
     kanbanWaiting: 'En attente',
     kanbanBot: 'En attente d’un bot',
@@ -2234,7 +2472,83 @@ const I18N = {
     reloadTitle: 'this page is running an older version of the tool',
     focusHint: 'click to show only these PRs',
     focusClear: 'click (or Esc) to clear the filter',
-    viewTitle: 'board view / by author / kanban',
+    viewTitle: 'board view / by author / kanban / PRDs / sessions',
+    prdGroupBy: 'Group by',
+    prdCountWaiting: 'waiting on you',
+    prdSessionsUnfold: 'show the {n} other sessions, to make another one main',
+    prdSessionsFold: 'fold the {n} other sessions',
+    prdCountBusy: 'being worked on',
+    prdCountPrs: 'need you on a PR',
+    prdCountIdle: 'no open session',
+    prdFocusHint: 'click to show only these PRDs',
+    prdOrderBy: 'Order by',
+    prdGroup_status: 'status',
+    prdGroup_project: 'project',
+    prdGroup_label: 'label',
+    prdGroup_none: 'nothing',
+    prdOrder_updated: 'last updated',
+    prdOrder_opened: 'opened at',
+    prdOrder_title: 'title',
+    prdNone_status: 'No status',
+    prdNone_project: 'No project',
+    prdNone_label: 'No label',
+    prdSessionsOff: 'Claude sessions are off: set PR_RADAR_CLAUDE_SESSIONS=true in .env to see and open them from each PRD, then restart.',
+    prdNoKey: 'The PRDs view reads your tickets from Linear: set PR_RADAR_LINEAR_API_KEY in .env (a personal key, Linear › Settings › Security & access), then restart.',
+    prdDemo: 'The PRDs view reads Linear: it is empty in the demo.',
+    prdError: 'Could not read the PRDs: {message}',
+    prdEmpty: 'No PRD in progress assigned to you, and no Claude session on a ticket.',
+    prdOpened: 'opened {v} ago',
+    prdUpdated: 'updated {v} ago',
+    prdNotAssigned: 'not yours: a Claude session works on it',
+    prdPrOnGithub: 'see it on GitHub',
+    prdHide: 'hide',
+    prdUnhide: 'put back in the list',
+    prdMoreCount: '{n} more',
+    prdMore_linked: 'also linked',
+    prdMore_closed: 'closed',
+    prdMore_mine: 'hidden by you',
+    prdWhyMerged: 'merged',
+    prdWhyAway: 'off the board',
+    prdWhyDone: 'done',
+    sessTotal: '{n} sessions',
+    sessEmpty: 'No Claude session open, and none lately on one of your PRDs.',
+    sessNoLinks: 'No PRD or PR linked.',
+    sessRecap: 'recap · {v} ago',
+    sessAsked: 'your last prompt · {v} ago',
+    sessFocusHint: 'click to show only these sessions',
+    sessUnfold: 'unfold: recap, last prompt, linked PRDs and PRs',
+    sessFold: 'fold',
+    sessQuestion: 'question',
+    sessYourTurn: 'your turn',
+    sessOrder_changed: 'latest change',
+    sessOrder_longest: 'longest in state',
+    sessOrder_title: 'title',
+    sessOrder_folder: 'folder',
+    sessOrder_prd: 'PRD',
+    sessOrder_skill: 'skill',
+    sessStarred: '★ starred',
+    sessStar: 'star: keep it in the list at the top',
+    sessUnstar: 'unstar',
+    sessCalls: '⚑ {n}',
+    prdPrUnfold: 'unfold this PR’s card',
+    prdPrFold: 'fold this PR’s card',
+    prdPrAway: 'not on the board: merged long ago, or someone else’s',
+    prdRunning: 'running',
+    prdWaiting: 'waiting on you',
+    prdInterrupted: 'interrupted',
+    prdState_done: 'done',
+    prdState_stopped: 'stopped',
+    prdNoSkill: 'no skill',
+    prdSessionOpen: 'open',
+    prdSessionBusy: 'working',
+    prdMain: 'main',
+    prdMakeMain: 'make this the ticket’s main session',
+    prdMainTitle: 'the session that did most of this ticket’s work: skills run on it, commits, time in its folder',
+    prdSessionClosed: 'closed',
+    sessNoStatus: 'no status',
+    sessNoStatusHint: 'Running, but their Claude Code session file does not say whether they are working or waiting on you: a Claude Code update may have changed it.',
+    prdFocusTitle: 'bring this Claude session forward',
+    prdResumeTitle: 'resume this Claude session in a terminal',
     kanbanAction: 'My move',
     kanbanWaiting: 'Waiting',
     kanbanBot: 'Waiting on a bot',
@@ -2429,7 +2743,9 @@ const LOCALE = { fr: 'fr-FR', en: 'en-GB' };
 
 let lang = I18N[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
 let notesWindow = store.get('notesWindow', 'day') === 'all' ? 'all' : 'day';
-const VIEWS = ['board', 'orbits', 'kanban'];
+const VIEWS = ['board', 'orbits', 'kanban', 'prd', 'sessions'];
+// The PRDs and Sessions views share their page, their data and their band.
+const listView = name => name === 'prd' || name === 'sessions';
 let view = VIEWS.includes(store.get('view', 'board')) ? store.get('view', 'board') : 'board';
 
 const t = (key, vars) =>
@@ -2458,7 +2774,12 @@ function applyView(next) {
   document.querySelector('main').hidden = next !== 'board';
   el('kanban').hidden = next !== 'kanban';
   el('orbits').hidden = next !== 'orbits';
+  el('prd').hidden = !listView(next);
+  el('summary').classList.toggle('prd-off', listView(next));
+  if (switched) prdFocus = null;
   if (switched && next === 'kanban') render();
+  if (listView(next)) renderPrd();
+  if (switched && listView(next)) loadPrds();
 }
 
 const viewRoot = () => (view === 'kanban' ? el('kanban') : document.querySelector('main'));
@@ -2859,7 +3180,7 @@ function beep() {
   if (state.data?.customSound) {
     customSound ??= new Audio('/sound');
     customSound.currentTime = 0;
-    customSound.play().catch(chime);
+    customSound.play().catch(() => chime());
     return;
   }
   chime();
@@ -2924,17 +3245,20 @@ const WIZZ_SOUNDS = {
 };
 const WIZZ_SOUND = 'warm';
 
-function chime() {
+// The board's chime rises in two sine notes; a Claude session turning to you falls in three
+// triangle ones, so the ear tells them apart.
+const SESSION_NOTES = [988, 784, 659];
+function chime(notes = [660, 880], type = 'sine') {
   // One context for the page: a document may only hold a handful, and a tool left open all
   // day would beep its way past the cap.
   audio ??= new (window.AudioContext || window.webkitAudioContext)();
   // A tab nobody has touched has never granted audio, so the context starts suspended.
   audio.resume().catch(() => {});
   const now = audio.currentTime;
-  [660, 880].forEach((freq, index) => {
+  notes.forEach((freq, index) => {
     const osc = audio.createOscillator();
     const gain = audio.createGain();
-    osc.type = 'sine';
+    osc.type = type;
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, now + index * 0.15);
     gain.gain.linearRampToValueAtTime(0.1, now + index * 0.15 + 0.02);
@@ -4026,6 +4350,7 @@ function render() {
 
   state.visibleReviews = shownReviews.map(pr => pr.id);
   if (view === 'kanban') renderKanban(mine, reviews, focus);
+  if (listView(view)) renderPrd();
   renderOrbits([...shownMine, ...shownReviews]);
 
   if (state.lastActionCount !== null && total > state.lastActionCount) beep();
@@ -4267,7 +4592,14 @@ async function load(force, { check = false } = {}) {
     if (check) params.set('check', '1');
     if (document.hidden) params.set('hidden', '1');
     const response = await fetch(`/api/prs${params.size ? `?${params}` : ''}`);
-    bootId ??= response.headers.get('x-pr-radar-boot');
+    // A server that restarted (an update, a restart by hand, a watcher on the code) may serve a
+    // newer page: this one reloads rather than run old code against it.
+    const boot = response.headers.get('x-pr-radar-boot');
+    if (bootId && boot && boot !== bootId) {
+      location.reload();
+      return;
+    }
+    bootId ??= boot;
     const version = response.headers.get('x-pr-radar-version');
     if (version) {
       bootVersion ??= version;
@@ -4280,6 +4612,7 @@ async function load(force, { check = false } = {}) {
     const unchanged = state.data && boardSignature(state.data) === boardSignature(payload);
     state.data = payload;
     scheduleRefresh(payload.pageRefreshSeconds ?? payload.refreshSeconds);
+    if (listView(view)) loadPrds(force);
     if (unchanged) {
       renderStamp();
       return;
@@ -4336,16 +4669,18 @@ async function addLabel(button) {
   load(false);
 }
 
+// A card names its PR, a session row of the PRDs view its session.
 async function resumeClaudeSession(button) {
-  const id = button.dataset.claude;
-  if (resuming.has(id)) return;
-  resuming.add(id);
+  const { claude: id, claudeSession: sessionId } = button.dataset;
+  const key = sessionId ?? id;
+  if (resuming.has(key)) return;
+  resuming.add(key);
   button.classList.add('busy');
   try {
     const response = await fetch('/api/claude-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify(sessionId ? { sessionId } : { id }),
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -4354,12 +4689,604 @@ async function resumeClaudeSession(button) {
   } catch (error) {
     alert(t('claudeError', { message: error.message }));
   } finally {
-    resuming.delete(id);
-    document.querySelectorAll(`.claude-link[data-claude="${id}"]`).forEach(link => link.classList.remove('busy'));
+    resuming.delete(key);
+    document.querySelectorAll(sessionId ? `.claude-link[data-claude-session="${sessionId}"]` : `.claude-link[data-claude="${id}"]`)
+      .forEach(link => link.classList.remove('busy'));
   }
 }
 
 const prById = id => [...(state.data?.mine ?? []), ...(state.data?.reviews ?? [])].find(pr => pr.id === id);
+
+// ── The PRDs view: your tickets from Linear, their PRs, and the Claude sessions on them ──
+let prdData = null;
+let prdLoading = null;
+let prdGroup = PRRadarPrd.GROUPS.includes(store.get('prdGroup', 'status')) ? store.get('prdGroup', 'status') : 'status';
+let prdOrder = PRRadarPrd.ORDERS.includes(store.get('prdOrder', 'updated')) ? store.get('prdOrder', 'updated') : 'updated';
+
+// A colour from Linear goes into a style attribute: only a hex one is let through.
+const safeColor = color => (/^#[0-9a-f]{3,8}$/i.test(color ?? '') ? color : 'var(--border)');
+
+function loadPrds(force = false) {
+  let changed = true;
+  prdLoading ??= fetch(`/api/prds${force ? '?force=1' : ''}`)
+    .then(async response => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || response.statusText);
+      changed = JSON.stringify(payload) !== JSON.stringify(prdData);
+      prdData = payload;
+      noteSessionChanges(payload.sessions ?? []);
+      // Stars go with sessions that left the view, Linear key or not.
+      if (payload.enabled !== false && payload.claudeSessions !== false) {
+        const ids = new Set((payload.sessions ?? []).map(session => session.sessionId));
+        const before = sessStars.size;
+        for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
+        if (sessStars.size !== before) saveStars();
+      }
+      if (payload.enabled !== false && payload.linear !== false) {
+        pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
+      }
+    })
+    .catch(error => {
+      prdData = { ...prdData, enabled: true, error: error.message };
+    })
+    .finally(() => {
+      prdLoading = null;
+      // A redraw would close a picker someone has open; picking redraws anyway.
+      if (changed && !document.activeElement?.matches('#prd select')) renderPrd();
+    });
+  return prdLoading;
+}
+
+// What the session's skill is doing: running or waiting while its process lives, interrupted
+// once it is gone mid-run, else how the run ended.
+// A session's state and its skill's are pills in the board's colours, and buttons when the
+// session can be opened from here: either brings it forward, or resumes it, as its Claude button.
+const PRD_SESSION_STATUS = PRRadarPrd.SESSION_STATES;
+// One status for both views (PRRadarPrd.sessionStatus): waiting on you, working, open or closed.
+const sessStatus = session => PRRadarPrd.sessionStatus(session);
+// Its badge, as PRRadarPrd.stateBadge picks it: [colour, label].
+function sessStateBadge(session, status) {
+  const { kind, key, text } = PRRadarPrd.stateBadge(session, status);
+  return [kind, text ?? t(key)];
+}
+
+// The skill's pill: indigo while it runs, amber waiting on you, green done, grey interrupted
+// (its session closed mid-stage) or stopped.
+function prdSkillPill(session) {
+  const live = session.running && (session.state === 'running' || session.state === 'waiting');
+  if (live) return session.state === 'waiting' ? ['pending', t('prdWaiting')] : ['todo running', t('prdRunning')];
+  if (session.state === 'running' || session.state === 'waiting') return ['', t('prdInterrupted')];
+  if (!session.state) return ['', ''];
+  return [session.state === 'done' ? 'good' : '', t(`prdState_${session.state}`) + (session.outcome ? ` · ${session.outcome}` : '')];
+}
+
+// The session starred as main, per ticket, kept in this browser.
+const prdMains = (() => {
+  try {
+    return JSON.parse(store.get('prdMain', '{}')) ?? {};
+  } catch {
+    return {};
+  }
+})();
+
+// A session's pieces, for its row under a PRD and for its own card in the Sessions view.
+function prdSessionParts(session, { titled = false } = {}) {
+  const id = escapeHtml(session.sessionId);
+  // Under a PRD, a session goes by Claude Code's title for it, as in the Sessions view.
+  const title = titled ? prdData.sessions?.find(card => card.sessionId === session.sessionId)?.title : null;
+  const name = title ?? session.name ?? session.sessionId.slice(0, 8);
+  const opens = prdData.claudeSessions && session.resumable;
+  const action = t(session.running ? 'prdFocusTitle' : 'prdResumeTitle');
+  const pillButton = (kind, label, title) => (opens
+    ? `<button type="button" class="pill ${kind}" data-prd-open="${id}" title="${escapeHtml(`${title} · ${action}`)}">${label}</button>`
+    : pill(kind, label, title));
+  const status = sessStatus(session);
+  const [statusKind, statusLabel] = sessStateBadge(session, status);
+  const [skillKind, skillState] = prdSkillPill(session);
+  const statusPill = pillButton(statusKind, escapeHtml(statusLabel), statusLabel);
+  const skill = session.skill
+    ? pillButton(skillKind, escapeHtml(`${session.skill}${session.stage ? ` · ${session.stage}` : ''}`), skillState || session.skill)
+    : `<span class="prd-meta">${escapeHtml(t('prdNoSkill'))}</span>`;
+  const open = opens
+    ? `<button type="button" class="claude-link${resuming.has(session.sessionId) ? ' busy' : ''}" data-claude-session="${id}" title="${escapeHtml(action)}">${CLAUDE_ICON}</button>`
+    : '';
+  return {
+    status,
+    pillButton,
+    open,
+    name: opens
+      ? `<button type="button" class="prd-session-name" data-prd-open="${id}" title="${escapeHtml(`claude --resume ${session.sessionId} · ${action}`)}">${escapeHtml(name)}</button>`
+      : `<span class="prd-session-name" title="claude --resume ${id}">${escapeHtml(name)}</span>`,
+    pills: `${statusPill}${skill}`,
+    question: session.question ? `<span class="prd-question">${escapeHtml(session.question)}</span>` : '',
+    at: session.at ? `<span class="prd-meta">${escapeHtml(t('activeAgo', { v: ago(session.at) }))}</span>` : '',
+  };
+}
+
+function prdSessionRow(session, ticket) {
+  const id = escapeHtml(session.sessionId);
+  const { status, open, name, pills, question, at } = prdSessionParts(session, { titled: true });
+  const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
+    + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
+    + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
+  return `<div class="prd-session ${status}">${open}${name}${main}${pills}${question}${at}</div>`;
+}
+
+// The sessions share one box, folded like a PR card behind a caret: folded, it shows the main
+// session, or the first, and any running one waiting on you or at work. Starring another
+// moves it first and folds the box back onto it.
+const prdOpenSessions = new Set();
+function prdSessionRows(prd) {
+  const sessions = PRRadarPrd.withMain(prd.sessions, prdMains[prd.ticket], prdMains[prd.ticket]);
+  if (!sessions.length) return '';
+  const lead = sessions.find(session => session.main) ?? sessions[0];
+  const loud = session => ['waiting', 'busy'].includes(sessStatus(session));
+  const folded = sessions.filter(session => session !== lead && !loud(session));
+  const open = prdOpenSessions.has(prd.ticket);
+  const caret = folded.length
+    ? `<button type="button" class="prd-caret" data-prd-sessions="${escapeHtml(prd.ticket)}" aria-expanded="${open}"`
+      + ` aria-label="${escapeHtml(t(open ? 'prdSessionsFold' : 'prdSessionsUnfold', { n: folded.length }))}"></button>`
+    : '';
+  return `<div class="prd-sessions${folded.length && !open ? ' folded' : ''}${caret ? ' has-caret' : ''}">${caret}`
+    + `${sessions.filter(session => open || !folded.includes(session)).map(session => prdSessionRow(session, prd.ticket)).join('')}</div>`;
+}
+
+// A PR is the board's own card, drawn as the board draws it, folded to its top line behind a
+// caret: the caret, or a click on the folded card, unfolds it whole. Folded by default, kept
+// unfolded across refreshes. A PR the board does not hold, merged long ago or someone else's,
+// gets a plain card of the same shape that says so and links to GitHub.
+const prdOpenPrs = new Set();
+function prdPrItem(pr, eye = '') {
+  const open = prdOpenPrs.has(pr.url);
+  const board = pr.boardId ? prById(pr.boardId) : null;
+  const card = board
+    ? (board.side === 'mine' ? mineCard(resolveMine(board)) : reviewCard(resolveReview(board)))
+    : `<div class="card idle" data-pr-url="${escapeHtml(pr.url)}"><div class="card-top">${pr.repo ? repoChip(pr) : ''}`
+      + `<a class="title" href="${escapeHtml(pr.url)}" target="_blank" rel="noreferrer">${escapeHtml(pr.title ?? t('prdPrOnGithub'))}</a></div>`
+      + `<div class="meta"><span>${escapeHtml(t('prdPrAway'))}</span></div></div>`;
+  return `<div class="prd-pr-item${open ? '' : ' folded'}" data-prd-item="${escapeHtml(pr.url)}">${eye}`
+    + `<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(pr.url)}" aria-expanded="${open}"`
+    + ` title="${escapeHtml(t(open ? 'prdPrFold' : 'prdPrUnfold'))}"></button>${card}</div>`;
+}
+
+function prdCard(prd) {
+  const status = prd.status
+    ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
+    : '';
+  const project = prd.project
+    ? `<span class="pill prd-label prd-project" style="--tone: ${safeColor(prd.projectColor)}">${escapeHtml(prd.project)}</span>`
+    : '';
+  const meta = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) }), prd.assigned ? null : t('prdNotAssigned')]
+    .filter(Boolean).join(' · ');
+  const prs = linkedList(`prd:${prd.ticket}`, prd.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: true, html: eye => prdPrItem(pr, eye) })));
+  const waiting = prdRunning(prd, 'waiting');
+  return `<div class="prd${waiting ? ' waiting' : ''}" style="--tone: ${safeColor(prd.status?.color)}"><div class="prd-top">`
+    + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener" title="${escapeHtml(t('ticketTitle', { key: prd.ticket }))}">${escapeHtml(prd.ticket)}</a>`
+    + `<span class="prd-title">${escapeHtml(prd.title)}</span>${status}${prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('')}</div>`
+    + `<div class="prd-meta">${project}${escapeHtml(meta)}</div>`
+    + (prs ? `<div class="prd-prs">${prs}</div>` : '')
+    + `${prdSessionRows(prd)}</div>`;
+}
+
+// Linear's own colour when the group has one; otherwise one of the theme's, the same for a
+// skill or a project from one refresh to the next.
+const PRD_TONES = ['var(--indigo)', 'var(--cyan)', 'var(--emerald)', 'var(--amber)', 'var(--rose)', 'var(--indigo-2)'];
+function prdGroupTone(entry) {
+  if (entry.key === null) return null;
+  if (entry.color) return safeColor(entry.color);
+  const hash = [...String(entry.key)].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7);
+  return PRD_TONES[hash % PRD_TONES.length];
+}
+
+// What the band counts, each a filter. "Open" is a session still running; a PR "for you" is
+// one the board says needs you.
+const prdRunning = (prd, status) => prd.sessions.some(session => session.running && (!status || sessStatus(session) === status));
+const PRD_FOCUS = {
+  waiting: { kind: 'pending', label: 'prdCountWaiting', test: prd => prdRunning(prd, 'waiting') },
+  busy: { kind: 'todo', label: 'prdCountBusy', test: prd => prdRunning(prd, 'busy') },
+  prs: { kind: 'ready', label: 'prdCountPrs', test: prd => prd.prs.some(pr => {
+    const board = pr.boardId ? prById(pr.boardId) : null;
+    return Boolean(board && (board.side === 'mine' ? resolveMine(board) : resolveReview(board)).needsAction);
+  }) },
+  idle: { kind: 'idle', label: 'prdCountIdle', test: prd => !prdRunning(prd) },
+};
+let prdFocus = null;
+
+// The PRDs and PRs under a session, or the PRs under a PRD, can each be hidden into a folded
+// section at the foot of the list. Closed ones hide by default: a merged PR, one off the board,
+// a PRD Linear completed or canceled. Your choice, either way, beats the default; it is kept per
+// session or PRD card, in this browser, and dropped once that card is gone.
+const prOpen = pr => pr.state === 'open' || pr.state === 'draft';
+const prdOpen = prd => !['completed', 'canceled'].includes(prd.status?.type);
+const prClosed = pr => (prOpen(pr) ? null : t(pr.state === 'merged' ? 'prdWhyMerged' : 'prdWhyAway'));
+const prdClosed = prd => (prdOpen(prd) ? null : prd.status?.name ?? t('prdWhyDone'));
+const prdHides = (() => {
+  try {
+    return JSON.parse(store.get('prdHidden', '{}')) ?? {};
+  } catch {
+    return {};
+  }
+})();
+function setHidden(scope, key, hidden) {
+  (prdHides[scope] ??= {})[key] = hidden;
+  store.set('prdHidden', JSON.stringify(prdHides));
+}
+function pruneHides(scopes) {
+  const gone = Object.keys(prdHides).filter(scope => !scopes.has(scope));
+  for (const scope of gone) delete prdHides[scope];
+  if (gone.length) store.set('prdHidden', JSON.stringify(prdHides));
+}
+const prdOpenHidden = new Set();
+const EYE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>';
+
+// A list's items, each { key, primary, closed: why or null, html(eye) }. In the list: the primary
+// ones that are not closed. Folded below in "n more", each under why it is there: the others
+// linked (the ranking put them second), the closed ones with their reason, then the ones you hid.
+// The eye moves an item across, and that choice beats the defaults.
+function linkedList(scope, items) {
+  const eye = (key, hidden) => `<button type="button" class="prd-eye" data-prd-hide="${escapeHtml(key)}" data-prd-scope="${escapeHtml(scope)}"`
+    + ` data-prd-hidden="${hidden}" aria-label="${escapeHtml(t(hidden ? 'prdUnhide' : 'prdHide'))}">${hidden ? EYE : EYE_OFF}</button>`;
+  const folded = item => prdHides[scope]?.[item.key] ?? (Boolean(item.closed) || !item.primary);
+  const list = items.filter(item => !folded(item)).map(item => item.html(eye(item.key, false))).join('');
+  const why = item => (prdHides[scope]?.[item.key] === true ? 'mine' : item.closed ? 'closed' : 'linked');
+  const more = items.filter(folded);
+  if (!more.length) return list;
+  const open = prdOpenHidden.has(scope);
+  const sections = ['linked', 'closed', 'mine'].map(reason => {
+    const these = more.filter(item => why(item) === reason);
+    if (!these.length) return '';
+    return `<div class="prd-also">${escapeHtml(t(`prdMore_${reason}`))}</div>`
+      + these.map(item => item.html(eye(item.key, true) + (reason === 'closed' ? `<span class="prd-why">${escapeHtml(item.closed)}</span>` : ''))).join('');
+  }).join('');
+  return list + `<div class="prd-hidden${open ? '' : ' folded'}"><button type="button" class="prd-hidden-head" data-prd-hidden-toggle="${escapeHtml(scope)}" aria-expanded="${open}">`
+    + `<span class="prd-hidden-caret"></span>${escapeHtml(t('prdMoreCount', { n: more.length }))}</button>`
+    + (open ? sections : '') + '</div>';
+}
+
+function prdBand(prds) {
+  const options = (list, current, prefix) => list
+    .map(value => `<option value="${value}"${value === current ? ' selected' : ''}>${escapeHtml(t(`${prefix}_${value}`))}</option>`).join('');
+  const pick = (label, attr, list, current, prefix) => `<label class="picker-trigger prd-pick">${escapeHtml(t(label))}`
+    + ` <select ${attr}>${options(list, current, prefix)}</select></label>`;
+  const counters = Object.entries(PRD_FOCUS).map(([key, { kind, label, test }]) => {
+    const value = prds.filter(test).length;
+    const active = prdFocus === key;
+    const classes = ['counter', kind, value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
+    return `<button type="button" class="${classes.join(' ')}" data-prd-focus="${key}"${value ? '' : ' disabled'}`
+      + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'prdFocusHint'))}"` : ''}>`
+      + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(label))}<span class="go">${active ? '×' : '›'}</span></button>`;
+  }).join('');
+  return `<div class="summary prd-summary">${pick('prdGroupBy', 'data-prd-group', PRRadarPrd.GROUPS, prdGroup, 'prdGroup')}`
+    + `${pick('prdOrderBy', 'data-prd-order', PRRadarPrd.ORDERS, prdOrder, 'prdOrder')}`
+    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div></div>`;
+}
+
+function renderPrd() {
+  if (view === 'sessions') return renderSessions();
+  if (view !== 'prd') return;
+  const bar = prdBand(prdData?.prds ?? []);
+  if (!prdData) {
+    el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
+    return;
+  }
+  if (prdData.enabled === false || prdData.linear === false) {
+    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t(prdData.reason === 'demo' ? 'prdDemo' : 'prdNoKey'))}</div>`;
+    return;
+  }
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
+    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+  const prds = prdData.prds ?? [];
+  if (!prds.length) {
+    el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
+    return;
+  }
+  const shown = prdFocus ? prds.filter(PRD_FOCUS[prdFocus].test) : prds;
+  el('prd').innerHTML = bar + notices + PRRadarPrd.group(shown, { by: prdGroup, order: prdOrder }).map(entry => {
+    const cards = entry.prds.map(prdCard).join('');
+    if (prdGroup === 'none') return cards;
+    const key = `prd:${prdGroup}:${entry.key ?? ''}`;
+    const collapsed = collapsedGroups.has(key);
+    const tone = prdGroupTone(entry);
+    return `<button type="button" class="group-label ${tone ? 'prd-group' : 'idle'}${collapsed ? ' collapsed' : ''}"${tone ? ` style="--tone: ${tone}"` : ''} data-group="${escapeHtml(key)}" aria-expanded="${!collapsed}">`
+      + `<span class="gdot"></span>${escapeHtml(entry.key === null ? t(`prdNone_${prdGroup}`) : entry.label)}`
+      + `<span class="gcount">${entry.prds.length}</span><span class="gchev"></span></button><div class="group-cards">${cards}</div>`;
+  }).join('');
+}
+
+
+// ── The Sessions view: a card per Claude Code session, with the PRDs and PRs it works on ──
+const SESSION_TONES = { waiting: 'var(--amber)', busy: 'var(--indigo)', open: 'var(--emerald)', closed: 'var(--border)', unknown: 'var(--border)' };
+const SESSION_COUNT_KIND = { waiting: 'pending', busy: 'todo', open: 'open', closed: 'idle', unknown: 'idle' };
+
+// A PRD inside a session card: its top line folded, its project, labels and dates unfolded.
+function sessionPrdItem(prd, eye = '') {
+  const key = `prd:${prd.ticket}`;
+  const open = prdOpenPrs.has(key);
+  const status = prd.status
+    ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
+    : '';
+  const project = prd.project ? `<span class="pill prd-label prd-project" style="--tone: ${safeColor(prd.projectColor)}">${escapeHtml(prd.project)}</span>` : '';
+  const labels = prd.labels.map(label => `<span class="pill prd-label" style="--tone: ${safeColor(label.color)}">${escapeHtml(label.name)}</span>`).join('');
+  const dates = [t('prdOpened', { v: ago(prd.createdAt) }), t('prdUpdated', { v: ago(prd.updatedAt) })].join(' · ');
+  return `<div class="prd-pr-item${open ? '' : ' folded'}">${eye}<button type="button" class="prd-caret" data-prd-pr="${escapeHtml(key)}" aria-expanded="${open}"></button>`
+    + `<div class="card idle session-prd" style="--tone: ${safeColor(prd.status?.color)}"><div class="card-top">`
+    + `<a class="prd-key" href="${escapeHtml(prd.url)}" target="_blank" rel="noopener">${escapeHtml(prd.ticket)}</a>`
+    + `<span class="title">${escapeHtml(prd.title)}</span>${status}</div>`
+    + `<div class="meta">${project}${labels}<span>${escapeHtml(dates)}</span></div></div></div>`;
+}
+
+// Folded, a session is one line plus the question it waits on; its caret brings back the
+// recap, the last prompt and every PRD and PR it touches.
+const sessOpen = new Set();
+// A session's badges in the Sessions view. At work, its skill says what it does and for how long,
+// or a plain *working* badge when it runs none; otherwise its state, each its own colour (a
+// question amber, your turn cyan, open green), then its skill in grey.
+function sessPills(session, status, pillButton) {
+  // A skill whose run ended says so, with its outcome; one still going names its stage.
+  const ended = ['done', 'stopped'].includes(session.state);
+  const skill = !session.skill ? null
+    : ended ? [session.skill, t(`prdState_${session.state}`), session.outcome].filter(Boolean).join(' · ')
+      : `${session.skill}${session.stage ? ` · ${session.stage}` : ''}`;
+  if (status === 'busy') {
+    // At work on something past its skill's run: plain working, the ended skill after it in grey.
+    const live = ended ? null : skill;
+    const clock = session.since ? `<span data-since="${escapeHtml(session.since)}">${escapeHtml(sinceText(session.since))}</span>` : '';
+    return pillButton('todo', escapeHtml(live ?? t('prdSessionBusy')) + clock, live ?? t('prdSessionBusy'))
+      + (ended ? pillButton('', escapeHtml(skill), skill) : '');
+  }
+  const [kind, label] = sessStateBadge(session, status);
+  return pillButton(kind, escapeHtml(label), label) + (skill ? pillButton('', escapeHtml(skill), skill) : '');
+}
+
+function sessionCard(session) {
+  const status = sessStatus(session);
+  const id = escapeHtml(session.sessionId);
+  const byTicket = new Map((prdData.prds ?? []).map(prd => [prd.ticket, prd]));
+  const path = session.folder ?? session.cwd;
+  const folder = path ? path.slice(path.lastIndexOf('/') + 1) : null;
+  const where = [folder, session.branch].filter(Boolean).join(' · ');
+  const parts = prdSessionParts(session);
+  const title = escapeHtml(session.title ?? session.name ?? session.sessionId.slice(0, 8));
+  const opens = prdData.claudeSessions && session.resumable;
+  // What it works on, at a glance: its main PRD, else its main PR.
+  const lead = session.tickets.find(link => link.primary && byTicket.has(link.ticket));
+  const leadPr = lead ? null : session.prs.find(pr => pr.primary);
+  const key = lead
+    ? `<a class="sess-key" href="${escapeHtml(byTicket.get(lead.ticket).url)}" target="_blank" rel="noopener" title="${escapeHtml(byTicket.get(lead.ticket).title)}">${escapeHtml(lead.ticket)}</a>`
+    : leadPr ? `<a class="sess-key" href="${escapeHtml(leadPr.url)}" target="_blank" rel="noopener" title="${escapeHtml(leadPr.title ?? '')}">#${escapeHtml(String(leadPr.number ?? leadPr.url.split('/').pop()))}</a>` : '';
+  const open = sessOpen.has(session.sessionId);
+  const starred = sessStars.has(session.sessionId);
+  const star = `<button type="button" class="prd-star sess-star${starred ? ' on' : ''}" data-sess-star="${id}" aria-pressed="${starred}"`
+    + ` title="${escapeHtml(t(starred ? 'sessUnstar' : 'sessStar'))}">${starred ? '★' : '☆'}</button>`;
+  const line = `<div class="sess-line">${parts.open}`
+    + (opens
+      ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`
+      : `<span class="prd-title">${title}</span>`)
+    + `${sessPills(session, status, parts.pillButton)}${key}<span class="sess-where">${escapeHtml(where)}</span>`
+    // When it was last active, for a closed session or a running one with no state time; a working
+    // one carries its time on its badge.
+    + (session.at && !(session.running && session.since) ? `<span class="sess-age">${escapeHtml(ago(session.at))}</span>` : '') + `${star}</div>`;
+  let details = '';
+  if (open) {
+    const recap = Boolean(session.summary) && (!session.promptAt || String(session.summaryAt) >= String(session.promptAt));
+    const about = recap ? session.summary : session.prompt;
+    const aboutAt = recap ? session.summaryAt : session.promptAt;
+    const prdItems = session.tickets.filter(link => byTicket.has(link.ticket)).map(link => {
+      const prd = byTicket.get(link.ticket);
+      return { key: `prd:${prd.ticket}`, closed: prdClosed(prd), primary: link.primary, html: eye => sessionPrdItem(prd, eye) };
+    });
+    const prItems = session.prs.map(pr => ({ key: pr.url, closed: prClosed(pr), primary: pr.primary, html: eye => prdPrItem(pr, eye) }));
+    const items = linkedList(session.sessionId, [...prdItems, ...prItems]);
+    details = `<div class="prd-meta session-meta">${parts.name}<span class="sess-id" title="${escapeHtml(`claude --resume ${session.sessionId}`)}">${id}</span>${parts.at}</div>`
+      + (about ? `<div class="session-about">${aboutAt ? `<span class="session-about-when">${escapeHtml(t(recap ? 'sessRecap' : 'sessAsked', { v: ago(aboutAt) }))}</span>` : ''}${escapeHtml(about)}</div>` : '')
+      + (items ? `<div class="prd-prs">${items}</div>` : `<div class="prd-meta">${escapeHtml(t('sessNoLinks'))}</div>`);
+  }
+  return `<div class="prd session-card${open ? '' : ' folded'}" data-session="${id}" style="--tone: ${SESSION_TONES[status]}">`
+    + `<button type="button" class="prd-caret" data-sess-toggle="${id}" aria-expanded="${open}" aria-label="${escapeHtml(t(open ? 'sessFold' : 'sessUnfold'))}"></button>`
+    // The question it waits on brings the session forward, as its title does.
+    + line + (parts.question
+      ? (opens ? `<button type="button" class="session-question" data-prd-open="${id}" title="${escapeHtml(t('prdFocusTitle'))}">${parts.question}</button>`
+        : `<div class="session-question">${parts.question}</div>`)
+      : '') + details + '</div>';
+}
+
+// Sessions change by the second while the board refreshes every few minutes: the Sessions view
+// polls their states and their skills' stages on their own, the links following the board.
+// Waiting on you is a skill's question, or a session idle for less than YOUR_TURN_MS: it finished
+// its turn, or was started and given nothing yet. Idle longer, it is merely open. A session that
+// starts waiting on you chimes when PR_RADAR_SESSION_CHIME asks for it, and the tab title counts them.
+const sessSignature = sessions => PRRadarPrd.sessionSignature(sessions);
+let sessDrawn = '';
+const SESSION_POLL_MS = 1000;
+const sessLast = new Map();
+function noteSessionChanges(sessions) {
+  if (PRRadarPrd.startedWaiting(sessLast, sessions) && prdData?.sessionChime && soundOn) chime(SESSION_NOTES, 'triangle');
+  paintTitle();
+}
+
+async function pollSessions() {
+  if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  let payload;
+  try {
+    const response = await fetch('/api/sessions/status');
+    payload = await response.json();
+    if (!response.ok || payload.enabled === false) return;
+  } catch {
+    return; // the next poll, or the board's refresh, tries again
+  }
+  if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  const { sessions, unseen } = PRRadarPrd.mergeStatuses(prdData.sessions, payload.sessions);
+  // A session started since the last full read: that read gives it its PRDs and PRs.
+  if (unseen) {
+    loadPrds();
+    return;
+  }
+  const before = JSON.stringify(prdData.sessions);
+  prdData.sessions = sessions;
+  noteSessionChanges(prdData.sessions);
+  // A session can also move by the clock alone: idle past YOUR_TURN_MS, it is merely open.
+  // A redraw would close a picker someone has open; picking redraws anyway.
+  if ((JSON.stringify(prdData.sessions) !== before || sessSignature(prdData.sessions) !== sessDrawn)
+    && !document.activeElement?.matches('#prd select')) renderPrd();
+}
+// The time each session has spent in its state, in whole minutes, from the first one; the page
+// moves it on by itself, and a poll that brings news sets it right.
+function sinceText(iso) {
+  return Date.now() - new Date(iso) < 60_000 ? '' : ` · ${ago(iso)}`;
+}
+setInterval(() => {
+  for (const span of document.querySelectorAll('#prd [data-since]')) {
+    const text = sinceText(span.dataset.since);
+    if (span.textContent !== text) span.textContent = text;
+  }
+}, 15_000);
+setInterval(pollSessions, SESSION_POLL_MS);
+// Closed sessions start folded away; after that, their group is folded or not as you leave it.
+if (store.get('sessClosedFolded', '') !== '1') {
+  collapsedGroups.add('sessions:closed');
+  saveCollapsed();
+  store.set('sessClosedFolded', '1');
+}
+
+// Sessions starred into the priority list above the groups, kept in this browser until unstarred
+// or until the session leaves the view.
+const sessStars = new Set((() => {
+  try {
+    return JSON.parse(store.get('sessStarred', '[]')) ?? [];
+  } catch {
+    return [];
+  }
+})());
+const saveStars = () => store.set('sessStarred', JSON.stringify([...sessStars]));
+
+// The order inside each state's group, kept in this browser: the latest to change state first
+// (the one that just finished leads), the longest in its state first, or by title, folder, PRD or
+// skill, those with none last.
+let sessOrder = PRRadarPrd.SESSION_ORDERS.includes(store.get('sessOrder', 'changed')) ? store.get('sessOrder', 'changed') : 'changed';
+
+function renderSessions() {
+  const sessions = PRRadarPrd.sortSessions(prdData?.sessions ?? [], sessOrder);
+  sessDrawn = sessSignature(sessions);
+  const counters = Object.keys(SESSION_TONES).map(key => {
+    const value = sessions.filter(session => sessStatus(session) === key).length;
+    if (key === 'unknown' && !value) return '';
+    const active = prdFocus === key;
+    const classes = ['counter', SESSION_COUNT_KIND[key], value ? '' : 'zero', active ? 'on' : ''].filter(Boolean);
+    return `<button type="button" class="${classes.join(' ')}" data-prd-focus="${key}"${value ? '' : ' disabled'}`
+      + `${value ? ` title="${escapeHtml(t(active ? 'focusClear' : 'sessFocusHint'))}"` : ''}>`
+      + `<span class="dot"></span><b>${value}</b> ${escapeHtml(t(PRD_SESSION_STATUS[key][1]))}<span class="go">${active ? '×' : '›'}</span></button>`;
+  }).join('');
+  const orders = PRRadarPrd.SESSION_ORDERS.map(value => `<option value="${value}"${value === sessOrder ? ' selected' : ''}>${escapeHtml(t(`sessOrder_${value}`))}</option>`).join('');
+  const bar = `<div class="summary prd-summary"><label class="picker-trigger prd-pick">${escapeHtml(t('prdOrderBy'))} <select data-sess-order>${orders}</select></label>`
+    + `<span class="band-sep" aria-hidden="true"></span><div class="counters">${counters}</div>`
+    + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
+  if (!prdData) {
+    el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
+    return;
+  }
+  if (prdData.enabled === false) {
+    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t('prdDemo'))}</div>`;
+    return;
+  }
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
+    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+  const shown = prdFocus ? sessions.filter(session => sessStatus(session) === prdFocus) : sessions;
+  if (!shown.length) {
+    el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('sessEmpty'))}</div>`;
+    return;
+  }
+  const groupOf = (key, label, tone, cards, hint = '') => {
+    if (!cards.length) return '';
+    const group = `sessions:${key}`;
+    const collapsed = collapsedGroups.has(group);
+    return `<button type="button" class="group-label prd-group${collapsed ? ' collapsed' : ''}" style="--tone: ${tone}" data-group="${group}" aria-expanded="${!collapsed}"${hint ? ` title="${escapeHtml(hint)}"` : ''}>`
+      + `<span class="gdot"></span>${escapeHtml(label)}<span class="gcount">${cards.length}</span><span class="gchev"></span></button>`
+      + `<div class="group-cards">${cards.map(sessionCard).join('')}</div>`;
+  };
+  // The starred ones first, in their own list; the others by state.
+  const rest = shown.filter(session => !sessStars.has(session.sessionId));
+  el('prd').innerHTML = bar + notices
+    + groupOf('starred', t('sessStarred'), 'var(--amber)', shown.filter(session => sessStars.has(session.sessionId)))
+    + Object.keys(SESSION_TONES).map(key => groupOf(key, t(PRD_SESSION_STATUS[key][1]), SESSION_TONES[key],
+      rest.filter(session => sessStatus(session) === key), key === 'unknown' ? t('sessNoStatusHint') : '')).join('');
+}
+
+el('prd').addEventListener('change', event => {
+  if (event.target.matches('[data-prd-group]')) store.set('prdGroup', (prdGroup = event.target.value));
+  else if (event.target.matches('[data-prd-order]')) store.set('prdOrder', (prdOrder = event.target.value));
+  else if (event.target.matches('[data-sess-order]')) store.set('sessOrder', (sessOrder = event.target.value));
+  else return;
+  renderPrd();
+});
+el('prd').addEventListener('click', event => {
+  // The caret, or anywhere on a folded card but its links and buttons.
+  const folded = event.target.closest('.prd-pr-item.folded');
+  const pr = event.target.closest('[data-prd-pr]')
+    ?? (folded && !event.target.closest('a, button') ? folded.querySelector('[data-prd-pr]') : null);
+  if (pr) {
+    const { prdPr: url } = pr.dataset;
+    if (!prdOpenPrs.delete(url)) prdOpenPrs.add(url);
+    renderPrd();
+    return;
+  }
+  const hide = event.target.closest('[data-prd-hide]');
+  if (hide) {
+    setHidden(hide.dataset.prdScope, hide.dataset.prdHide, hide.dataset.prdHidden !== 'true');
+    renderPrd();
+    return;
+  }
+  const hiddenHead = event.target.closest('[data-prd-hidden-toggle]');
+  if (hiddenHead) {
+    const { prdHiddenToggle: scope } = hiddenHead.dataset;
+    if (!prdOpenHidden.delete(scope)) prdOpenHidden.add(scope);
+    renderPrd();
+    return;
+  }
+  const focus = event.target.closest('[data-prd-focus]');
+  if (focus) {
+    prdFocus = prdFocus === focus.dataset.prdFocus ? null : focus.dataset.prdFocus;
+    renderPrd();
+    return;
+  }
+  const more = event.target.closest('[data-prd-sessions]');
+  if (more) {
+    const { prdSessions: ticket } = more.dataset;
+    if (!prdOpenSessions.delete(ticket)) prdOpenSessions.add(ticket);
+    renderPrd();
+    return;
+  }
+  const star = event.target.closest('[data-prd-main]');
+  if (star) {
+    prdMains[star.dataset.prdTicket] = star.dataset.prdMain;
+    store.set('prdMain', JSON.stringify(prdMains));
+    prdOpenSessions.delete(star.dataset.prdTicket);
+    renderPrd();
+    return;
+  }
+  const starButton = event.target.closest('[data-sess-star]');
+  if (starButton) {
+    const { sessStar: id } = starButton.dataset;
+    if (!sessStars.delete(id)) sessStars.add(id);
+    saveStars();
+    renderPrd();
+    return;
+  }
+  // The caret, or anywhere on a session's line but its links and buttons, folds it or unfolds it.
+  const line = event.target.closest('.sess-line');
+  const toggle = event.target.closest('[data-sess-toggle]')
+    ?? (line && !event.target.closest('a, button') ? line.closest('.session-card').querySelector('[data-sess-toggle]') : null);
+  if (toggle) {
+    const { sessToggle: id } = toggle.dataset;
+    if (!sessOpen.delete(id)) sessOpen.add(id);
+    renderPrd();
+    return;
+  }
+  const open = event.target.closest('[data-prd-open], .claude-link');
+  const card = open?.closest('.prd-session, .session-card');
+  const link = open?.matches('[data-prd-open]') ? card?.querySelector('.claude-link') : null;
+  if (link) resumeClaudeSession(link);
+});
 
 // Opening a PR from the board, left or middle click, is having seen what moved on it. The
 // link still opens; only the photo is retaken.
@@ -4648,6 +5575,11 @@ document.addEventListener('keydown', event => {
   if (hubOpen && !el('hubPanel').hidden) {
     openHub(false);
     el('hub').focus();
+    return;
+  }
+  if (listView(view) && prdFocus) {
+    prdFocus = null;
+    renderPrd();
     return;
   }
   if (!state.focus) return;
@@ -5496,7 +6428,9 @@ let hubWizzQueue = [];
 // A hidden tab cannot shake, so it says so in its title until someone looks.
 function paintTitle() {
   const waiting = document.hidden && (hubWizzQueue.length > 0 || hubKudosBatch.length > 0);
-  document.title = `${waiting ? '● ' : ''}${state.titleBase ?? 'PR Radar'}`;
+  const waitingSessions = view === 'sessions' ? (prdData?.sessions ?? []).filter(session => sessStatus(session) === 'waiting').length : 0;
+  const calls = waitingSessions ? `${t('sessCalls', { n: waitingSessions })} · ` : '';
+  document.title = `${waiting ? '● ' : ''}${calls}${state.titleBase ?? 'PR Radar'}`;
 }
 
 const WIZZ_STALE_MS = 10 * 60_000;

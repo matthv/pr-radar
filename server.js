@@ -35,6 +35,9 @@ const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
+const skillStages = require('./skill-stages');
+const linear = require('./linear');
+const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('./prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -70,6 +73,10 @@ const PAGE_REFRESH_SECONDS = 20;
 const FIRST_SEARCH_RETRY_MS = 60_000;
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
+// The PRDs view reads your tickets from Linear's API; without a key the view says how to set one.
+const LINEAR_API_KEY = (process.env.PR_RADAR_LINEAR_API_KEY ?? '').trim();
+// A session that has written no stage for a day is not working on anything any more.
+const STAGE_WINDOW_MS = 86_400_000;
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
@@ -95,6 +102,8 @@ const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
       ? `off (PR_RADAR_TERMINAL "${TERMINAL}" unknown: ${Object.keys(claudeSessions.TERMINALS).join(', ')})`
       : null;
 const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
+// The Sessions view chimes when a session turns to you only when asked to.
+const SESSION_CHIME = process.env.PR_RADAR_SESSION_CHIME === 'true';
 // The board waits this long for the transcripts on a refresh; a longer scan, the first one
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
@@ -225,17 +234,76 @@ function withClaudeSessions(payload) {
   };
 }
 
+// The PRs made or opened in a session since the change check last asked: a scan the PRD view
+// runs in between keeps them for it.
+let touchedSince = new Set();
 function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
     ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
-      return touched;
+      const all = [...new Set([...touchedSince, ...touched])];
+      touchedSince = new Set();
+      return all;
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
       return [];
     },
   );
+}
+
+// Linear is read on the board's cadence; the stage lines and the running sessions on every
+// request, since they move by the minute and cost a few small files.
+let linearCache = { at: 0, key: '', prds: null };
+let linearInFlight = null;
+function linearPrds(extra, force) {
+  const key = [...extra].sort().join(',');
+  if (!force && linearCache.prds && linearCache.key === key && Date.now() - linearCache.at < CACHE_TTL_MS) return Promise.resolve(linearCache.prds);
+  linearInFlight ??= linear.fetchPrds({ apiKey: LINEAR_API_KEY, extra })
+    .then(prds => {
+      linearCache = { at: Date.now(), key, prds };
+      return prds;
+    })
+    .finally(() => {
+      linearInFlight = null;
+    });
+  return linearInFlight;
+}
+
+async function prdView(force) {
+  const boardPrs = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : [];
+  const warnings = [];
+  const stageSessions = await skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }).catch(error => {
+    warnings.push({ source: 'stages', message: `${skillStages.STAGES_DIR}: ${error.message}` });
+    return [];
+  });
+  const live = await claudeSessions.liveSessions().catch(error => {
+    warnings.push({ source: 'claude', message: error.message });
+    return [];
+  });
+  // A session started since the last scan has no title, folder or branch until its transcript is read.
+  if (CLAUDE_SESSIONS) {
+    await claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(({ touched }) => {
+      for (const url of touched) touchedSince.add(url);
+    }, () => {});
+  }
+  // The Sessions view needs no Linear: without a key it shows the sessions and their own PRs.
+  const fetched = LINEAR_API_KEY ? await linearPrds(extraTickets(stageSessions, boardPrs), force) : [];
+  const prds = buildPrds({
+    prds: fetched, boardPrs, stageSessions, live,
+    sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
+    sessionsOf: CLAUDE_SESSIONS ? claudeSessions.sessionsForTicket : () => [],
+    cwdOf: claudeSessions.cwdOf,
+  });
+  return {
+    enabled: true,
+    linear: Boolean(LINEAR_API_KEY),
+    claudeSessions: CLAUDE_SESSIONS,
+    sessionChime: SESSION_CHIME,
+    warnings,
+    prds,
+    sessions: buildSessions({ prds, boardPrs, stageSessions, live, detailsOf: CLAUDE_SESSIONS ? claudeSessions.sessionDetails : () => null, cwdOf: claudeSessions.cwdOf }),
+  };
 }
 
 // Twins come with the board, Slack link on or off: the ticket and the title still find them.
@@ -698,6 +766,30 @@ const server = http.createServer(async (req, res) => {
       json(res, 502, { error: error.message }, version);
     }
     return;
+  }
+
+  if (url.pathname === '/api/prds') {
+    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
+    try {
+      return json(res, 200, await prdView(url.searchParams.get('force') === '1'));
+    } catch (error) {
+      return json(res, 502, { error: error.message });
+    }
+  }
+
+  // The Sessions view's poll: the sessions' states and their skills' stages, from local files
+  // only, no Linear and no GitHub.
+  if (url.pathname === '/api/sessions/status') {
+    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
+    try {
+      const [stageSessions, live] = await Promise.all([
+        skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }),
+        claudeSessions.liveSessions(),
+      ]);
+      return json(res, 200, { enabled: true, sessions: sessionStatuses({ stageSessions, live }) });
+    } catch (error) {
+      return json(res, 502, { error: error.message });
+    }
   }
 
   if (url.pathname === '/api/themes' && req.method === 'POST') {

@@ -26,10 +26,76 @@ const knownLinks = new Map();
 // Claude Code itself appends a `pr-link` record to a session's transcript whenever a PR is
 // created or opened in it. The link is read from there rather than from a branch: a session
 // started in a folder above the repositories records none.
+// What ties a session to a ticket is where it declares the work, never a passing mention: tool
+// output, Linear activity and commit text name epics and neighbours nobody is working on.
+// - a skill run on the ticket, typed (`/implement PRD-1`) or, far more often, invoked by Claude
+//   with the key in its arguments;
+// - a folder named for it the session worked in, as /implement's worktrees are;
+// - a commit made on a branch named for it. The branch alone is not enough: a checkout left on an
+//   old branch hosts sessions on every other ticket.
+const TICKET_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/g;
+const keysIn = text => String(text ?? '').toUpperCase().match(TICKET_KEY) ?? [];
+const fieldOf = (line, name) => {
+  const start = line.indexOf(`"${name}":"`);
+  if (start === -1) return null;
+  const from = start + name.length + 4;
+  return line.slice(from, line.indexOf('"', from));
+};
+const isTyped = line => line.includes('"type":"user"') && !line.includes('"tool_result"')
+  && !line.includes('"isMeta":true') && !line.includes('"isCompactSummary":true');
+const declaresInPrompt = line => line.includes('<command-args>') && isTyped(line);
+const declaresInTools = line => line.includes('"type":"assistant"') && (line.includes('"name":"Skill"') || /git\s+commit\b/.test(line));
+const textOf = content => typeof content === 'string'
+  ? content
+  : Array.isArray(content) ? content.filter(part => part?.type === 'text').map(part => part.text).join('\n') : '';
+
+// How much each declaration weighs toward a session being the one doing a ticket's work: a skill
+// run on it most, then a commit on its branch, then having worked in its folder at all (counted
+// once: a session moving in and out of folders would otherwise outweigh every skill).
+const WEIGHT = { skill: 3, commit: 2, folder: 1 };
+const credit = (entry, keys, weight) => {
+  for (const key of keys) entry.tickets.set(key, (entry.tickets.get(key) ?? 0) + weight);
+};
+
+const promptTickets = text => [...text.matchAll(/<command-args>([\s\S]*?)<\/command-args>/g)].flatMap(match => keysIn(match[1]));
+
+function creditTools(entry, record) {
+  for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
+    if (part?.type !== 'tool_use') continue;
+    if (part.name === 'Skill') credit(entry, keysIn(part.input?.args), WEIGHT.skill);
+    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? ''))) credit(entry, keysIn(record.gitBranch), WEIGHT.commit);
+  }
+}
+
+// What a session is about, for a card of its own: Claude Code's title for it, the recap it
+// writes while you are away, the last prompt you typed and the branch it is on, each the latest.
+const PROMPT_CHARS = 240;
+const NOT_TYPED = /^\s*<(system-reminder|task-notification|local-command|bash-|user-prompt-submit-hook)/;
+function promptOf(text) {
+  const command = /<command-name>([^<]*)<\/command-name>/.exec(text)?.[1];
+  const said = command ? `${command} ${/<command-args>([\s\S]*?)<\/command-args>/.exec(text)?.[1] ?? ''}` : text;
+  if (!command && NOT_TYPED.test(said)) return null;
+  const flat = said.replace(/\s+/g, ' ').trim();
+  return flat ? (flat.length > PROMPT_CHARS ? `${flat.slice(0, PROMPT_CHARS - 1)}…` : flat) : null;
+}
+
 function readLines(text, entry) {
   for (const line of text.split('\n')) {
-    const wantsCwd = !entry.cwd && line.includes('"cwd":');
-    if (!wantsCwd && !line.includes('"type":"pr-link"')) continue;
+    const branch = fieldOf(line, 'gitBranch');
+    if (branch) entry.branch = branch;
+    // Every record names the folder it ran in, ahead of its content; only a change is read again.
+    const cwd = fieldOf(line, 'cwd');
+    if (cwd && cwd !== entry.lastCwd) {
+      entry.lastCwd = cwd;
+      const fresh = keysIn(cwd.slice(cwd.lastIndexOf('/') + 1)).filter(key => !entry.folders.has(key));
+      for (const key of fresh) entry.folders.add(key);
+      credit(entry, fresh, WEIGHT.folder);
+    }
+    const wantsCwd = !entry.cwd && cwd !== null;
+    const inPrompt = declaresInPrompt(line);
+    const inTools = !inPrompt && declaresInTools(line);
+    const about = line.includes('"type":"ai-title"') || line.includes('"subtype":"away_summary"') || isTyped(line);
+    if (!wantsCwd && !inPrompt && !inTools && !about && !line.includes('"type":"pr-link"')) continue;
     let record;
     try {
       record = JSON.parse(line);
@@ -38,13 +104,24 @@ function readLines(text, entry) {
     }
     if (wantsCwd && typeof record.cwd === 'string') entry.cwd = record.cwd;
     if (record.type === 'pr-link' && record.prUrl) entry.prUrls.add(record.prUrl);
+    if (inPrompt && record.type === 'user') credit(entry, promptTickets(textOf(record.message?.content)), WEIGHT.skill);
+    if (inTools && record.type === 'assistant') creditTools(entry, record);
+    if (record.type === 'ai-title' && record.aiTitle) entry.title = record.aiTitle;
+    if (record.subtype === 'away_summary' && record.content) Object.assign(entry, { summary: String(record.content), summaryAt: record.timestamp ?? null });
+    if (record.type === 'user' && !record.isMeta && !record.isCompactSummary) {
+      const prompt = promptOf(textOf(record.message?.content));
+      if (prompt) Object.assign(entry, { prompt, promptAt: record.timestamp ?? null });
+    }
   }
 }
 
 async function readNewLines(file, stat) {
   let entry = transcripts.get(file);
   if (!entry || stat.size < entry.offset) {
-    entry = { offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set() };
+    entry = {
+      offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Map(), folders: new Set(),
+      title: null, summary: null, summaryAt: null, prompt: null, promptAt: null, branch: null,
+    };
     transcripts.set(file, entry);
   }
   entry.mtimeMs = stat.mtimeMs;
@@ -119,6 +196,16 @@ function scan({ dir = PROJECTS_DIR, maxAgeDays }) {
   return scanning;
 }
 
+// The folder a session was started in, which `--resume` needs, from its latest transcript.
+function cwdOf(sessionId) {
+  let latest = null;
+  for (const entry of transcripts.values()) {
+    if (entry.sessionId !== sessionId || !entry.cwd) continue;
+    if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
+  }
+  return latest?.cwd ?? null;
+}
+
 function sessionFor(prUrl) {
   let latest = null;
   for (const entry of transcripts.values()) {
@@ -126,6 +213,31 @@ function sessionFor(prUrl) {
     if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
   }
   return latest && { sessionId: latest.sessionId, cwd: latest.cwd };
+}
+
+// What a session's latest transcript says it is about, and the PRs it made or opened.
+function sessionDetails(sessionId) {
+  let latest = null;
+  for (const entry of transcripts.values()) {
+    if (entry.sessionId !== sessionId) continue;
+    if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
+  }
+  if (!latest) return null;
+  const { title, summary, summaryAt, prompt, promptAt, branch, cwd } = latest;
+  // `cwd` is the folder it started in, the one `--resume` needs; `folder` the one it works in now,
+  // a worktree it moved into, to show beside the branch it is on there.
+  return {
+    title, summary, summaryAt, prompt, promptAt, branch, cwd, folder: latest.lastCwd ?? cwd,
+    prUrls: [...latest.prUrls], at: new Date(latest.mtimeMs).toISOString(),
+  };
+}
+
+// The sessions that declared work on a ticket, newest first, each with the weight of what it did.
+function sessionsForTicket(ticket) {
+  return [...transcripts.values()]
+    .filter(entry => entry.cwd && SESSION_ID.test(entry.sessionId) && entry.tickets.has(ticket))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .map(entry => ({ sessionId: entry.sessionId, cwd: entry.cwd, at: new Date(entry.mtimeMs).toISOString(), weight: entry.tickets.get(ticket) }));
 }
 
 const shellQuote = value => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -226,10 +338,26 @@ async function readRecord(file) {
   }
 }
 
-// A `/clear` gives the running process a new session id and moves the old one to
-// `formerNames`: that window no longer shows the PR's conversation, so only the current id
-// counts. Most recently active first, since a session can be resumed in several places.
-async function runningPids(sessionId, dir = RUNNING_DIR) {
+// Claude Code's documented listing of its running sessions, `claude agents --json`: the same
+// status and waitingFor as the session files, without when the status began.
+function claudeAgents() {
+  return new Promise(resolve => {
+    execFile('claude', ['agents', '--json'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return resolve([]);
+      try {
+        const list = JSON.parse(stdout);
+        resolve(Array.isArray(list) ? list : []);
+      } catch {
+        resolve([]);
+      }
+    });
+  });
+}
+
+// The interactive copies running now, most recently active first: a session can be resumed
+// in several places. A record with no status, which the session files do not promise, takes it
+// from `claude agents --json`, asked only then.
+async function liveSessions(dir = RUNNING_DIR, { agents = claudeAgents } = {}) {
   let names;
   try {
     names = await fs.readdir(dir);
@@ -240,10 +368,26 @@ async function runningPids(sessionId, dir = RUNNING_DIR) {
   const running = [];
   for (const name of names.filter(entry => entry.endsWith('.json'))) {
     const record = await readRecord(path.join(dir, name));
-    if (!record || record.sessionId !== sessionId || (record.kind ?? 'interactive') !== 'interactive') continue;
+    if (!record || (record.kind ?? 'interactive') !== 'interactive') continue;
     if (record.pid > 0 && isAlive(record.pid)) running.push(record);
   }
-  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(record => record.pid);
+  if (running.some(record => !record.status)) {
+    const listed = new Map((await agents()).map(agent => [agent.pid, agent]));
+    for (const [index, record] of running.entries()) {
+      const agent = listed.get(record.pid);
+      if (!record.status && agent?.sessionId === record.sessionId && agent.status) {
+        running[index] = { ...record, status: agent.status, waitingFor: agent.waitingFor ?? null };
+      }
+    }
+  }
+  return running.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+}
+
+// A `/clear` gives the running process a new session id and moves the old one to
+// `formerNames`: that window no longer shows the PR's conversation, so only the current id
+// counts.
+async function runningPids(sessionId, dir = RUNNING_DIR) {
+  return (await liveSessions(dir)).filter(record => record.sessionId === sessionId).map(record => record.pid);
 }
 
 function parseProcesses(psOutput) {
@@ -396,16 +540,27 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   const refused = refusal({ contentType: headers['content-type'], remoteAddress, host: headers.host });
   if (refused) return [403, refused];
   let id;
+  let sessionId;
   try {
-    ({ id } = await readBody());
+    ({ id, sessionId } = await readBody());
   } catch {
     return [400, 'invalid JSON body'];
   }
-  if (!board) return [503, 'the board has not loaded yet'];
-  const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
-  if (!pr) return [404, 'this PR is not on the board'];
-  const session = sessionFor(pr.url);
-  if (!session) return [404, 'no Claude session linked to this PR'];
+  let session;
+  // The PRDs view names a session itself; the board names a PR, whose session it finds.
+  if (sessionId !== undefined) {
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [400, 'invalid session id'];
+    const record = (await liveSessions(runningDir).catch(() => [])).find(entry => entry.sessionId === sessionId);
+    const cwd = cwdOf(sessionId) ?? record?.cwd ?? null;
+    if (!cwd) return [404, 'no transcript of this session on this machine'];
+    session = { sessionId, cwd };
+  } else {
+    if (!board) return [503, 'the board has not loaded yet'];
+    const pr = [...board.mine, ...board.reviews].find(entry => entry.id === id);
+    if (!pr) return [404, 'this PR is not on the board'];
+    session = sessionFor(pr.url);
+    if (!session) return [404, 'no Claude session linked to this PR'];
+  }
   try {
     if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins })) return [200, null];
     const opened = await openSession(plugins, { sessionId: session.sessionId, cwd: session.cwd }, hookTimeout);
@@ -423,6 +578,10 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
 module.exports = {
   scan,
   sessionFor,
+  sessionsForTicket,
+  sessionDetails,
+  cwdOf,
+  liveSessions,
   resumeCommand,
   openInTerminal,
   focusRunning,

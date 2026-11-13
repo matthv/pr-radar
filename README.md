@@ -112,6 +112,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_REFRESH_SECONDS` | `300` | Full search interval — see [How fresh the board is](#how-fresh-the-board-is) |
 | `PR_RADAR_CHECK_SECONDS` | `60` | Free change checks between two full searches; `0` goes back to a full refresh every `PR_RADAR_REFRESH_SECONDS` and nothing else |
 | `PR_RADAR_CLAUDE_SESSIONS` | `false` | macOS: a button that resumes the PR's Claude Code session — see [The Claude session](#the-claude-session) |
+| `PR_RADAR_SESSION_CHIME` | `false` | The Sessions view chimes when a session starts waiting on you — see [The Sessions view](#the-sessions-view) |
 | `PR_RADAR_TERMINAL` | `Terminal` | Where a session not already running opens: `Terminal`, `iTerm` or `Ghostty` |
 | `PR_RADAR_HIDE_DRAFTS` | `false` | Keep draft PRs off the board |
 | `PR_RADAR_THEME` | — | The theme worn on Auto outside the seasonal ones, a folder name in `public/themes/` or `custom-themes/` — see [Themes](#themes) |
@@ -120,6 +121,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
+| `PR_RADAR_LINEAR_API_KEY` | — | A personal Linear API key (Linear › Settings › Security & access): the PRDs view reads your tickets with it — see [The PRDs view](#the-prds-view). Empty, the view says how to set it |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
 | `PR_RADAR_SLACK_CLAIM_EMOJI` | — | An emoji, `pr-radar` say: your reaction on an announcement puts that PR on your review side — see [Claiming a PR from Slack](#claiming-a-pr-from-slack). Empty, off |
@@ -397,6 +399,12 @@ that module exports and none of its network calls:
 - `test/kanban.test.js` — the kanban layout: one axis for both lanes, a bucket a side never
   has kept as an empty cell, a focused counter, folded columns and the "quiet" one folded by
   default;
+- `test/linear.test.js` — the PRDs view's tickets against a faked Linear: what each carries, the
+  extra tickets fetched by key, and a refused key;
+- `test/skill-stages.test.js` — reading the skills' stage lines: the run in front, a question
+  and its answer, a half-written line, and the age window;
+- `test/prds.test.js` — a ticket's PRs and sessions, the PRDs view's grouping and ordering, and the
+  Sessions view's states, badges, sorting, live merge and chime;
 - `test/watch.test.js` — change detection against a faked `gh`: the first answer as a
   baseline, `304` and `200`, a failed reload read as changed again, notifications in and out
   of scope, `X-Poll-Interval`, the cards in flight, the gap between two searches;
@@ -1344,7 +1352,7 @@ state line, which is the real last activity and doubles as the sort key.
 
 ## The kanban view
 
-The last icon of the view switch (board · by author · kanban) lays the same groups out as
+The third icon of the view switch (board · by author · kanban · PRDs · sessions) lays the same groups out as
 columns instead of stacking them. Nothing is reclassified: a card sits in the column of the
 group the board would have put it in.
 
@@ -1370,6 +1378,85 @@ group the board would have put it in.
   on one line (all of it on hover), and a note shows as a dot on its icon, its text on hover.
   The bottom row keeps every action: note, copy, snooze, Linear, Claude and Slack.
 - Narrower than the columns need, the view scrolls sideways and snaps to each column.
+
+## The PRDs view
+
+The fourth icon of the view switch lists the Linear tickets you are working on instead of PRs,
+each with its PRs and the Claude Code sessions working on it.
+
+**Setup.** Put a personal Linear API key (Linear › Settings › Security & access) in
+`PR_RADAR_LINEAR_API_KEY`. Without one the view says how to set it; the rest of the board never
+needs it. The session buttons need `PR_RADAR_CLAUDE_SESSIONS=true`, as on the board's cards.
+
+**What a ticket shows**
+
+- **Which tickets:** those assigned to you in a started state (In Progress, In Review…), plus any
+  ticket a local Claude session reported a skill stage on in the last day. One assigned to someone
+  else is marked *not yours*.
+- **Its PRs:** the PRs Linear attached to it and the board's PRs naming it, each as the board's own
+  card folded to one line. Click to unfold it. A PR the board doesn't carry links to GitHub.
+- **Its sessions:** the Claude Code sessions working on it, with their state, their skill and the
+  stage it is on, and the question it is waiting on. Click any of them to bring the session forward,
+  or resume it if it is closed. The one doing most of the work is starred *main*; star another to
+  change it. Folded, the box shows the main session and any that is working or waiting on you.
+
+**Finding your way**
+
+- **Group by** status, project, label or nothing; **order by** last update, opening date or title.
+- **Counters** in the band filter to the tickets waiting on you, being worked on, needing you on a
+  PR, or with no open session. Click again, or press Esc, to clear.
+- **Hide** a PR or a ticket with the eye that shows on hover: it moves into a folded *n more* line,
+  under why it is there (*also linked*, *closed*, *hidden by you*). Its eye there brings it back.
+
+**How a session is tied to a ticket.** Only by work on it, never by a mention: a skill run on the
+ticket (`/implement PRD-1`), claudine stage lines naming it or one of its PRs, a worktree folder
+named for it, a commit on a branch named for it, or opening one of its PRs. Every running session
+shows, plus the two most involved closed ones.
+
+**Skill stages** come from claudine's skills, which write one line per stage to
+`~/.claude/skill-stages/<session id>.jsonl` (`SKILL_STAGES_DIR` to move it). A skill run inside
+another, `/validator` inside `/review-loop`, shows while it runs. A run its session closed in the
+middle of shows as *interrupted*.
+
+### The Sessions view
+
+The fifth icon shows one line per Claude Code session, to see at a glance which ones need you and
+jump to them. It needs `PR_RADAR_CLAUDE_SESSIONS=true`, but no Linear key: without one, sessions
+show only their own PRs.
+
+**The groups**
+
+| Group | What it means |
+| --- | --- |
+| Waiting on you | A skill asked a *question*, Claude Code is at a *permission prompt*, or it is *your turn*: the session went idle less than 30 minutes ago |
+| Working | Claude is busy |
+| Open | Idle for more than 30 minutes |
+| Closed | No longer running; starts folded |
+| No status | Running, but neither Claude Code's session file nor `claude agents --json`, which pr-radar asks when the file is silent, says what it is doing. Shown only when it happens: an update to Claude Code may have changed them |
+
+Each group has a counter in the band that filters to it. Fold any group from its header. Star a
+session (☆ on hover) to pin it in a *starred* list at the top.
+
+**A line** shows, left to right:
+
+- the session's title, as Claude Code named it: click it, or the Claude icon, to jump to it;
+- its badge: the skill at work with its stage and time (*validator · review · 3 min*), or
+  *question*, *permission prompt*, *your turn* or *open*. A skill that ended reads
+  *validator · done · commented*;
+- the ticket or PR it works on, the folder it is in (its worktree, if it moved into one) and branch;
+- underneath, the question it is waiting on: click it to jump to the session.
+
+Unfold a line for its full session ID, its latest recap or your last prompt, and the tickets and PRs
+it works on. Links that are less likely to be its work start in *n more*.
+
+**Order by** latest change (default), longest in its state, title, folder, ticket or skill.
+
+**Live updates.** While the view is open it rereads session states every second, from local
+files only, so it costs no GitHub or Linear calls. The tab title shows `⚑ n` for the sessions
+waiting on you. Set `PR_RADAR_SESSION_CHIME=true` to hear three falling notes when a session needs you:
+a new question or permission prompt, or Claude finishing its work. Typing into a session, or a skill
+moving to its next step, stays quiet. The notes are distinct from the board's chime; the mute
+button silences both.
 
 ## Reading the colours
 
