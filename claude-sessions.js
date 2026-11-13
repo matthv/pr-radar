@@ -4,6 +4,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
+const { focusSession, openSession } = require('./plugins');
+const logger = require('./log');
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
@@ -275,6 +277,18 @@ function hostsOf(pid, processes) {
   return hosts;
 }
 
+// Every command above the session, nearest first: what a plugin reads to know whether the
+// session is in an app of its own.
+function ancestorsOf(pid, processes) {
+  const ancestors = [];
+  const seen = new Set([pid]);
+  for (let ppid = processes.get(pid)?.ppid; processes.has(ppid) && !seen.has(ppid); ppid = processes.get(ppid).ppid) {
+    seen.add(ppid);
+    ancestors.push(processes.get(ppid).command);
+  }
+  return ancestors;
+}
+
 // herdr's own panes first, but any pane may hold the process: herdr only tags a pane once
 // it has recognised the agent in it. A pane closing mid-search is skipped, not fatal.
 async function focusHerdrPane(pid, herdr, exec) {
@@ -341,7 +355,7 @@ const FOCUS_TTY = {
 
 // A copy that runs where it cannot be reached is an error, not a reason to open another:
 // two processes on one session fork its history.
-async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
+async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR, plugins = [] } = {}) {
   const pids = await runningPids(sessionId, dir);
   if (!pids.length) return false;
   const processes = parseProcesses(await exec('ps', ['-axo', 'pid=,ppid=,tty=,comm=']));
@@ -366,11 +380,18 @@ async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR } = {}) {
       return true;
     }
   }
-  throw new Error('this session is already open, in a terminal PR Radar cannot bring forward');
+  const failures = [];
+  for (const pid of claudePids) {
+    const session = { sessionId, pid, tty: processes.get(pid).tty, ancestors: ancestorsOf(pid, processes) };
+    const answer = await focusSession(plugins, session);
+    if (answer.done) return true;
+    failures.push(...answer.failures);
+  }
+  throw new Error(`this session is already open, in a terminal PR Radar cannot bring forward${failures.length ? ` (${failures.join('; ')})` : ''}`);
 }
 
 // The route, kept here with its guards so a test can drive it end to end.
-async function resume({ headers, remoteAddress, readBody }, { enabled, terminal, board, exec = run, runningDir = RUNNING_DIR }) {
+async function resume({ headers, remoteAddress, readBody }, { enabled, terminal, board, plugins = [], exec = run, runningDir = RUNNING_DIR, hookTimeout }) {
   if (!enabled) return [403, 'Claude sessions are off (PR_RADAR_CLAUDE_SESSIONS, macOS only)'];
   const refused = refusal({ contentType: headers['content-type'], remoteAddress, host: headers.host });
   if (refused) return [403, refused];
@@ -386,7 +407,13 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   const session = sessionFor(pr.url);
   if (!session) return [404, 'no Claude session linked to this PR'];
   try {
-    if (!(await focusRunning(session.sessionId, { exec, dir: runningDir }))) await openInTerminal(session, terminal, exec);
+    if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins })) return [200, null];
+    const opened = await openSession(plugins, { sessionId: session.sessionId, cwd: session.cwd }, hookTimeout);
+    if (opened.stalled) throw new Error(`${opened.failures.at(-1)}: it may still open the session, so no second copy was started`);
+    if (!opened.done) {
+      for (const failure of opened.failures) logger.fail('plugins', `open: ${failure}, opening in ${terminal} instead`);
+      await openInTerminal(session, terminal, exec);
+    }
     return [200, null];
   } catch (error) {
     return [502, error.message];
@@ -402,6 +429,7 @@ module.exports = {
   runningPids,
   parseProcesses,
   hostsOf,
+  ancestorsOf,
   refusal,
   resume,
   TERMINALS,

@@ -221,6 +221,7 @@ async function generate(groups, counts, lang, key) {
 const SITUATION = {
   action: 'the reader has not reviewed it yet, or has replies waiting for them',
   waiting: 'the reader has given feedback and waits for the author to push a fix',
+  bot: 'the reader claimed its review and waits for a review bot to finish its round first',
   merged: 'merged',
   idle: 'nothing pending on either side',
 };

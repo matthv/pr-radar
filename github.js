@@ -8,6 +8,7 @@ const { promisify } = require('node:util');
 const execFile = promisify(require('node:child_process').execFile);
 
 const { ticketKey } = require('./ticket');
+const { decoratePr, pluginWarnings } = require('./plugins');
 const { conditionalGet, runGh } = require('./watch');
 
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
@@ -37,8 +38,8 @@ const LINT_BOTS = new Set(['qltysh', 'qlty-cloud-legacy']);
 
 const PAGE_INFO = 'pageInfo { hasPreviousPage startCursor }';
 const CONNECTION_FIELDS = {
-  reviews: 'id author { __typename login avatarUrl } state submittedAt url body',
-  reviewThreads: `id isResolved isOutdated path line
+  reviews: 'id author { __typename login avatarUrl } state submittedAt url body commit { oid }',
+  reviewThreads: `id isResolved resolvedBy { login } isOutdated path line
     comments(first: 20) { totalCount nodes { author { __typename login } body createdAt url pullRequestReview { id } } }`,
 };
 
@@ -83,9 +84,13 @@ query($ids: [ID!]!) {
         latestRelease { tagName url publishedAt }
       }
       labels(first: 10) { nodes { name color } }
+      labelEvents: timelineItems(last: 10, itemTypes: [LABELED_EVENT]) {
+        nodes { ... on LabeledEvent { createdAt actor { login } label { name } } }
+      }
       head: commits(last: 1) {
         nodes {
           commit {
+            oid
             committedDate
             author { user { login } }
             statusCheckRollup { state }
@@ -1003,6 +1008,34 @@ function decorateReview(pr, me, reviewOwedByMe) {
 
   const awaitingFix = awaitingAuthor.length > 0 || myLatestVerdict === 'CHANGES_REQUESTED';
 
+  // A review I claimed through a plugin (the validator's label, say) is held by whoever the plugin says
+  // has the turn, until my first review or remark after the claim; then the rules above take over.
+  // A bot's turn is a group of its own: "waiting on the author" would name the wrong party.
+  const claim = pr.plugins?.review;
+  // Logins compare whatever their case, as GitHub's do.
+  const since = claim?.claimedBy.toLowerCase() === me.toLowerCase() ? Date.parse(claim.since) : NaN;
+  const reviewedSince = [...myReviews.map(r => r.submittedAt), ...myThreads.map(t => t.myLastAt)]
+    .some(at => at && Date.parse(at) >= since);
+  if (!pr.merged && !Number.isNaN(since) && !reviewedSince) {
+    const mine = claim.turn === 'me';
+    return {
+      ...pr,
+      side: 'review',
+      // The claim's own reason says it, "to review" included: this one would add a second pill.
+      reviewOwedByMe: false,
+      iHaveReviewed,
+      myLatestVerdict,
+      myLastActivity: myLastActivity ?? null,
+      awaitingAuthor,
+      answeredToMe,
+      pushedSinceMyFeedback,
+      reasons: mine ? [{ kind: 'claim', text: claim.why }] : [],
+      needsAction: mine,
+      awaitingFix: claim.turn === 'author',
+      bucket: mine ? 'action' : claim.turn === 'author' ? 'waiting' : 'bot',
+    };
+  }
+
   // Once merged, every pending state is history — the same rule my own PRs follow. Left
   // in, a merged PR would keep claiming a reply was waiting for me on something closed,
   // which is exactly what kept other people's merges off the board in the first place.
@@ -1293,19 +1326,23 @@ async function loadNodes(ids, warnings) {
 // Pure: the board from the raw nodes and the discovery context. The context's sets are
 // copied: a reshape after reloading a few PRs starts again from what the searches found,
 // or a PR moved by the taken-over rule would stay on my side after its author pushed.
-function shapeBoard(nodes, context, detailWarnings = []) {
+function shapeBoard(nodes, context, detailWarnings = [], plugins = []) {
   const { me, org, maxAgeDays, cutoff, mergedCutoff, requestedSet, assignedSet, mergedReviewedIds } = context;
   const stale = new Set(context.stale);
   const mineSet = new Set(context.mineSet);
   const reviewSet = new Set(context.reviewSet);
-  const warnings = [...context.warnings, ...detailWarnings];
+  // A reshape is handed the last one's warnings: its plugin failures are counted again below.
+  const warnings = [...context.warnings, ...detailWarnings.filter(warning => warning.source !== 'plugin')];
   const extraIds = [...context.extraIds];
+  const pluginFailures = new Map();
   const claimedSet = context.claimedSet ?? new Set();
   const byId = nodes;
 
   const shapes = new Map();
   for (const [id, node] of byId) {
     const shaped = baseShape(node, me);
+    // Before the sorting below, since a plugin's claim can decide a card's group.
+    shaped.plugins = decoratePr(plugins, node, shaped, pluginFailures);
 
     // Only my own merges are worth watching — the release I set off is mine to see
     // through; someone else's is their business. Without this the relaxed state filter
@@ -1331,6 +1368,8 @@ function shapeBoard(nodes, context, detailWarnings = []) {
     if (new Date(shaped.lastActivityAt).getTime() >= cutoff) shapes.set(id, shaped);
     else stale.add(id);
   }
+
+  warnings.push(...pluginWarnings(pluginFailures));
 
   // Truncation is a wrong answer, not a slow one: it must not pass unnoticed.
   for (const shaped of shapes.values()) {
@@ -1402,7 +1441,7 @@ async function fetchBoard(options, reusable = new Map()) {
   const detailWarnings = [];
   const loaded = await loadNodes(context.ids.filter(id => !reusable.has(id)), detailWarnings);
   const nodes = assembleNodes(context.ids, reusable, loaded);
-  return { context, nodes, loaded: [...loaded.keys()], board: shapeBoard(nodes, context, detailWarnings) };
+  return { context, nodes, loaded: [...loaded.keys()], board: shapeBoard(nodes, context, detailWarnings, options.plugins) };
 }
 
 function assembleNodes(ids, reusable, loaded) {

@@ -43,6 +43,7 @@ const { listAllThemes, overlaps, themeFiles } = require('./themes');
 const { generateTheme, removeTheme, readForOffer, installTheme } = require('./new-theme');
 const { createHub, createTabCounter, realFiles, withPrUrls, CONFIG_DIR } = require('./hub');
 const { hubAction, login } = require('./hub-actions');
+const plugins = require('./plugins');
 
 // A fake board on its own port: no call to GitHub, Slack, Claude or git, so the real
 // board on the default port and its browser state stay untouched.
@@ -175,6 +176,7 @@ let slackWarning = null;
 let slackReading = null;
 let claudeWarning = null;
 let webhookNotifier = null;
+let PLUGINS = [];
 
 // One per clone, not per machine: a second clone running on another port would otherwise
 // close this one on the hub as "replaced".
@@ -414,7 +416,7 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
   });
   const claimedRefs = claimMode === 'on' ? slack.claimedRefs() : [];
   inFlight = exclusive(() => Promise.all([
-    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs }, reuse ? reusableNodes() : new Map()),
+    fetchBoard({ org: ORG, extraRepos: EXTRA_REPOS, maxAgeDays: MAX_AGE_DAYS, claimedRefs, plugins: PLUGINS }, reuse ? reusableNodes() : new Map()),
     scanned && Promise.race([scanned, new Promise(resolve => setTimeout(resolve, CLAUDE_SCAN_WAIT_MS))]),
   ]))
     .then(async ([fetched]) => {
@@ -457,7 +459,7 @@ function patchPrs(ids) {
       store.nodes.set(id, node);
       store.loadedAt.set(id, Date.now());
     }
-    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings]);
+    const board = shapeBoard(store.nodes, store.context, [...store.detailWarnings, ...detailWarnings], PLUGINS);
     webhookNotifier?.notify(board);
     cache = { ...cache, payload: await layered(board, cache.payload.discoveredAt) };
   });
@@ -643,6 +645,13 @@ if (!ORG) {
   process.exit(1);
 }
 
+try {
+  PLUGINS = DEMO ? [] : plugins.load(process.env.PR_RADAR_PLUGINS);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
 let webhookStatuses;
 try {
   WEBHOOK_URL = DEMO ? '' : webhook.parseUrl(process.env.PR_RADAR_WEBHOOK_URL);
@@ -753,7 +762,7 @@ const server = http.createServer(async (req, res) => {
     if (DEMO) return json(res, 200, { ok: true });
     const [status, error] = await claudeSessions.resume(
       { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
-      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload },
+      { enabled: CLAUDE_SESSIONS, terminal: TERMINAL, board: cache.payload, plugins: PLUGINS },
     );
     return json(res, status, error ? { error } : { ok: true });
   }
@@ -816,6 +825,14 @@ const server = http.createServer(async (req, res) => {
     }
     json(res, 200, { ...result, restart, selfRestart: SELF_RESTART });
     return;
+  }
+
+  if (url.pathname === '/api/label' && req.method === 'POST') {
+    const [status, error] = await plugins.labelRoute(
+      { headers: req.headers, remoteAddress: req.socket.remoteAddress, readBody: () => readJsonBody(req) },
+      { refusal: claudeSessions.refusal, demo: DEMO, board: cache.payload, runGh: watch.runGh, reload: id => patchOrForget(new Set([id])), logger },
+    );
+    return json(res, status, error ? { error } : { ok: true });
   }
 
   if (url.pathname === '/api/digest' && req.method === 'POST') {
@@ -929,6 +946,7 @@ server.listen(PORT, async () => {
       `  🎨 theme ${THEME_LINE}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
+      `  🧩 plugins ${PLUGINS.length ? PLUGINS.map(plugin => plugin.name).join(', ') : 'none (no PR_RADAR_PLUGINS)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
       `  ⬆️ updates ${update.HOURS ? `checked every ${update.HOURS} h against origin/main` : 'off (PR_RADAR_UPDATE_HOURS=0)'}\n` +
       `  🛰️ who is online ${HUB_URL ? `via ${new URL(HUB_URL).host}${hub.state().declined ? ', declined from the page' : ''}`
