@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
-const { focusSession, openSession } = require('./plugins');
+const { focusSession, openSession, reason } = require('./plugins');
 const logger = require('./log');
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
@@ -355,7 +355,7 @@ const FOCUS_TTY = {
 
 // A copy that runs where it cannot be reached is an error, not a reason to open another:
 // two processes on one session fork its history.
-async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR, plugins = [] } = {}) {
+async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR, plugins = [], hookTimeout } = {}) {
   const pids = await runningPids(sessionId, dir);
   if (!pids.length) return false;
   const processes = parseProcesses(await exec('ps', ['-axo', 'pid=,ppid=,tty=,comm=']));
@@ -383,12 +383,16 @@ async function focusRunning(sessionId, { exec = run, dir = RUNNING_DIR, plugins 
   const failures = [];
   for (const pid of claudePids) {
     const session = { sessionId, pid, tty: processes.get(pid).tty, ancestors: ancestorsOf(pid, processes) };
-    const answer = await focusSession(plugins, session);
+    const answer = await focusSession(plugins, session, hookTimeout);
     if (answer.done) return true;
     failures.push(...answer.failures);
   }
   throw new Error(`this session is already open, in a terminal PR Radar cannot bring forward${failures.length ? ` (${failures.join('; ')})` : ''}`);
 }
+
+// Sessions a plugin's open() was still working on when its time ran out: a second click must not
+// call it again while the first may yet start a process.
+const opening = new Set();
 
 // The route, kept here with its guards so a test can drive it end to end.
 async function resume({ headers, remoteAddress, readBody }, { enabled, terminal, board, plugins = [], exec = run, runningDir = RUNNING_DIR, hookTimeout }) {
@@ -407,13 +411,20 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   const session = sessionFor(pr.url);
   if (!session) return [404, 'no Claude session linked to this PR'];
   try {
-    if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins })) return [200, null];
+    if (await focusRunning(session.sessionId, { exec, dir: runningDir, plugins, hookTimeout })) return [200, null];
+    if (opening.has(session.sessionId)) return [409, 'a plugin is still opening this session'];
     const opened = await openSession(plugins, { sessionId: session.sessionId, cwd: session.cwd }, hookTimeout);
-    if (opened.stalled) throw new Error(`${opened.failures.at(-1)}: it may still open the session, so no second copy was started`);
-    if (!opened.done) {
-      for (const failure of opened.failures) logger.fail('plugins', `open: ${failure}, opening in ${terminal} instead`);
-      await openInTerminal(session, terminal, exec);
+    if (opened.stalled) {
+      opening.add(session.sessionId);
+      opened.pending
+        .then(
+          done => logger.info('plugins', `open: the call that stalled on ${session.sessionId} ended, ${done ? 'the session is open' : 'declined'}`),
+          error => logger.fail('plugins', `open: the call that stalled on ${session.sessionId} failed: ${reason(error)}`),
+        )
+        .finally(() => opening.delete(session.sessionId));
+      throw new Error(`${opened.failures.at(-1)}: it may still open the session, so no second copy was started`);
     }
+    if (!opened.done) await openInTerminal(session, terminal, exec);
     return [200, null];
   } catch (error) {
     return [502, error.message];

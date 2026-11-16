@@ -732,7 +732,7 @@ module.exports = {
   environment, `.env` included.
 - **`decorate` must be synchronous.** The board is sorted as soon as it returns, so one that
   returns a promise, an `async` function included, counts as a failure on that PR.
-- **`node` holds the last of each list, not all of it**: the last 30 comments, the last 10 labels
+- **`node` holds part of each list, not all of it**: the last 30 comments, the first 10 labels
   and the last 10 label-added events.
 - **A plugin that throws loses its pills on that PR, never the board.** The banner names it and
   the first PR it failed on.
@@ -749,7 +749,7 @@ module.exports = {
   - It may start whatever the repo runs on that label, a CI or a deploy workflow included.
 - **A claim holds the card on someone else's PR until your first review after it.** It applies
   only to an open PR already on your reviews side, never to a merged one or one of your own, and
-  one dated in the future is ignored. When the
+  one dated more than a minute ahead of your clock is ignored. When the
   claim is yours (`claimedBy` is you), the plugin's turn picks the group: yours is **On my plate**
   with `why` as its pill, the author's is **Waiting on the author**, a bot's is **Waiting on a
   bot**, a group of its own, after the author's. Once you review or comment after `since`, the

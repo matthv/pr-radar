@@ -265,8 +265,13 @@ test('a session in an app the radar does not know is offered to the plugins, anc
   assert.deepEqual(asked, [{ sessionId: OLDER, pid: process.pid, tty: 'ttys030', ancestors: ['-zsh', '/Applications/Arbor.app/Contents/MacOS/Arbor'] }]);
 });
 
-test('a plugin that declines or fails still leaves the session open elsewhere, its failure named', async () => {
+test('a plugin that declines or fails still leaves the session open elsewhere, its failure named', async t => {
+  t.mock.method(console, 'error', () => {});
   const machine = await fakeMachine(IN_APP);
+  await assert.rejects(
+    focusRunning(OLDER, { ...machine, hookTimeout: 10, plugins: [{ name: 'arbor', focus: () => new Promise(() => {}) }] }),
+    /cannot bring forward \(arbor: no answer after 0\.01 s\)/,
+  );
   await assert.rejects(focusRunning(OLDER, { ...machine, plugins: [{ name: 'no', focus: async () => false }] }), /cannot bring forward$/);
   await assert.rejects(
     focusRunning(OLDER, { ...machine, plugins: [{ name: 'arbor', focus: async () => { throw new Error('app not running'); } }] }),
@@ -364,14 +369,28 @@ describe('the resume route', () => {
 
     assert.deepEqual(await resume(request(), context({ exec, plugins: [failing, { name: 'no', open: async () => false }] })), [200, null]);
     assert.equal(calls[0].at(-1), resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() }));
-    assert.deepEqual(logged, ['open: arbor: app not running, opening in Ghostty instead']);
+    assert.deepEqual(logged, ['open: arbor: app not running']);
   });
 
-  test('a plugin still opening when its time is up is reported, and no terminal opens a second copy', async () => {
-    const hangs = { name: 'arbor', open: () => new Promise(() => {}) };
-    const [status, message] = await resume(request(), context({ plugins: [hangs], hookTimeout: 10 }));
+  test('a plugin still opening when its time is up is reported, no terminal opens a second copy, and a second click waits', async t => {
+    const logged = [];
+    t.mock.method(console, 'error', line => logged.push(line.split('plugins: ')[1]));
+    t.mock.method(console, 'log', line => logged.push(line.split('plugins: ')[1]));
+    let finish;
+    let calls = 0;
+    const slow = { name: 'arbor', open: () => (calls += 1, new Promise(resolve => { finish = resolve; })) };
+    const [status, message] = await resume(request(), context({ plugins: [slow], hookTimeout: 10 }));
     assert.equal(status, 502);
     assert.match(message, /^arbor: no answer after 0\.01 s: it may still open the session/);
+
+    assert.deepEqual(await resume(request(), context({ plugins: [slow], hookTimeout: 10 })), [409, 'a plugin is still opening this session']);
+    assert.equal(calls, 1, 'the first call may yet start a process');
+
+    finish(true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(logged, ['open: arbor: no answer after 0.01 s', `open: the call that stalled on ${OLDER} ended, the session is open`]);
+    const taken = await resume(request(), context({ plugins: [{ name: 'arbor', open: async () => true }] }));
+    assert.deepEqual(taken, [200, null], 'once it ended, a click asks again');
   });
 
   test('a terminal that fails is reported, not swallowed', async () => {

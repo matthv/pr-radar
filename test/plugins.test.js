@@ -5,6 +5,13 @@ const { describe } = test;
 const assert = require('node:assert/strict');
 
 const { load, normalise, decoratePr, pluginWarnings, focusSession, openSession, labelRoute } = require('../plugins');
+
+// What the plugins' failures wrote to the log, without the stamp.
+const failuresLogged = t => {
+  const lines = [];
+  t.mock.method(console, 'error', line => lines.push(line.split('plugins: ')[1]));
+  return lines;
+};
 const { refusal } = require('../claude-sessions');
 
 const pr = number => ({ id: `p${number}`, repo: 'o/r', number });
@@ -75,7 +82,8 @@ test('decoratePr passes over a plugin that only focuses sessions', () => {
   assert.deepEqual(decoratePr([focusOnly], {}, pr(1), new Map()), { pills: [], labels: [], review: null });
 });
 
-test('focusSession takes the first plugin that brought the session forward, and names the ones that threw', async () => {
+test('focusSession takes the first plugin that brought the session forward, and names the ones that threw', async t => {
+  const logged = failuresLogged(t);
   const session = { sessionId: 's', pid: 5, tty: 'ttys001', ancestors: ['-zsh', '/Applications/Some.app/Contents/MacOS/Some'] };
   const seen = [];
   const broken = { name: 'broken', focus: () => { throw new Error('no port'); } };
@@ -87,6 +95,7 @@ test('focusSession takes the first plugin that brought the session forward, and 
   assert.deepEqual(seen, [session]);
   assert.deepEqual(await focusSession([broken, declines], session), { done: false, failures: ['broken: no port'], stalled: false });
   assert.deepEqual(await focusSession([{ name: 'd', decorate: () => ({}), focus: null }], session), { done: false, failures: [], stalled: false });
+  assert.deepEqual(logged, ['focus: broken: no port', 'focus: broken: no port'], 'logged even when a later plugin took it');
 });
 
 test('openSession asks only the plugins that open, the first true winning', async () => {
@@ -100,9 +109,11 @@ test('openSession asks only the plugins that open, the first true winning', asyn
   assert.deepEqual(await openSession([focusOnly], session), { done: false, failures: [], stalled: false });
 });
 
-test('a plugin that throws something other than an Error, or answers a promise, is one failure and the board stays up', async () => {
+test('a plugin that throws something other than an Error, or answers a promise, is one failure and the board stays up', async t => {
+  failuresLogged(t);
   const failures = new Map();
   const plugins = [
+    { name: 'bare', decorate: () => { throw Object.create(null); } },
     { name: 'null', decorate: () => { throw null; } },
     { name: 'string', decorate: () => { throw 'nope'; } },
     { name: 'async', decorate: async () => { throw new Error('boom'); } },
@@ -110,6 +121,7 @@ test('a plugin that throws something other than an Error, or answers a promise, 
   ];
   assert.deepEqual(decoratePr(plugins, {}, pr(1), failures).pills.map(p => p.text), ['y']);
   assert.deepEqual(pluginWarnings(failures).map(w => w.message), [
+    'bare failed on 1 PR(s), first o/r#1: threw a value that cannot be shown',
     'null failed on 1 PR(s), first o/r#1: null',
     'string failed on 1 PR(s), first o/r#1: nope',
     'async failed on 1 PR(s), first o/r#1: decorate() must be synchronous, it returned a promise',
@@ -119,13 +131,20 @@ test('a plugin that throws something other than an Error, or answers a promise, 
   assert.deepEqual(await focusSession([{ name: 'null', focus: () => { throw null; } }], {}), { done: false, failures: ['null: null'], stalled: false });
 });
 
-test('a hook that never answers is passed over: focus asks the next plugin, open stops there', async () => {
+test('a hook that never answers is passed over: focus asks the next plugin, open stops there', async t => {
+  failuresLogged(t);
   const hangs = hook => ({ name: 'hangs', [hook]: () => new Promise(() => {}) });
   const takes = hook => ({ name: 'takes', [hook]: async () => true });
 
   assert.deepEqual(await focusSession([hangs('focus'), takes('focus')], {}, 10), { done: true, failures: ['hangs: no answer after 0.01 s'], stalled: false });
   const opened = await openSession([hangs('open'), { name: 'never', open: () => assert.fail('it may still be opening') }], {}, 10);
-  assert.deepEqual(opened, { done: false, failures: ['hangs: no answer after 0.01 s'], stalled: true });
+  assert.deepEqual({ ...opened, pending: null }, { done: false, failures: ['hangs: no answer after 0.01 s'], stalled: true, pending: null });
+  assert.ok(opened.pending instanceof Promise, 'the call still running, for whoever waits on its outcome');
+
+  // One that rejects once its time is up is still the race's to handle: it must not end the process.
+  const rejectsLate = { name: 'late', focus: () => new Promise((_, reject) => setTimeout(reject, 20, new Error('too late'))) };
+  assert.equal((await focusSession([rejectsLate], {}, 5)).done, false);
+  await new Promise(resolve => setTimeout(resolve, 40));
   assert.equal((await openSession([takes('open')], {}, 10)).done, true);
 });
 
@@ -137,8 +156,11 @@ describe('the label route', () => {
     ...overrides,
   });
   const board = { mine: [], reviews: [{ ...pr(1), plugins: { labels: [{ name: 'validate' }] } }, pr(2)] };
+  const logged = [];
+  test.beforeEach(() => { logged.length = 0; });
+  const logger = { info: (source, message) => logged.push(['info', source, message]), fail: (source, message) => logged.push(['fail', source, message]) };
   const context = (overrides = {}) => ({
-    refusal, demo: false, board, logger: { info() {}, fail() {} },
+    refusal, demo: false, board, logger,
     runGh: () => assert.fail('nothing should reach GitHub'),
     reload: () => assert.fail('nothing to reload'),
     ...overrides,
@@ -152,8 +174,11 @@ describe('the label route', () => {
     assert.deepEqual(await labelRoute(request({ readBody: async () => ({ id: 'p1', label: 'deploy' }) }), context()), refused);
     assert.deepEqual(await labelRoute(request({ readBody: async () => ({ id: 'p2', label: 'validate' }) }), context()), refused, 'offered on another PR');
     assert.deepEqual(await labelRoute(request({ readBody: async () => ({ id: 'p9', label: 'validate' }) }), context()), refused);
-    assert.deepEqual(await labelRoute(request({ readBody: async () => null }), context()), refused);
-    assert.deepEqual(await labelRoute(request(), context({ board: null })), refused);
+    for (const body of [null, 'validate', {}, { id: 'p1' }, { id: 1, label: 'validate' }]) {
+      assert.deepEqual(await labelRoute(request({ readBody: async () => body }), context()), [400, 'expected { id, label }']);
+    }
+    assert.deepEqual(await labelRoute(request(), context({ board: null })), [503, 'the board has not loaded yet']);
+    assert.deepEqual(logged, [], 'nothing was tried');
     assert.deepEqual(await labelRoute(request(), context({ demo: true })), [200, null], 'the demo answers and adds nothing');
   });
 
@@ -164,8 +189,10 @@ describe('the label route', () => {
     assert.deepEqual(await labelRoute(request(), context({ runGh, reload: async id => reloaded.push(id) })), [200, null]);
     assert.deepEqual(calls, [['api', '-X', 'POST', 'repos/o/r/issues/1/labels', '-f', 'labels[]=validate']]);
     assert.deepEqual(reloaded, ['p1']);
+    assert.deepEqual(logged, [['info', 'plugins', 'validate added to o/r#1']]);
     const failing = async () => { throw new Error('rate limited'); };
     assert.deepEqual(await labelRoute(request(), context({ runGh, reload: failing })), [200, null], 'the label is on: a reload that fails is logged');
+    assert.deepEqual(logged.at(-1), ['fail', 'plugins', 'reload after the label: rate limited']);
   });
 
   test('GitHub’s error body, or anything but its label list, is a failure', async () => {
@@ -173,5 +200,10 @@ describe('the label route', () => {
     assert.deepEqual(await answers('{"message":"Not Found","status":"404"}'), [502, 'Not Found']);
     assert.deepEqual(await answers('<html>502 Bad Gateway</html>'), [502, 'GitHub answered something other than JSON: <html>502 Bad Gateway</html>']);
     assert.deepEqual(await answers('[{"name":"bug"}]'), [502, 'GitHub did not add the label']);
+    assert.deepEqual(await answers('{"message":{"code":"odd"}}'), [502, 'GitHub did not add the label']);
+    assert.deepEqual(await answers(' \n'), [502, 'GitHub answered nothing']);
+    assert.deepEqual(logged.at(-1), ['fail', 'plugins', 'validate on o/r#1: GitHub answered nothing']);
+    const noGh = () => labelRoute(request(), context({ runGh: async () => { throw new Error('gh: command not found'); } }));
+    assert.deepEqual(await noGh(), [502, 'gh: command not found']);
   });
 });

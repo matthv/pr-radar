@@ -2,6 +2,7 @@
 
 const os = require('node:os');
 const path = require('node:path');
+const logger = require('./log');
 
 // The contract a plugin writes against is in the README, under "Plugins".
 const KINDS = new Set(['', 'todo', 'pending', 'good', 'alert']);
@@ -10,8 +11,14 @@ const HOOK_TIMEOUT_MS = 5000;
 // A local clock a little behind GitHub's must not make a claim just made look like one from the future.
 const CLOCK_SKEW_MS = 60_000;
 
-// A plugin may throw anything, `null` or a string included.
-const reason = error => (error instanceof Error ? error.message : String(error));
+// A plugin may throw anything: `null`, a string, an object that cannot be turned into one.
+function reason(error) {
+  try {
+    return String(error instanceof Error ? error.message : error);
+  } catch {
+    return 'threw a value that cannot be shown';
+  }
+}
 
 function load(value, req = require) {
   return String(value ?? '')
@@ -97,24 +104,24 @@ const pluginWarnings = failures => [...failures.entries()].map(([name, { count, 
 }));
 
 // The first plugin whose `hook` answers true wins. One that throws, or has not answered after `ms`,
-// is passed over, so a broken plugin never hides another's, and its message comes back for the
-// error the click shows.
+// is passed over, so a broken plugin never hides another's. Its message is logged whatever the
+// others answer, and comes back for the error the click shows.
 async function ask(plugins, hook, session, ms = HOOK_TIMEOUT_MS) {
   const failures = [];
   for (const plugin of plugins) {
     if (!plugin[hook]) continue;
     const late = new Error(`no answer after ${ms / 1000} s`);
     let timer;
+    const answer = Promise.resolve().then(() => plugin[hook](session));
     try {
-      const answer = Promise.resolve().then(() => plugin[hook](session));
-      answer.catch(() => {});
       const timeout = new Promise((_, reject) => { timer = setTimeout(reject, ms, late); });
       if (await Promise.race([answer, timeout])) return { done: true, failures, stalled: false };
     } catch (error) {
       failures.push(`${plugin.name}: ${reason(error)}`);
+      logger.fail('plugins', `${hook}: ${failures.at(-1)}`);
       // An open() still running may yet open the session: asking anyone else, the terminal
-      // included, would put two processes on it and fork its history.
-      if (error === late && hook === 'open') return { done: false, failures, stalled: true };
+      // included, would put two processes on it and fork its history. `pending` is that call.
+      if (error === late && hook === 'open') return { done: false, failures, stalled: true, pending: answer };
     } finally {
       clearTimeout(timer);
     }
@@ -134,15 +141,14 @@ async function addLabel(pr, label, runGh) {
   try {
     answer = JSON.parse(out);
   } catch {
-    throw new Error(`GitHub answered something other than JSON: ${out.trim().slice(0, 80)}`);
+    throw new Error(out.trim() ? `GitHub answered something other than JSON: ${out.trim().slice(0, 80)}` : 'GitHub answered nothing');
   }
   if (!Array.isArray(answer) || !answer.some(added => String(added?.name).toLowerCase() === label.toLowerCase())) {
-    throw new Error(answer?.message ?? 'GitHub did not add the label');
+    throw new Error(typeof answer?.message === 'string' && answer.message ? answer.message : 'GitHub did not add the label');
   }
 }
 
-// A plugin's label button. Only a label a plugin offers on that PR, as the board last showed it,
-// and only ever added: taking one off and putting it back would start its workflow again.
+// A label is only ever added: taking one off and putting it back would start its workflow again.
 // The route, kept here with its guards so a test can drive it end to end; `refusal` is
 // claude-sessions', handed in because that module already requires this one.
 async function labelRoute({ headers, remoteAddress, readBody }, { refusal, demo, board, runGh, reload, logger }) {
@@ -155,7 +161,9 @@ async function labelRoute({ headers, remoteAddress, readBody }, { refusal, demo,
   } catch (error) {
     return [400, reason(error)];
   }
-  const pr = board && [...board.mine, ...board.reviews].find(candidate => candidate.id === body?.id);
+  if (typeof body?.id !== 'string' || typeof body.label !== 'string') return [400, 'expected { id, label }'];
+  if (!board) return [503, 'the board has not loaded yet'];
+  const pr = [...board.mine, ...board.reviews].find(candidate => candidate.id === body.id);
   const offered = pr?.plugins?.labels.find(label => label.name === body.label);
   if (!offered) return [409, 'no plugin offers this label on this PR any more'];
   try {
@@ -165,9 +173,10 @@ async function labelRoute({ headers, remoteAddress, readBody }, { refusal, demo,
     return [502, reason(error)];
   }
   logger.info('plugins', `${offered.name} added to ${pr.repo}#${pr.number}`);
-  // Answered once the card shows the label, so the button the page drew disappears with it.
+  // Answered once the board has reloaded the PR: a plugin that stops offering a label the PR
+  // carries takes its button off with this answer.
   await reload(pr.id).catch(error => logger.fail('plugins', `reload after the label: ${reason(error)}`));
   return [200, null];
 }
 
-module.exports = { load, normalise, decoratePr, pluginWarnings, focusSession, openSession, labelRoute };
+module.exports = { load, normalise, decoratePr, pluginWarnings, focusSession, openSession, labelRoute, reason };

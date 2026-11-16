@@ -4308,7 +4308,6 @@ async function load(force, { check = false } = {}) {
 // without its busy state, and a second click would open a second terminal.
 const resuming = new Set();
 
-// Only adds: the server refuses a label no plugin offered on this PR, and never takes one off.
 async function addLabel(button) {
   const { pluginLabel: label, pr: id } = button.dataset;
   const key = `${id} ${label}`;
