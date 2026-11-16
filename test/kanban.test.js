@@ -24,9 +24,8 @@ test('kanban: stored folds are kept, even none', () => {
 });
 
 test('kanban: columns run along the flow, ready to merge right before merged', () => {
-  assert.deepEqual(AXIS, ['action', 'waiting', 'ready', 'merged', 'idle']);
-  assert.deepEqual([...AXIS].sort(), [...DEFAULTS.mine].sort());
-  assert.ok(DEFAULTS.reviews.every(bucket => AXIS.includes(bucket)));
+  assert.deepEqual(AXIS, ['action', 'waiting', 'bot', 'ready', 'merged', 'idle']);
+  assert.deepEqual([...AXIS].sort(), [...new Set([...DEFAULTS.mine, ...DEFAULTS.reviews])].sort());
 });
 
 test('kanban: on the demo board every card lands in a cell of its lane', () => {

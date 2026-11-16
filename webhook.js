@@ -5,7 +5,7 @@ const logger = require('./log');
 
 const STATUSES = [
   'mine.action', 'mine.ready', 'mine.waiting', 'mine.idle', 'mine.merged',
-  'reviews.action', 'reviews.waiting', 'reviews.idle', 'reviews.merged',
+  'reviews.action', 'reviews.waiting', 'reviews.bot', 'reviews.idle', 'reviews.merged',
 ];
 const TIMEOUT_MS = 5000;
 

@@ -10,7 +10,8 @@
   // merged group it read as already done.
   const DEFAULTS = {
     mine: ['action', 'ready', 'waiting', 'merged', 'idle'],
-    reviews: ['action', 'waiting', 'merged', 'idle'],
+    // "bot": a review I claimed through a plugin, while the plugin's bot has the turn.
+    reviews: ['action', 'waiting', 'bot', 'merged', 'idle'],
   };
 
   function readMap(raw) {

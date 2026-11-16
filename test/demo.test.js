@@ -26,7 +26,7 @@ test('demo: my side shows every group and every reason to act', () => {
 
 test('demo: the review side shows every group and every reason to act', () => {
   const { reviews } = demo.payload(false);
-  assert.deepEqual([...buckets(reviews)].sort(), ['action', 'idle', 'merged', 'waiting']);
+  assert.deepEqual([...buckets(reviews)].sort(), ['action', 'bot', 'idle', 'merged', 'waiting']);
   for (const kind of ['to-review', 'answers', 'recheck']) assert.ok(kinds(reviews).has(kind), kind);
 });
 
