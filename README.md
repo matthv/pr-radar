@@ -364,8 +364,8 @@ goes to the server's console, and the next tick tries again.
 node --test         # or: npm test
 ```
 
-Node's built-in runner, no dependency. One file per module, each testing the pure functions
-that module exports and none of its network calls:
+Node's built-in runner, no dependency. One file per topic, each testing the pure functions
+a module exports and none of its network calls:
 
 - `test/classification.test.js` — the board's rules, where most bugs have lived:
   `updated_at` overstating freshness, bot comments faking activity, feedback left in the
