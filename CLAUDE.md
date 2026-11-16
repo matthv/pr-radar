@@ -22,7 +22,8 @@ section you need.
 
 - `node --test`: tests in `test/<topic>.test.js`, testing the pure functions a module exports,
   never the network (`github.js` alone has several topics). A real case gets its fixture inline
-  in its topic's test file, named after its PR number; there is no fixtures folder.
+  in its topic's test file, with a comment citing its PR (`// The real case: agent-ruby#259`);
+  there is no fixtures folder.
 - `gitleaks detect`.
 - `main` is protected: work on a branch, through a PR. Commits and PR titles in Conventional
   Commits (`feat:`, `fix:`, `chore:`…): semantic-release turns each `feat` or `fix` merged on

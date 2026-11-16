@@ -407,7 +407,7 @@ a module exports and none of its network calls:
 - `test/since.test.js` — what a card says moved since you looked: others' comments, reviews and
   commits but never yours or a bot's, a CI reaching an outcome, a conflict, a merge, a release.
 
-Every real case named in this file has its fixture there, under its PR number.
+Every real case named in this file has its fixture there, with a comment citing its PR.
 
 ## Watching a merge
 
