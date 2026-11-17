@@ -707,7 +707,7 @@ an optional `name`, its file name when left out:
 module.exports = {
   name: 'my-plugin',
   // node: the PR as GitHub answered the board's query (PR_QUERY in github.js: its last 30
-  //       comments with their bodies, its labels and who added them when, its reviews and the
+  //       comments with their bodies and each author's association with the repo, its labels and who added them when, its reviews and the
   //       commit each was on, its threads and who resolved them, its head commit's oid…)
   // pr:   the PR as the board shaped it, before sorting (repo, number, author, isDraft,
   //       merged, labels, threads…: no side or group yet, the plugin can decide those)

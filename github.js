@@ -101,7 +101,7 @@ query($ids: [ID!]!) {
         nodes { commit { author { user { login avatarUrl } } } }
       }
       reviews(last: 100) { totalCount ${PAGE_INFO} nodes { ${CONNECTION_FIELDS.reviews} } }
-      comments(last: 30) { nodes { author { __typename login } createdAt url body } }
+      comments(last: 30) { nodes { author { __typename login } authorAssociation createdAt url body } }
       reviewRequests(first: 20) {
         nodes { requestedReviewer { __typename ... on User { login avatarUrl } ... on Team { name } } }
       }
