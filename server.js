@@ -35,9 +35,7 @@ const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
-const skillStages = require('./skill-stages');
-const linear = require('./linear');
-const { buildPrds, buildSessions, extraTickets, sessionStatuses } = require('./prds');
+const { createPrdView } = require('./prd-view');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -234,16 +232,11 @@ function withClaudeSessions(payload) {
   };
 }
 
-// The PRs made or opened in a session since the change check last asked: a scan the PRD view
-// runs in between keeps them for it.
-let touchedSince = new Set();
 function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
     ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
-      const all = [...new Set([...touchedSince, ...touched])];
-      touchedSince = new Set();
-      return all;
+      return [...new Set([...prdView.takeTouched(), ...touched])];
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
@@ -252,59 +245,10 @@ function scanClaudeSessions() {
   );
 }
 
-// Linear is read on the board's cadence; the stage lines and the running sessions on every
-// request, since they move by the minute and cost a few small files.
-let linearCache = { at: 0, key: '', prds: null };
-let linearInFlight = null;
-function linearPrds(extra, force) {
-  const key = [...extra].sort().join(',');
-  if (!force && linearCache.prds && linearCache.key === key && Date.now() - linearCache.at < CACHE_TTL_MS) return Promise.resolve(linearCache.prds);
-  linearInFlight ??= linear.fetchPrds({ apiKey: LINEAR_API_KEY, extra })
-    .then(prds => {
-      linearCache = { at: Date.now(), key, prds };
-      return prds;
-    })
-    .finally(() => {
-      linearInFlight = null;
-    });
-  return linearInFlight;
-}
-
-async function prdView(force) {
-  const boardPrs = cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : [];
-  const warnings = [];
-  const stageSessions = await skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }).catch(error => {
-    warnings.push({ source: 'stages', message: `${skillStages.STAGES_DIR}: ${error.message}` });
-    return [];
-  });
-  const live = await claudeSessions.liveSessions().catch(error => {
-    warnings.push({ source: 'claude', message: error.message });
-    return [];
-  });
-  // A session started since the last scan has no title, folder or branch until its transcript is read.
-  if (CLAUDE_SESSIONS) {
-    await claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(({ touched }) => {
-      for (const url of touched) touchedSince.add(url);
-    }, () => {});
-  }
-  // The Sessions view needs no Linear: without a key it shows the sessions and their own PRs.
-  const fetched = LINEAR_API_KEY ? await linearPrds(extraTickets(stageSessions, boardPrs), force) : [];
-  const prds = buildPrds({
-    prds: fetched, boardPrs, stageSessions, live,
-    sessionFor: CLAUDE_SESSIONS ? claudeSessions.sessionFor : () => null,
-    sessionsOf: CLAUDE_SESSIONS ? claudeSessions.sessionsForTicket : () => [],
-    cwdOf: claudeSessions.cwdOf,
-  });
-  return {
-    enabled: true,
-    linear: Boolean(LINEAR_API_KEY),
-    claudeSessions: CLAUDE_SESSIONS,
-    sessionChime: SESSION_CHIME,
-    warnings,
-    prds,
-    sessions: buildSessions({ prds, boardPrs, stageSessions, live, detailsOf: CLAUDE_SESSIONS ? claudeSessions.sessionDetails : () => null, cwdOf: claudeSessions.cwdOf }),
-  };
-}
+const prdView = createPrdView({
+  boardPrs: () => (cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : []), linearApiKey: LINEAR_API_KEY,
+  claudeSessionsOn: CLAUDE_SESSIONS, sessionChime: SESSION_CHIME, maxAgeDays: MAX_AGE_DAYS, stageWindowMs: STAGE_WINDOW_MS, cacheTtlMs: CACHE_TTL_MS,
+});
 
 // Twins come with the board, Slack link on or off: the ticket and the title still find them.
 async function withLinksAndTwins(payload) {
@@ -768,25 +712,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/api/prds') {
+  // The PRDs view, and the Sessions view's poll: states and stages from local files only.
+  if (url.pathname === '/api/prds' || url.pathname === '/api/sessions/status') {
     if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
     try {
-      return json(res, 200, await prdView(url.searchParams.get('force') === '1'));
-    } catch (error) {
-      return json(res, 502, { error: error.message });
-    }
-  }
-
-  // The Sessions view's poll: the sessions' states and their skills' stages, from local files
-  // only, no Linear and no GitHub.
-  if (url.pathname === '/api/sessions/status') {
-    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
-    try {
-      const [stageSessions, live] = await Promise.all([
-        skillStages.readStages({ maxAgeMs: STAGE_WINDOW_MS }),
-        claudeSessions.liveSessions(),
-      ]);
-      return json(res, 200, { enabled: true, sessions: sessionStatuses({ stageSessions, live }) });
+      return json(res, 200, url.pathname === '/api/prds' ? await prdView.view(url.searchParams.get('force') === '1') : await prdView.statuses());
     } catch (error) {
       return json(res, 502, { error: error.message });
     }

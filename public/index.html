@@ -4721,12 +4721,15 @@ function loadPrds(force = false) {
         for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
         if (sessStars.size !== before) saveStars();
       }
-      if (payload.enabled !== false && payload.linear !== false) {
+      // A Linear that failed returned no PRDs: their hidden marks wait for one that answers.
+      if (payload.enabled !== false && payload.linear !== false && !(payload.warnings ?? []).some(warning => warning.failed)) {
         pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
       }
     })
     .catch(error => {
-      prdData = { ...prdData, enabled: true, error: error.message };
+      // Over a read that worked, the error says the view is stale; with none, it is all there is,
+      // never drawn as an empty answer or under the no-key notice.
+      prdData = prdData?.prds ? { ...prdData, error: error.message } : { enabled: true, error: error.message };
     })
     .finally(() => {
       prdLoading = null;
@@ -4969,15 +4972,15 @@ function renderPrd() {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
     return;
   }
-  if (prdData.enabled === false || prdData.linear === false) {
+  if (prdData.enabled === false || (prdData.linear === false && !prdData.error)) {
     el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t(prdData.reason === 'demo' ? 'prdDemo' : 'prdNoKey'))}</div>`;
     return;
   }
-  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
     .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
   const prds = prdData.prds ?? [];
   if (!prds.length) {
-    el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('prdEmpty'))}</div>`;
+    el('prd').innerHTML = `${bar}${notices}${prdData.prds ? `<div class="empty">${escapeHtml(t('prdEmpty'))}</div>` : ''}`;
     return;
   }
   const shown = prdFocus ? prds.filter(PRD_FOCUS[prdFocus].test) : prds;
@@ -5104,17 +5107,35 @@ function noteSessionChanges(sessions) {
   paintTitle();
 }
 
+// One poll at a time: an answer can take seconds (`claude agents`), and answers overtaking each
+// other would draw an older state over a newer one. A few failures in a row say so in the view.
+let sessPolling = false;
+let sessPollFailures = 0;
+const SESSION_POLL_FAILURES = 3;
 async function pollSessions() {
-  if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  if (sessPolling || view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  sessPolling = true;
   let payload;
   try {
     const response = await fetch('/api/sessions/status');
     payload = await response.json();
-    if (!response.ok || payload.enabled === false) return;
-  } catch {
+    if (!response.ok) throw new Error(payload.error || response.statusText);
+    if (payload.enabled === false) return;
+  } catch (error) {
+    if (++sessPollFailures === SESSION_POLL_FAILURES && prdData) {
+      prdData.pollError = error.message;
+      renderPrd();
+    }
     return; // the next poll, or the board's refresh, tries again
+  } finally {
+    sessPolling = false;
   }
+  sessPollFailures = 0;
   if (view !== 'sessions' || !prdData?.sessions || prdLoading) return;
+  if (prdData.pollError) {
+    delete prdData.pollError;
+    renderPrd();
+  }
   const { sessions, unseen } = PRRadarPrd.mergeStatuses(prdData.sessions, payload.sessions);
   // A session started since the last full read: that read gives it its PRDs and PRs.
   if (unseen) {
@@ -5188,11 +5209,11 @@ function renderSessions() {
     el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t('prdDemo'))}</div>`;
     return;
   }
-  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
+  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
     .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
   const shown = prdFocus ? sessions.filter(session => sessStatus(session) === prdFocus) : sessions;
   if (!shown.length) {
-    el('prd').innerHTML = `${bar}${notices}<div class="empty">${escapeHtml(t('sessEmpty'))}</div>`;
+    el('prd').innerHTML = `${bar}${notices}${prdData.sessions ? `<div class="empty">${escapeHtml(t('sessEmpty'))}</div>` : ''}`;
     return;
   }
   const groupOf = (key, label, tone, cards, hint = '') => {

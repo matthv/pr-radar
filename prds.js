@@ -109,11 +109,14 @@ const PR_ON_BRANCH = 20;
 const PR_OPENED = 4;
 const PR_LATEST = 2;
 
+// The whole key, never the start of a longer one: feat/prd-12-x names PRD-12, not PRD-1.
+const namesTicket = (branch, ticket) => new RegExp(`(?<![A-Z0-9])${ticket}(?!\\d)`).test(branch.toUpperCase());
+
 function rankLinks({ branch, links, prs, opened }) {
   const ownBranch = branch && !DEFAULT_BRANCHES.has(branch) ? branch : null;
   const tickets = [...links].map(([ticket, weight]) => ({
     ticket,
-    score: weight + (ownBranch && ownBranch.toUpperCase().includes(ticket) ? BRANCH_TICKET : 0),
+    score: weight + (ownBranch && namesTicket(ownBranch, ticket) ? BRANCH_TICKET : 0),
   })).sort((a, b) => b.score - a.score || a.ticket.localeCompare(b.ticket));
   const top = tickets[0]?.score ?? 0;
   for (const entry of tickets) entry.primary = entry.score === top && top > 0;

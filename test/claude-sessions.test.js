@@ -180,13 +180,14 @@ test('a session whose folder is gone says so instead of opening a terminal', asy
   await assert.rejects(openInTerminal({ sessionId: OLDER, cwd: '/nowhere/agent-nodejs-prd1183' }, 'Terminal'), /no longer exists/);
 });
 
+// Every fixture carries a status: one without makes liveSessions ask the real `claude agents`.
 test('a running copy is found by its current session id only, most recently active first', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
   const register = (file, record) => fs.writeFile(path.join(dir, `${file}.json`), JSON.stringify(record));
-  await register('a', { pid: process.pid, sessionId: OLDER, updatedAt: 1 });
-  await register('b', { pid: process.ppid, sessionId: OLDER, updatedAt: 2 });
+  await register('a', { pid: process.pid, sessionId: OLDER, status: 'idle', updatedAt: 1 });
+  await register('b', { pid: process.ppid, sessionId: OLDER, status: 'idle', updatedAt: 2 });
   await register('dead', { pid: 2 ** 22 + 1, sessionId: OLDER, updatedAt: 3 });
-  await register('cleared', { pid: process.pid, sessionId: NEWER, formerNames: [{ sessionId: OLDER }], updatedAt: 4 });
+  await register('cleared', { pid: process.pid, sessionId: NEWER, formerNames: [{ sessionId: OLDER }], status: 'idle', updatedAt: 4 });
 
   assert.deepEqual(await runningPids(OLDER, dir), [process.ppid, process.pid]);
   assert.deepEqual(await runningPids(OLDER, path.join(dir, 'no-registry-here')), []);
@@ -241,7 +242,7 @@ test('the terminals a session runs in are read from its process ancestry, innerm
 
 async function fakeMachine(parentRows, replies = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
-  await fs.writeFile(path.join(dir, 'me.json'), JSON.stringify({ pid: process.pid, sessionId: OLDER, kind: 'interactive' }));
+  await fs.writeFile(path.join(dir, 'me.json'), JSON.stringify({ pid: process.pid, sessionId: OLDER, kind: 'interactive', status: 'idle' }));
   const calls = [];
   const exec = async (command, args) => {
     calls.push([command, ...args]);

@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { focusSession, openSession, reason } = require('./plugins');
+const { isTicket, isBotBranch } = require('./ticket');
 const logger = require('./log');
 
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
@@ -32,9 +33,11 @@ const knownLinks = new Map();
 //   with the key in its arguments;
 // - a folder named for it the session worked in, as /implement's worktrees are;
 // - a commit made on a branch named for it. The branch alone is not enough: a checkout left on an
-//   old branch hosts sessions on every other ticket.
+//   old branch hosts sessions on every other ticket. A bot's branch (renovate/node-20) names none.
+// Linear keys go down to one digit (PRD-1), so the shape is wider than the board's; what is never
+// a ticket (NODE-20, CVE-…) is ticket.js's rule, shared.
 const TICKET_KEY = /\b[A-Z][A-Z0-9]{1,9}-\d{1,7}\b/g;
-const keysIn = text => String(text ?? '').toUpperCase().match(TICKET_KEY) ?? [];
+const keysIn = text => (String(text ?? '').toUpperCase().match(TICKET_KEY) ?? []).filter(isTicket);
 const fieldOf = (line, name) => {
   const start = line.indexOf(`"${name}":"`);
   if (start === -1) return null;
@@ -63,7 +66,9 @@ function creditTools(entry, record) {
   for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
     if (part?.type !== 'tool_use') continue;
     if (part.name === 'Skill') credit(entry, keysIn(part.input?.args), WEIGHT.skill);
-    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? ''))) credit(entry, keysIn(record.gitBranch), WEIGHT.commit);
+    if (part.name === 'Bash' && /\bgit\s+commit\b/.test(String(part.input?.command ?? '')) && !isBotBranch(record.gitBranch)) {
+      credit(entry, keysIn(record.gitBranch), WEIGHT.commit);
+    }
   }
 }
 
@@ -339,17 +344,20 @@ async function readRecord(file) {
 }
 
 // Claude Code's documented listing of its running sessions, `claude agents --json`: the same
-// status and waitingFor as the session files, without when the status began.
+// status and waitingFor as the session files, without when the status began. Its last failure
+// is kept for the views to say, rather than blame a Claude Code update for "no status".
+let agentsFailure = null;
+const agentsProblem = () => agentsFailure;
 function claudeAgents() {
   return new Promise(resolve => {
     execFile('claude', ['agents', '--json'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
-      if (error) return resolve([]);
+      let list = null;
       try {
-        const list = JSON.parse(stdout);
-        resolve(Array.isArray(list) ? list : []);
-      } catch {
-        resolve([]);
-      }
+        list = error ? null : JSON.parse(stdout);
+      } catch {}
+      agentsFailure = Array.isArray(list) ? null
+        : `\`claude agents --json\` ${error ? `failed: ${error.code === 'ENOENT' ? 'claude is not on the server\'s PATH' : error.message}` : 'printed something other than a list'}`;
+      resolve(Array.isArray(list) ? list : []);
     });
   });
 }
@@ -593,6 +601,7 @@ module.exports = {
   sessionDetails,
   cwdOf,
   liveSessions,
+  agentsProblem,
   resumeCommand,
   openInTerminal,
   focusRunning,

@@ -80,6 +80,16 @@ test('every running session naming the ticket joins its PRD, and only the two ne
   assert.ok(built.sessions.every(session => session.resumable));
 });
 
+test('of the ended sessions, the ones that did the ticket\'s work are kept over newer ones', () => {
+  const at = day => `2026-11-0${day}T00:00:00.000Z`;
+  const mentions = [
+    { sessionId: 's5', cwd: '/w', at: at(5), weight: 1 }, { sessionId: 's4', cwd: '/w', at: at(4), weight: 1 },
+    { sessionId: 's2', cwd: '/w', at: at(2), weight: 3 },
+  ];
+  const [built] = buildPrds({ prds: [prd('PRD-1')], live: [], sessionsOf: () => mentions, cwdOf: () => '/w' });
+  assert.deepEqual(built.sessions.map(session => session.sessionId), ['s2', 's5']);
+});
+
 test('the session that did most of a ticket\'s work comes first, marked main; a lone session is not', () => {
   const [built, lone] = buildPrds({
     prds: [prd('PRD-1'), prd('PRD-2')],
@@ -175,6 +185,10 @@ test('a session\'s PRDs and PRs rank by how surely they are its work: its branch
   // The branch names PRD-1, which then ties PRD-2: both primary. Only the PR on the branch is.
   assert.deepEqual(onBranch.tickets.map(link => [link.ticket, link.score, link.primary]), [['PRD-1', 4, true], ['PRD-2', 3, false]]);
   assert.deepEqual(onBranch.prs.map(pr => [pr.url, pr.primary]), [[PR7, true], [PR8, false]]);
+
+  // A branch naming PRD-12 does not name PRD-1, whose key is only its start.
+  const [longerKey] = buildSessions({ prds, live: [{ sessionId: 'a' }], detailsOf: () => ({ branch: 'feat/prd-12-x', prUrls: [] }) });
+  assert.deepEqual(longerKey.tickets.map(link => [link.ticket, link.score]), [['PRD-2', 3], ['PRD-1', 1]]);
 
   const [offBranch] = buildSessions({ prds, live: [{ sessionId: 'a' }], detailsOf: () => ({ branch: 'main', prUrls: [PR9] }) });
   assert.deepEqual(offBranch.tickets.map(link => [link.ticket, link.primary]), [['PRD-2', true], ['PRD-1', false]]);

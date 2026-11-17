@@ -84,3 +84,14 @@ test('a refused key says what Linear answered', async () => {
   const { fetch } = fakeLinear({ ok: false, status: 400, body: { errors: [{ message: 'Authentication required' }] } });
   await assert.rejects(fetchPrds({ apiKey: 'bad', fetch }), /Linear answered Authentication required/);
 });
+
+test('a failed read of the extra tickets keeps your own, and says so', async () => {
+  const { fetch } = fakeLinear(
+    { body: { data: { viewer: { assignedIssues: { nodes: [issue('PRD-1')] } } } } },
+    { ok: false, status: 429, body: { errors: [{ message: 'Rate limit exceeded' }] } },
+  );
+  const warned = [];
+  const prds = await fetchPrds({ apiKey: 'k', extra: ['PRD-2'], fetch, warn: message => warned.push(message) });
+  assert.deepEqual(prds.map(prd => prd.ticket), ['PRD-1']);
+  assert.match(warned[0], /Rate limit exceeded/);
+});

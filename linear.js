@@ -6,6 +6,8 @@
 const ENDPOINT = 'https://api.linear.app/graphql';
 const IDENTIFIER = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
 const GITHUB_PR = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
+// A Linear that hangs would hold the PRDs view, and the Sessions poll waiting on it, for minutes.
+const TIMEOUT_MS = 15_000;
 
 const FIELDS = `identifier title url createdAt updatedAt
   state { name type color position }
@@ -20,6 +22,7 @@ async function query(apiKey, text, { fetch = globalThis.fetch } = {}) {
     // A personal API key goes as is: Bearer is for OAuth tokens.
     headers: { 'Content-Type': 'application/json', Authorization: apiKey },
     body: JSON.stringify({ query: text }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok && !payload?.data) {
@@ -52,8 +55,9 @@ function shape(issue) {
 }
 
 // Your started tickets, then the extra ones by identifier in one aliased query. An extra one
-// Linear does not know, or cannot show you, is left out rather than failing the rest.
-async function fetchPrds({ apiKey, extra = [], fetch } = {}) {
+// Linear does not know, or cannot show you, is left out rather than failing the rest; so is the
+// whole extra query when it fails (a rate limit, a 5xx), said through `warn`.
+async function fetchPrds({ apiKey, extra = [], fetch, warn = () => {} } = {}) {
   const mine = await query(apiKey, `{ viewer { assignedIssues(first: 100, filter: { state: { type: { eq: "started" } } }) { nodes { ${FIELDS} } } } }`, { fetch });
   if (!mine.data?.viewer) throw new Error(`Linear answered ${mine.errors?.[0]?.message ?? 'no viewer'}`);
   const prds = mine.data.viewer.assignedIssues.nodes.map(shape);
@@ -61,8 +65,12 @@ async function fetchPrds({ apiKey, extra = [], fetch } = {}) {
   const wanted = [...new Set(extra)].filter(key => IDENTIFIER.test(key) && !known.has(key)).slice(0, 30);
   if (wanted.length) {
     const aliases = wanted.map((key, index) => `t${index}: issue(id: "${key}") { ${FIELDS} }`).join('\n');
-    const others = await query(apiKey, `{ ${aliases} }`, { fetch });
-    for (const issue of Object.values(others.data ?? {})) if (issue) prds.push(shape(issue));
+    try {
+      const others = await query(apiKey, `{ ${aliases} }`, { fetch });
+      for (const issue of Object.values(others.data ?? {})) if (issue) prds.push(shape(issue));
+    } catch (error) {
+      warn(`The tickets your sessions work on could not be read: ${error.message}`);
+    }
   }
   return prds;
 }
