@@ -5122,7 +5122,7 @@ async function pollSessions() {
     if (!response.ok) throw new Error(payload.error || response.statusText);
     if (payload.enabled === false) return;
   } catch (error) {
-    if (++sessPollFailures === SESSION_POLL_FAILURES && prdData) {
+    if (++sessPollFailures >= SESSION_POLL_FAILURES && prdData && prdData.pollError !== error.message) {
       prdData.pollError = error.message;
       renderPrd();
     }

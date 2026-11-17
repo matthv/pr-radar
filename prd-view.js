@@ -62,7 +62,9 @@ function createPrdView({ boardPrs, linearApiKey, claudeSessionsOn, sessionChime,
         fetched = read.prds;
         for (const message of read.warned) warnings.push({ source: 'linear', message });
       } catch (error) {
-        warnings.push({ source: 'linear', failed: true, message: `Linear: ${error.message}` });
+        // One failed read keeps the last tickets drawn rather than blanking the view.
+        fetched = linearCache.prds ?? [];
+        warnings.push({ source: 'linear', failed: true, message: `Linear: ${error.message}${linearCache.prds ? ' (showing the last tickets read)' : ''}` });
       }
     }
     const prds = buildPrds({

@@ -379,7 +379,9 @@ async function liveSessions(dir = RUNNING_DIR, { agents = claudeAgents } = {}) {
     if (!record || (record.kind ?? 'interactive') !== 'interactive') continue;
     if (record.pid > 0 && isAlive(record.pid)) running.push(record);
   }
-  if (running.some(record => !record.status)) {
+  // No record needs the listing: an earlier failure of it no longer says anything.
+  if (!running.some(record => !record.status)) agentsFailure = null;
+  else {
     const listed = new Map((await agents()).map(agent => [agent.pid, agent]));
     for (const [index, record] of running.entries()) {
       const agent = listed.get(record.pid);
