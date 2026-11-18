@@ -63,7 +63,8 @@ section you need.
 - The local state files hold real data and are git-ignored: `.slack-links.json`,
   `.digest-cache.json`, `.hub-instance`, `.daily-notes.log`, `.slack-claims-debug.log`. Never
   commit one, and add any new one to `.gitignore`.
-- The presence hub (`hub.js`) gets no Forest data: no PR, repo or title. Its token never reaches
+- The presence hub (`hub.js`) gets no Forest data: no PR, repo or title. The one link it relays
+  is your Meet room's, while its window is open (README "Your room"). Its token never reaches
   the browser or a log.
 - `custom-themes/` is personal and git-ignored; never commit what's in it.
 

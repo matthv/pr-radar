@@ -119,6 +119,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
+| `PR_RADAR_ROOM_URL` | — | Your Google Meet room (`https://meet.google.com/xxx-xxxx-xxx`): a **Room** button in the header opens it, and while its Chrome window is open your teammates can join you from the hub panel — see [Your room](#your-room). Empty, no button |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
@@ -994,12 +995,35 @@ in "My themes" under its own name, or with the sender's login added when the nam
 and **Wear it** puts it on. An offer left alone expires after an hour.
 
 **What leaves your machine:** your GitHub login, the commit and release PR Radar runs, how far
-behind `main` it is, how many board tabs are open, and whether you are available or in focus.
-Nothing about pull requests, repositories or titles, and never your `gh` token, which this
+behind `main` it is, how many board tabs are open, whether you are available or in focus, and
+your Meet room's link while its window is open ([Your room](#your-room)). Nothing about pull requests, repositories or titles, and never your `gh` token, which this
 feature does not even read. A nudge carries only a SHA-256 of the PR's URL, which the
 recipient's radar matches against its own board; the hub cannot read it back, though anyone
 who already knows the URL could recompute it. A theme you share travels whole, its CSS and its
 JavaScript, relayed by the hub and kept nowhere.
+
+### Your room
+
+`PR_RADAR_ROOM_URL`, your Google Meet room (`https://meet.google.com/xxx-xxxx-xxx`), puts a
+cyan **Room** button in the header that opens it. Anything but a Meet room link stops the
+start, the message naming the host only, since a room's code is enough to walk into it.
+
+On macOS with the hub on, the radar asks Chrome every 20 seconds whether a tab or a window,
+the Meet app installed from Chrome included, is on your room. While one is, a dot shows on
+the button, and your teammates see a camera on your row: one click on it and they
+are in. Close the window and it goes within 20 seconds. Hanging up is not enough, since
+Meet keeps the same address and title after you leave: close the window when you are done.
+
+- The first check makes macOS ask whether PR Radar may control Google Chrome. Refused, the
+  room is never shared, and the log points to System Settings › Privacy & Security ›
+  Automation.
+- The match runs inside the AppleScript: the radar only gets a yes or a no, never the
+  address of any other tab. The guard on Chrome running means it never launches Chrome.
+- Off macOS, with another browser, or without the hub, the button still opens the room;
+  nobody sees you in it.
+- The hub relays your room's link only while the window is open, keeps it in memory, and
+  only to signed-in members of the organisation. A link from the hub reaches the page only
+  as a Meet room address.
 
 The rest:
 - The hub is `PR_RADAR_HUB_URL`, a `wss://` address (`ws://` only for a hub on this machine).
@@ -1323,6 +1347,7 @@ nothing else. Three checkboxes used to sit there and were removed rather than mo
   It is a single global link rather than one per card, because gitdeck keeps the
   selected repo in internal state rather than in the URL, so there is nothing to
   deep-link to.
+- A **Room** button, beside it, opens your Google Meet room: see [Your room](#your-room).
 - `FR` / `EN` toggles the interface language (English by default, remembered).
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.

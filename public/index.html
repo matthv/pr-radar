@@ -319,6 +319,7 @@
   .hub-me .hub-who { display: contents; }
   .hub-me .hub-who b { grid-area: name; }
   .hub-me .hub-who :is(small, .hub-behind) { grid-area: line; justify-self: start; }
+  .hub-me .hub-name { grid-area: name; }
   .hub-me .hub-toggles { grid-area: set; }
   .hub-toggles { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
   .hub-segment { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--sunken); }
@@ -487,8 +488,21 @@
   a.link-out[href] { display: inline-flex; }
   a.link-out:hover { border-color: var(--indigo); transform: translateY(-1px); }
   a.link-out svg { width: 14px; height: 14px; flex: none; }
+  /* A way out, not something to act on: the navigation accent, never your-move indigo. */
+  a.link-out.room {
+    color: var(--cyan); background: var(--cyan-soft);
+    border-color: color-mix(in srgb, var(--cyan) 28%, transparent);
+  }
+  a.link-out.room:hover { border-color: var(--cyan); }
+  a.link-out.room.live::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); }
+  .hub-name { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+  .hub-name b { min-width: 0; }
+  .hub-room { display: flex; flex: none; position: relative; top: 3px; color: var(--cyan); border-radius: 4px; }
+  .hub-room svg { width: 15px; height: 15px; }
+  a.hub-room:hover { color: var(--cyan-2); }
   @media (prefers-reduced-motion: no-preference) {
     a.link-out:hover .branch-tip { animation: blip 1.6s ease-in-out infinite; }
+    a.link-out.room.live::after { animation: blip 2.4s ease-in-out infinite; }
   }
   @keyframes blip { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .controls button.seg { display: flex; align-items: stretch; gap: 3px; padding: 3px; }
@@ -1434,6 +1448,10 @@
     <button id="reload" hidden></button>
     <span id="stamp"></span>
     <button id="refresh"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.6 8a5.6 5.6 0 0 1-9.4 4.1"/><path d="M2.4 8a5.6 5.6 0 0 1 9.4-4.1"/><path d="M11.8 1v2.9h-2.9"/><path d="M4.2 15v-2.9h2.9"/></svg><span id="refreshLabel"></span></button>
+    <a class="link-out room" id="room" target="_blank" rel="noreferrer">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4" width="9" height="8" rx="2"/><path d="M10.5 7.2 14.5 5v6l-4-2.2"/></svg>
+      <span id="roomLabel"></span>
+    </a>
     <a class="link-out" id="gitdeck" target="_blank" rel="noreferrer">
       <svg class="gitdeck-logo" viewBox="0 0 32 32" aria-hidden="true">
         <defs>
@@ -1901,6 +1919,9 @@ const I18N = {
     pluginFailed: 'Plugin : {message}.',
     noProject: 'Aucun projet ne correspond',
     gitdeckTitle: 'ouvrir gitdeck — le client git local',
+    roomLabel: 'Room',
+    roomTitle: 'ouvrir ta room',
+    roomLive: 'tu es dans ta room : tes collègues peuvent te rejoindre depuis le radar',
     langTitle: 'Langue de l’interface',
     refresh: 'Rafraîchir',
     reload: 'Recharger',
@@ -2037,6 +2058,8 @@ const I18N = {
     hubLocalDown: 'Le serveur PR Radar ne répond plus : cette liste n’est plus à jour.',
     hubAvailable: 'dispo',
     hubFocus: 'focus',
+    hubJoinRoom: 'rejoindre la room de {who}',
+    hubMeInRoom: 'tes collègues voient que tu es dans ta room',
     hubAvailabilityLabel: 'Ton état pour les autres',
     hubAvailableTitle: 'Dispo pour une review : les autres le voient',
     hubFocusTitle: 'En focus : ni wizz ni son, les relances arrivent sans bruit',
@@ -2228,6 +2251,9 @@ const I18N = {
     pluginFailed: 'Plugin: {message}.',
     noProject: 'No matching project',
     gitdeckTitle: 'open gitdeck — the local git client',
+    roomLabel: 'Room',
+    roomTitle: 'open your room',
+    roomLive: 'you are in your room: your teammates can join you from their radar',
     langTitle: 'Interface language',
     refresh: 'Refresh',
     reload: 'Reload',
@@ -2364,6 +2390,8 @@ const I18N = {
     hubLocalDown: 'The PR Radar server no longer answers: this list is out of date.',
     hubAvailable: 'available',
     hubFocus: 'focus',
+    hubJoinRoom: 'join {who}’s room',
+    hubMeInRoom: 'your teammates see you are in your room',
     hubAvailabilityLabel: 'Your status for the others',
     hubAvailableTitle: 'Available for a review: the others see it',
     hubFocusTitle: 'In focus: no wizz and no sound, nudges arrive quietly',
@@ -2791,6 +2819,8 @@ function applyLang(next) {
   if (state.settingsOpen) renderSettings();
   renderHub(hubData, { force: true });
   el('gitdeck').title = t('gitdeckTitle');
+  el('room').title = t(hubData?.room ? 'roomLive' : 'roomTitle');
+  el('roomLabel').textContent = t('roomLabel');
   applyStampTitle();
   el('refreshLabel').textContent = t('refresh');
   el('reload').textContent = t('reload');
@@ -3943,6 +3973,8 @@ function render() {
   // With no href the CSS hides the link: an empty URL removes it from the header.
   if (data.gitdeckUrl) el('gitdeck').href = data.gitdeckUrl;
   else el('gitdeck').removeAttribute('href');
+  if (data.roomUrl) el('room').href = data.roomUrl;
+  else el('room').removeAttribute('href');
 
   // Slack is kept out of "incomplete data": when it fails the board is still whole, only
   // the announcement links are missing, and the fix is on the reader's side.
@@ -4743,6 +4775,7 @@ const ICONS = {
     + '<circle cx="5" cy="7.2" r=".7"/><circle cx="7.4" cy="4.8" r=".7"/><circle cx="10.4" cy="5.6" r=".7"/>'),
   hand: icon('<path d="M5.5 8.6V4.2a1 1 0 0 1 2 0v3.6M7.5 7.6V3a1 1 0 0 1 2 0v4.6M9.5 7.6V3.8a1 1 0 0 1 2 0v4.4"/>'
     + '<path d="M11.5 8.2V6.4a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5h-.7a4 4 0 0 1-3.1-1.5L3.1 10.4a1.05 1.05 0 0 1 1.6-1.4l.8.9"/>'),
+  room: icon('<rect x="1.5" y="4" width="9" height="8" rx="2"/><path d="M10.5 7.2 14.5 5v6l-4-2.2"/>'),
   focus: icon('<path d="M2.5 11.5V8.5a5.5 5.5 0 0 1 11 0v3"/><rect x="2" y="9.5" width="3" height="4.5" rx="1.2"/><rect x="11" y="9.5" width="3" height="4.5" rx="1.2"/>'),
   kudos: icon('<path d="M6.5 2c.4 2.8 1.5 3.9 4.3 4.3-2.8.4-3.9 1.5-4.3 4.3-.4-2.8-1.5-3.9-4.3-4.3 2.8-.4 3.9-1.5 4.3-4.3Z"/>'
     + '<path d="M12.3 9.6c.2 1.3.7 1.8 2 2-1.3.2-1.8.7-2 2-.2-1.3-.7-1.8-2-2 1.3-.2 1.8-.7 2-2Z"/>'),
@@ -5333,6 +5366,9 @@ function hubPersonHtml(person) {
     : unknown ? `<span class="hub-unknown">${t('hubUnknownVersion')}</span>` : '';
   const status = hubStatus(person.availability);
   const availability = `<span class="hub-avail ${status}">${t(status === 'focus' ? 'hubFocus' : 'hubAvailable')}</span> · `;
+  const room = person.room
+    ? `<a class="hub-room" href="${escapeHtml(person.room)}" target="_blank" rel="noreferrer" title="${escapeHtml(t('hubJoinRoom', { who: person.login }))}" aria-label="${escapeHtml(t('hubJoinRoom', { who: person.login }))}">${ICONS.room}</a>`
+    : '';
   // The hub drops a second kudos to the same person within a minute: the button says so.
   const since = Date.now() - (hubKudosSent.get(person.login) ?? 0);
   const sent = since < 2000;
@@ -5347,7 +5383,7 @@ function hubPersonHtml(person) {
   const wizz = `<button type="button" class="hub-wizz${wizzSent ? ' sent' : ''}${refuses || wizzCooling ? ' cooldown' : ''}" data-hub-wizz="${escapeHtml(person.login)}"${wizzSent || refuses || wizzCooling ? ' disabled' : ''}`
     + ` title="${escapeHtml(t(wizzTitle, { who: person.login }))}" aria-label="${escapeHtml(t('hubWizzTitle', { who: person.login }))}">${wizzSent ? CHECK_ICON : ICONS.wizz}</button>`;
   return `<li class="hub-person" title="${escapeHtml(tip)}">${hubFace(avatarSrc(person, 52), status)}`
-    + `<span class="hub-who"><b>${escapeHtml(person.login)}</b>`
+    + `<span class="hub-who"><span class="hub-name"><b>${escapeHtml(person.login)}</b>${room}</span>`
     + `<small>${availability}${escapeHtml(t('hubSince', { v: ago(person.since) }))}</small>${flag}</span><span class="hub-acts">${kudos}${wizz}${shareButton(person)}</span>${shareList(person)}</li>`;
 }
 
@@ -5368,7 +5404,9 @@ function hubMeHtml(data, me) {
   const version = behind ? behindPill({ behind, behindTag: mineVersion.behindTag })
     : `<small>${mineVersion.tag ? `${escapeHtml(mineVersion.tag)} · ` : ''}${unknown ? t('hubUnknownVersion') : t('hubUpToDate')}${me ? ` · ${escapeHtml(tn('hubTabs', me.tabs ?? 0))}` : ''}</small>`;
   return `<div class="hub-me">${hubFace(avatarSrc({ login: data.login, avatarUrl: data.avatarUrl }, 64), mine)}`
-    + `<span class="hub-who"><b>${escapeHtml(data.login)}</b>${version}</span>`
+    + `<span class="hub-who"><span class="hub-name"><b>${escapeHtml(data.login)}</b>`
+    + `${data.room ? `<span class="hub-room" role="img" title="${escapeHtml(t('hubMeInRoom'))}" aria-label="${escapeHtml(t('hubMeInRoom'))}">${ICONS.room}</span>` : ''}</span>`
+    + `${version}</span>`
     + '<span class="hub-toggles">'
     + `<span class="hub-segment" role="group" aria-label="${t('hubAvailabilityLabel')}">`
     + toggle('available', ICONS.hand, t('hubAvailable'), t('hubAvailableTitle'))
@@ -5629,6 +5667,9 @@ function renderHub(data, { force = false } = {}) {
   if (!force && signature === hubShown) return;
   hubShown = signature;
   hubData = data;
+  const live = Boolean(data?.room);
+  el('room').classList.toggle('live', live);
+  el('room').title = t(live ? 'roomLive' : 'roomTitle');
   const button = el('hub');
   const active = Boolean(data && data.status !== 'off');
   button.hidden = !active;
