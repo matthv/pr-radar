@@ -451,8 +451,7 @@ const online = (login, radars, availability = null, acceptsWizz = true, room = n
   radars,
 });
 
-// What the hub would have sent: three online, one behind and in focus, one in their room, and me on two radars, one
-// with no tab open, in my room.
+// What the hub would have sent: three online, one behind and in focus, and me on two radars, one with no tab open.
 const hub = {
   status: 'online',
   login: ME,

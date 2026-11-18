@@ -397,6 +397,20 @@ test('room: sent in hello only when in it, with the next status otherwise, and n
   assert.equal('room' in out.open(), false);
 });
 
+test('room: kept across a reconnect, and a room left while offline is not sent again', () => {
+  const t = online();
+  t.hub.setRoom('https://meet.google.com/abc-defg-hij');
+  t.timers.fire(2500);
+  t.closeWith(1006);
+  t.timers.fire();
+  assert.equal(t.open().room, 'https://meet.google.com/abc-defg-hij');
+  t.say(welcome());
+  t.closeWith(1006);
+  t.hub.setRoom(null);
+  t.timers.fire();
+  assert.equal('room' in t.open(), false);
+});
+
 test('room: a teammate\'s room from the hub reaches the page only as a Meet link', () => {
   const t = online();
   t.say({ type: 'presence', online: [

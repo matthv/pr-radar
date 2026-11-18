@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { MEET_URL, parseRoomUrl, roomLink, roomOpen, watchRoom } = require('../room');
+const { MEET_URL, parseRoomUrl, roomLink, roomOpen, roomWatchOff, watchRoom, chromeError } = require('../room');
 
 test('room: no value, no room', () => {
   assert.equal(parseRoomUrl(undefined), null);
@@ -49,33 +49,77 @@ test('room: Chrome is asked about the room code only, and answers yes or no', as
     return 'yes\n';
   }), true);
   assert.equal(args.at(-1), 'abc-defg-hij');
-  assert.ok(args.join('\n').includes('is not running'));
+  // First line of the script, before anything that talks to Chrome and would launch it.
+  assert.deepEqual(args.slice(0, 4), ['-e', 'on run argv', '-e', 'if application "Google Chrome" is not running then return "no"']);
+  assert.ok(args.includes('if URL of t contains ("meet.google.com/" & item 1 of argv) then return "yes"'));
   assert.equal(await roomOpen('abc-defg-hij', async () => 'no\n'), false);
 });
 
-function manualTimers() {
-  const pending = [];
-  return { set: fn => pending.push(fn), clear: () => pending.splice(0), tick: () => Promise.all(pending.map(fn => fn())) };
+test('room: a failed check says why without ever naming the room', () => {
+  assert.match(chromeError({ stderr: 'execution error: Not authorised to send Apple events to Google Chrome. (-1743)' }, 'abc-defg-hij'), /System Settings › Privacy & Security › Automation/);
+  assert.equal(chromeError({ killed: true, signal: 'SIGTERM' }, 'abc-defg-hij'), 'Google Chrome did not answer within 10 s');
+  assert.equal(chromeError({ stderr: '', code: 1 }, 'abc-defg-hij'), 'cannot ask Google Chrome: osascript exited with 1');
+  assert.equal(chromeError({ stderr: 'oops near abc-defg-hij (-2741)' }, 'abc-defg-hij'), 'cannot ask Google Chrome: oops near … (-2741)');
+});
+
+test('room: watched on macOS with a hub only', () => {
+  assert.equal(roomWatchOff({ platform: 'darwin', hubUrl: 'wss://hub.test/ws' }), null);
+  assert.equal(roomWatchOff({ platform: 'linux', hubUrl: 'wss://hub.test/ws' }), 'not macOS');
+  assert.equal(roomWatchOff({ platform: 'darwin', hubUrl: '' }), 'no hub');
+});
+
+const ROOM = { url: 'https://meet.google.com/abc-defg-hij', code: 'abc-defg-hij' };
+
+function fakeHub(declined = false) {
+  const rooms = [];
+  return { rooms, setDeclined: value => { declined = value; }, state: () => ({ declined }), setRoom: url => rooms.push(url) };
 }
 
-test('room: a change is reported once, and a failure counts as out of the room, logged once', async () => {
-  const answers = ['yes', 'yes', new Error('macOS refused'), new Error('macOS refused'), 'yes', 'no'];
-  const changes = [];
+function scripted(answers) {
+  return async () => {
+    const answer = answers.shift();
+    if (answer instanceof Error) throw answer;
+    return answer;
+  };
+}
+
+const noTimers = { set: () => null, clear: () => {} };
+
+test('room: the hub gets the link on entering and null on leaving, once each; a failure counts as out, logged once until it recovers', async () => {
+  const hub = fakeHub();
   const logged = [];
-  const timers = manualTimers();
-  watchRoom({
-    code: 'abc-defg-hij',
-    onChange: open => changes.push(open),
+  const refused = new Error('macOS refused');
+  const watch = watchRoom({
+    room: ROOM, hub, timers: noTimers,
     log: (level, message) => logged.push(`${level} ${message}`),
-    exec: async () => {
-      const answer = answers.shift();
-      if (answer instanceof Error) throw answer;
-      return answer;
-    },
-    timers,
+    exec: scripted(['yes', 'yes', refused, refused, 'yes', 'no', refused]),
   });
-  await new Promise(setImmediate);
-  for (let i = 0; i < 5; i += 1) await timers.tick();
-  assert.deepEqual(changes, [true, false, true, false]);
-  assert.deepEqual(logged, ['fail macOS refused']);
+  await watch.first;
+  for (let i = 0; i < 6; i += 1) await watch.check();
+  assert.deepEqual(hub.rooms, [ROOM.url, null, ROOM.url, null]);
+  assert.deepEqual(logged, ['fail macOS refused', 'info Google Chrome answers again', 'fail macOS refused']);
+});
+
+test('room: a slow Chrome is asked once at a time', async () => {
+  let calls = 0;
+  let answer;
+  const hub = fakeHub();
+  const watch = watchRoom({ room: ROOM, hub, timers: noTimers, exec: () => { calls += 1; return new Promise(resolve => { answer = resolve; }); } });
+  await watch.check();
+  assert.equal(calls, 1);
+  answer('yes');
+  await watch.first;
+  assert.deepEqual(hub.rooms, [ROOM.url]);
+});
+
+test('room: with the hub declined Chrome is not asked, and an open room is taken back', async () => {
+  let calls = 0;
+  const hub = fakeHub();
+  const watch = watchRoom({ room: ROOM, hub, timers: noTimers, exec: async () => { calls += 1; return 'yes'; } });
+  await watch.first;
+  hub.setDeclined(true);
+  await watch.check();
+  await watch.check();
+  assert.equal(calls, 1);
+  assert.deepEqual(hub.rooms, [ROOM.url, null]);
 });

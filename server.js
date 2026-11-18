@@ -36,7 +36,7 @@ const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const webhook = require('./webhook');
-const { parseRoomUrl, watchRoom } = require('./room');
+const { parseRoomUrl, roomWatchOff, watchRoom } = require('./room');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
@@ -209,7 +209,7 @@ const hub = createHub({
   log: (level, message) => logger[level]('hub', message),
 });
 const tabCounter = createTabCounter();
-const ROOM_WATCH = process.platform !== 'darwin' ? 'not macOS' : HUB_URL ? null : 'no hub';
+const ROOM_WATCH = roomWatchOff({ platform: process.platform, hubUrl: HUB_URL });
 
 async function syncHub() {
   const checked = update.status();
@@ -970,7 +970,7 @@ server.listen(PORT, async () => {
     await syncHub();
     hub.start();
     setInterval(syncHub, 30_000).unref();
-    if (ROOM && !ROOM_WATCH) watchRoom({ code: ROOM.code, onChange: open => hub.setRoom(open ? ROOM.url : null), log: (level, message) => logger[level]('room', message) });
+    if (ROOM && !ROOM_WATCH) watchRoom({ room: ROOM, hub, log: (level, message) => logger[level]('room', message) });
   }
   if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => logger.fail('search', `first search: ${error.message}`));

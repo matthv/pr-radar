@@ -39,47 +39,57 @@ const CHROME_SCRIPT = [
   'return "no"',
 ];
 
-const osascript = args =>
+const CHROME_TIMEOUT_MS = 10_000;
+
+// Node's own message spells out the whole command line, room code included: never used.
+function chromeError({ stderr, killed, signal, code }, roomCode) {
+  if (killed || signal) return `Google Chrome did not answer within ${CHROME_TIMEOUT_MS / 1000} s`;
+  const said = String(stderr ?? '').trim().replaceAll(roomCode, '…');
+  if (/-1743\b/.test(said)) return 'macOS refused PR Radar access to Google Chrome: allow your terminal under System Settings › Privacy & Security › Automation';
+  return `cannot ask Google Chrome: ${said || `osascript exited with ${code ?? 'no code'}`}`;
+}
+
+const osascript = (args, roomCode) =>
   new Promise((resolve, reject) => {
-    execFile('osascript', args, (error, stdout, stderr) => {
+    execFile('osascript', args, { timeout: CHROME_TIMEOUT_MS }, (error, stdout, stderr) => {
       if (!error) return resolve(stdout);
-      const reason = String(stderr).trim() || error.message;
-      reject(new Error(/-1743\b/.test(reason)
-        ? 'macOS refused PR Radar access to Google Chrome: allow it under System Settings › Privacy & Security › Automation'
-        : `cannot ask Google Chrome: ${reason}`));
+      reject(new Error(chromeError({ stderr, killed: error.killed, signal: error.signal, code: error.code }, roomCode)));
     });
   });
 
 async function roomOpen(code, exec = osascript) {
-  return String(await exec(osascriptArgs(CHROME_SCRIPT, code))).trim() === 'yes';
+  return String(await exec(osascriptArgs(CHROME_SCRIPT, code), code)).trim() === 'yes';
 }
 
-function watchRoom({ code, onChange, log = () => {}, exec = osascript, every = CHECK_EVERY_MS, timers = { set: setInterval, clear: clearInterval } }) {
+const roomWatchOff = ({ platform, hubUrl }) => (platform !== 'darwin' ? 'not macOS' : hubUrl ? null : 'no hub');
+
+// A declined hub shares nothing, so Chrome is not asked either: no Automation prompt for nothing.
+function watchRoom({ room, hub, log = () => {}, exec = osascript, every = CHECK_EVERY_MS, timers = { set: setInterval, clear: clearInterval } }) {
   let open = false;
   let lastError = null;
   let checking = false;
   async function check() {
     if (checking) return;
     checking = true;
-    let next;
+    let next = false;
     try {
-      next = await roomOpen(code, exec);
+      if (!hub.state().declined) next = await roomOpen(room.code, exec);
+      if (lastError) log('info', 'Google Chrome answers again');
       lastError = null;
     } catch (error) {
       if (error.message !== lastError) log('fail', error.message);
       lastError = error.message;
-      next = false;
     } finally {
       checking = false;
     }
     if (next === open) return;
     open = next;
-    onChange(open);
+    hub.setRoom(open ? room.url : null);
   }
-  check();
+  const first = check();
   const timer = timers.set(check, every);
   timer?.unref?.();
-  return { check, stop: () => timers.clear(timer) };
+  return { check, first };
 }
 
-module.exports = { MEET_URL, parseRoomUrl, roomLink, roomOpen, watchRoom };
+module.exports = { MEET_URL, parseRoomUrl, roomLink, roomOpen, roomWatchOff, watchRoom, chromeError };

@@ -996,8 +996,9 @@ and **Wear it** puts it on. An offer left alone expires after an hour.
 
 **What leaves your machine:** your GitHub login, the commit and release PR Radar runs, how far
 behind `main` it is, how many board tabs are open, whether you are available or in focus, and
-your Meet room's link while its window is open ([Your room](#your-room)). Nothing about pull requests, repositories or titles, and never your `gh` token, which this
-feature does not even read. A nudge carries only a SHA-256 of the PR's URL, which the
+your Meet room's link while its window is open ([Your room](#your-room)). Nothing about pull
+requests, repositories or titles, and never your `gh` token, which this feature does not even
+read. A nudge carries only a SHA-256 of the PR's URL, which the
 recipient's radar matches against its own board; the hub cannot read it back, though anyone
 who already knows the URL could recompute it. A theme you share travels whole, its CSS and its
 JavaScript, relayed by the hub and kept nowhere.
@@ -1009,20 +1010,22 @@ cyan **Room** button in the header that opens it. Anything but a Meet room link 
 start, the message naming the host only, since a room's code is enough to walk into it.
 
 On macOS with the hub on, the radar asks Chrome every 20 seconds whether a tab or a window,
-the Meet app installed from Chrome included, is on your room. While one is, a dot shows on
-the button, and your teammates see a camera on your row: one click on it and they
-are in. Close the window and it goes within 20 seconds. Hanging up is not enough, since
-Meet keeps the same address and title after you leave: close the window when you are done.
+the Meet app installed from Chrome included, is on your room. While one is and the hub is
+connected, a dot shows on the button, and your teammates see a camera beside your name: one
+click on it opens your room. Close the window and it goes from their panel within half a
+minute or so. Hanging up is not enough, since Meet keeps the same address after you leave:
+close the window when you are done.
 
-- The first check makes macOS ask whether PR Radar may control Google Chrome. Refused, the
-  room is never shared, and the log points to System Settings › Privacy & Security ›
-  Automation.
+- The first check while Chrome is open makes macOS ask whether your terminal, the app that
+  runs PR Radar, may control Google Chrome. Refused, the room is never shared, and the log
+  points to System Settings › Privacy & Security › Automation. Chrome not answering within
+  10 seconds counts as out of the room, and is logged too.
 - The match runs inside the AppleScript: the radar only gets a yes or a no, never the
   address of any other tab. The guard on Chrome running means it never launches Chrome.
 - Off macOS, with another browser, or without the hub, the button still opens the room;
-  nobody sees you in it.
-- The hub relays your room's link only while the window is open, keeps it in memory, and
-  only to signed-in members of the organisation. A link from the hub reaches the page only
+  nobody sees you in it. With the hub declined from the page, Chrome is not even asked.
+- The hub relays your room's link only to signed-in members of the organisation, only while
+  the window is open, and keeps it in memory only. A link from the hub reaches the page only
   as a Meet room address.
 
 The rest:

@@ -2819,7 +2819,7 @@ function applyLang(next) {
   if (state.settingsOpen) renderSettings();
   renderHub(hubData, { force: true });
   el('gitdeck').title = t('gitdeckTitle');
-  el('room').title = t(hubData?.room ? 'roomLive' : 'roomTitle');
+  el('room').title = t(hubData?.room && hubData.status === 'online' ? 'roomLive' : 'roomTitle');
   el('roomLabel').textContent = t('roomLabel');
   applyStampTitle();
   el('refreshLabel').textContent = t('refresh');
@@ -5667,7 +5667,7 @@ function renderHub(data, { force = false } = {}) {
   if (!force && signature === hubShown) return;
   hubShown = signature;
   hubData = data;
-  const live = Boolean(data?.room);
+  const live = Boolean(data?.room) && data.status === 'online';
   el('room').classList.toggle('live', live);
   el('room').title = t(live ? 'roomLive' : 'roomTitle');
   const button = el('hub');
