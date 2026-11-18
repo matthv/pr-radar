@@ -5693,7 +5693,9 @@ function scheduleHubBeat() {
 }
 scheduleHubBeat();
 hubBeat();
-new EventSource('/api/tabs');
+// One stream per browser, not per tab: each one holds a connection out of the six a browser allows per host.
+if (navigator.locks) navigator.locks.request('pr-radar:tabs', () => new Promise(() => new EventSource('/api/tabs')));
+else new EventSource('/api/tabs');
 
 applyLang(lang);
 renderSkeleton();
