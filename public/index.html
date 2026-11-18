@@ -500,6 +500,8 @@
   .hub-room { display: flex; flex: none; position: relative; top: 1px; color: var(--cyan); border-radius: 4px; }
   .hub-room svg { width: 15px; height: 15px; }
   a.hub-room:hover { color: var(--cyan-2); }
+  /* Keeps the camera clear of .hub-acts, which overlays the row's right end. */
+  .hub-person:has(.hub-room) .hub-name { max-width: calc(100% - 80px); }
   @media (prefers-reduced-motion: no-preference) {
     a.link-out:hover .branch-tip { animation: blip 1.6s ease-in-out infinite; }
     a.link-out.room.live::after { animation: blip 2.4s ease-in-out infinite; }
