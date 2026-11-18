@@ -36,6 +36,7 @@ const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const webhook = require('./webhook');
+const { parseRoomUrl, roomWatchOff, watchRoom } = require('./room');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
 const { createOrphanWatch } = require('./orphans');
@@ -99,6 +100,7 @@ const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
 let WEBHOOK_URL = '';
+let ROOM = null;
 // Your own notification sound, a local file. Only this one path is ever served, at a fixed
 // route: the page cannot ask for any other file through it.
 const SOUND_FILE = (process.env.PR_RADAR_SOUND ?? '').trim().replace(/^~(?=\/|$)/, os.homedir());
@@ -207,6 +209,7 @@ const hub = createHub({
   log: (level, message) => logger[level]('hub', message),
 });
 const tabCounter = createTabCounter();
+const ROOM_WATCH = roomWatchOff({ platform: process.platform, hubUrl: HUB_URL });
 
 async function syncHub() {
   const checked = update.status();
@@ -327,6 +330,7 @@ async function layered(board, discoveredAt) {
     refreshSeconds: REFRESH_SECONDS,
     pageRefreshSeconds: LIVE ? PAGE_REFRESH_SECONDS : REFRESH_SECONDS,
     gitdeckUrl: GITDECK_URL,
+    roomUrl: ROOM?.url ?? '',
     linearUrl: LINEAR_URL,
     hideDrafts: HIDE_DRAFTS,
     customSound: Boolean(SOUND_FILE),
@@ -400,6 +404,7 @@ async function dashboard(force, { reuse = false, asked = false } = {}) {
       ...demo.payload(force),
       refreshSeconds: REFRESH_SECONDS,
       gitdeckUrl: GITDECK_URL,
+      roomUrl: ROOM.url,
       linearUrl: demo.LINEAR_URL,
       hideDrafts: false,
       customSound: Boolean(SOUND_FILE),
@@ -647,6 +652,13 @@ if (!ORG) {
 
 try {
   PLUGINS = DEMO ? [] : plugins.load(process.env.PR_RADAR_PLUGINS);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
+try {
+  ROOM = parseRoomUrl(DEMO ? demo.ROOM_URL : process.env.PR_RADAR_ROOM_URL);
 } catch (error) {
   console.error(error.message);
   process.exit(1);
@@ -945,6 +957,7 @@ server.listen(PORT, async () => {
       `  🔔 sound ${SOUND_FILE ? SOUND_FILE : 'built-in chime'}\n` +
       `  🎨 theme ${THEME_LINE}\n` +
       `  🤖 claude sessions ${CLAUDE_SESSIONS_OFF ?? `on, new ones opened in ${TERMINAL}`}\n` +
+      `  🎥 room ${!ROOM ? 'off (no PR_RADAR_ROOM_URL)' : DEMO ? 'demo' : `Google Meet, ${ROOM_WATCH ? `not shared (${ROOM_WATCH})` : 'shared while its Chrome window is open'}`}\n` +
       `  🎫 linear tickets ${LINEAR_URL ? `linked to ${LINEAR_URL}` : 'off (no PR_RADAR_LINEAR_URL)'}\n` +
       `  🧩 plugins ${PLUGINS.length ? PLUGINS.map(plugin => plugin.name).join(', ') : 'none (no PR_RADAR_PLUGINS)'}\n` +
       `  🪝 webhook ${WEBHOOK_URL ? `to ${new URL(WEBHOOK_URL).host} (${webhookStatuses.length ? webhookStatuses.join(', ') : 'every status'})` : 'off (no PR_RADAR_WEBHOOK_URL)'}\n` +
@@ -957,6 +970,7 @@ server.listen(PORT, async () => {
     await syncHub();
     hub.start();
     setInterval(syncHub, 30_000).unref();
+    if (ROOM && !ROOM_WATCH) watchRoom({ room: ROOM, hub, log: (level, message) => logger[level]('room', message) });
   }
   if (LIVE) setInterval(liveTick, 5000).unref();
   dashboard(true).catch(error => logger.fail('search', `first search: ${error.message}`));

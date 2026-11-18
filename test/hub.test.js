@@ -130,7 +130,7 @@ test('presence replaces the previous one, and unknown types and broken JSON are 
   t.say({ type: 'presence', online: [{ login: 'b' }], recent: [{ login: 'a' }] });
   t.say({ type: 'kudos', from: 'b' });
   t.last().emit('message', { data: 'not json' });
-  assert.deepEqual(t.hub.state().presence.online, [{ login: 'b' }]);
+  assert.deepEqual(t.hub.state().presence.online, [{ login: 'b', room: null }]);
   assert.deepEqual(t.hub.state().presence.recent, [{ login: 'a' }]);
   assert.equal(t.hub.state().status, 'online');
 });
@@ -376,6 +376,49 @@ test('availability: sent in hello only once chosen, at once on a click, and kept
   const fresh = setup({ token: 'rh_kept' });
   fresh.hub.start();
   assert.equal('availability' in fresh.open(), false);
+});
+
+test('room: sent in hello only when in it, with the next status otherwise, and never anything but a Meet room', () => {
+  const t = online();
+  t.hub.setRoom('https://meet.google.com/abc-defg-hij');
+  t.timers.fire(2500);
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', room: 'https://meet.google.com/abc-defg-hij' });
+  assert.equal(t.hub.state().room, 'https://meet.google.com/abc-defg-hij');
+  t.hub.setRoom('javascript:alert(1)');
+  t.timers.fire(2500);
+  assert.deepEqual(t.last().sent.at(-1), { type: 'status', room: null });
+
+  const inRoom = setup({ token: 'rh_kept' });
+  inRoom.hub.setRoom('https://meet.google.com/abc-defg-hij');
+  inRoom.hub.start();
+  assert.equal(inRoom.open().room, 'https://meet.google.com/abc-defg-hij');
+  const out = setup({ token: 'rh_kept' });
+  out.hub.start();
+  assert.equal('room' in out.open(), false);
+});
+
+test('room: kept across a reconnect, and a room left while offline is not sent again', () => {
+  const t = online();
+  t.hub.setRoom('https://meet.google.com/abc-defg-hij');
+  t.timers.fire(2500);
+  t.closeWith(1006);
+  t.timers.fire();
+  assert.equal(t.open().room, 'https://meet.google.com/abc-defg-hij');
+  t.say(welcome());
+  t.closeWith(1006);
+  t.hub.setRoom(null);
+  t.timers.fire();
+  assert.equal('room' in t.open(), false);
+});
+
+test('room: a teammate\'s room from the hub reaches the page only as a Meet link', () => {
+  const t = online();
+  t.say({ type: 'presence', online: [
+    { login: 'bexchauveto', room: 'https://meet.google.com/abc-defg-hij' },
+    { login: 'scra3', room: 'javascript:alert(1)' },
+    { login: 'hercemer42' },
+  ], recent: [] });
+  assert.deepEqual(t.hub.state().presence.online.map(person => person.room), ['https://meet.google.com/abc-defg-hij', null, null]);
 });
 
 test('availability set from another of my radars is taken from presence', () => {
