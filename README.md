@@ -59,6 +59,15 @@ cd pr-radar
 # or: node server.js
 ```
 
+`./pr-radar` opens a tab only when none is open. One tab per browser keeps an `EventSource`
+on `/api/tabs`: the tabs pick it with a Web Lock, since each stream holds one of the six
+connections a browser allows per host. The browser reconnects it on its own when the
+server restarts, so the launcher waits up to 3 s for a tab to show up, even when the server
+was already running: a tab may be reconnecting right then, after an **Update & restart**.
+A tab the browser froze or discarded to save memory has no stream, so a new one opens.
+Another site cannot pass for a
+tab: the route refuses a cross-site request.
+
 **Node 22.4 or newer**: the server refuses to start on an older one and says so.
 
 No dependencies to install, and nothing to install them with: **use `node`, not
@@ -404,6 +413,8 @@ that module exports and none of its network calls:
   read of a running CI, the event feed read again only when it changed;
 - `test/scope.test.js` — `PR_RADAR_EXTRA_REPOS` and the search scope it builds;
 - `test/demo.test.js` — the demo board still showing every case;
+- `test/tabs.test.js` — the open tabs the launcher counts: one per stream, forgotten once it
+  closes, and none from another site;
 - `test/since.test.js` — what a card says moved since you looked: others' comments, reviews and
   commits but never yours or a bot's, a CI reaching an outcome, a conflict, a merge, a release.
 

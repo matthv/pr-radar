@@ -760,6 +760,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/tabs') {
+    // Another site's EventSource reaches the server before the browser drops it, and would count as a tab.
+    const site = req.headers['sec-fetch-site'];
+    if (site && site !== 'same-origin') return json(res, 403, { error: 'same-origin only' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
     res.write('retry: 1000\n\n');
     openTabs.add(res);

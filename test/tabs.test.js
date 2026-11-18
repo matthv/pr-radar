@@ -47,3 +47,11 @@ test('open tabs: counted while their stream is open, forgotten once it closes', 
   second.abort();
   await until(async () => (await tabs(base)) === 0);
 });
+
+test('open tabs: another site cannot pass for one', async t => {
+  const { base, stop } = await startServer();
+  t.after(stop);
+  const refused = await fetch(`${base}/api/tabs`, { headers: { 'Sec-Fetch-Site': 'cross-site' } });
+  assert.equal(refused.status, 403);
+  assert.equal(await tabs(base), 0);
+});
