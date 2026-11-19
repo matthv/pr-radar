@@ -276,11 +276,13 @@ const TERMINALS = {
 // this server answers without granting. The address stops the rest of the network, the
 // server listening on every interface, and the host a DNS rebinding.
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-function refusal({ contentType, remoteAddress, host }) {
+function localOnly({ remoteAddress, host }) {
   if (!LOOPBACK.has(remoteAddress)) return 'only from this machine';
   if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host ?? '')) return 'only on localhost';
-  if (!contentType?.startsWith('application/json')) return 'JSON body expected';
   return null;
+}
+function refusal({ contentType, remoteAddress, host }) {
+  return localOnly({ remoteAddress, host }) ?? (contentType?.startsWith('application/json') ? null : 'JSON body expected');
 }
 
 // execFile's own message spells out the whole command line, the AppleScript included.
@@ -348,7 +350,15 @@ async function readRecord(file) {
 // is kept for the views to say, rather than blame a Claude Code update for "no status".
 let agentsFailure = null;
 const agentsProblem = () => agentsFailure;
+// The Sessions view polls every second: one listing serves the polls of the next few seconds.
+const AGENTS_TTL_MS = 5000;
+let agentsListing = null;
 function claudeAgents() {
+  if (agentsListing && Date.now() - agentsListing.at < AGENTS_TTL_MS) return agentsListing.list;
+  agentsListing = { at: Date.now(), list: listAgents() };
+  return agentsListing.list;
+}
+function listAgents() {
   return new Promise(resolve => {
     execFile('claude', ['agents', '--json'], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       let list = null;
@@ -564,8 +574,14 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
   // The PRDs view names a session itself; the board names a PR, whose session it finds.
   if (sessionId !== undefined) {
     if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [400, 'invalid session id'];
-    const record = (await liveSessions(runningDir).catch(() => [])).find(entry => entry.sessionId === sessionId);
-    const cwd = cwdOf(sessionId) ?? record?.cwd ?? null;
+    let cwd = cwdOf(sessionId);
+    if (!cwd) {
+      try {
+        cwd = (await liveSessions(runningDir)).find(entry => entry.sessionId === sessionId)?.cwd ?? null;
+      } catch (error) {
+        return [502, error.message];
+      }
+    }
     if (!cwd) return [404, 'no transcript of this session on this machine'];
     session = { sessionId, cwd };
   } else {
@@ -612,6 +628,7 @@ module.exports = {
   hostsOf,
   ancestorsOf,
   refusal,
+  localOnly,
   resume,
   TERMINALS,
 };

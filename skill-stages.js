@@ -74,9 +74,13 @@ async function readStages({ dir = STAGES_DIR, maxAgeMs, now = Date.now() } = {})
   const sessions = [];
   for (const name of names.filter(entry => entry.endsWith('.jsonl'))) {
     const file = path.join(dir, name);
-    const stat = await fs.stat(file).catch(() => null);
+    const gone = error => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    };
+    const stat = await fs.stat(file).catch(gone);
     if (!stat || now - stat.mtimeMs > maxAgeMs) continue;
-    const text = await fs.readFile(file, 'utf8').catch(() => null);
+    const text = await fs.readFile(file, 'utf8').catch(gone);
     if (text === null) continue;
     const session = summarise(path.basename(name, '.jsonl'), parseLines(text));
     if (session.current) sessions.push({ ...session, prUrls: new Set([...session.prs].map(prUrl).filter(Boolean)) });

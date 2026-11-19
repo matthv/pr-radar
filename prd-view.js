@@ -51,7 +51,10 @@ function createPrdView({ boardPrs, linearApiKey, claudeSessionsOn, sessionChime,
     if (claudeSessionsOn) {
       await claudeSessions.scan({ maxAgeDays }).then(scan => {
         for (const url of scan.touched) touched.add(url);
-      }, () => {});
+        if (scan.unreadable) warnings.push({ source: 'claude', message: `${scan.unreadable} transcript(s) could not be read` });
+      }, error => {
+        warnings.push({ source: 'claude', message: `Claude transcripts: ${error.message}` });
+      });
     }
     // The Sessions view needs no Linear: without a key, or with Linear failing, it still shows the
     // sessions and their own PRs.

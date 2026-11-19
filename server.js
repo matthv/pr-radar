@@ -719,7 +719,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   // The PRDs view, and the Sessions view's poll: states and stages from local files only.
+  // They read your prompts and recaps: never for another machine, nor a page rebinding a hostname.
   if (url.pathname === '/api/prds' || url.pathname === '/api/sessions/status') {
+    const refused = claudeSessions.localOnly({ remoteAddress: req.socket.remoteAddress, host: req.headers.host });
+    if (refused) return json(res, 403, { error: refused });
     if (DEMO) {
       return json(res, 200, url.pathname === '/api/prds' ? demoPrds.view(demoBoard()) : demoPrds.statuses());
     }

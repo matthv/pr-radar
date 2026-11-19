@@ -125,3 +125,21 @@ test('hub route: a body that is no object is refused, and the server stays up', 
   assert.equal(response.status, 200);
   assert.equal((await fetch(`${base}/api/themes`)).status, 200);
 });
+
+test('the PRDs and Sessions routes: made-up data in the demo, refused to a foreign Host', async t => {
+  const { base, stop } = await startServer({ PR_RADAR_DEMO: 'true' });
+  t.after(stop);
+  const prds = await (await fetch(`${base}/api/prds`)).json();
+  assert.equal(prds.enabled, true);
+  assert.ok(prds.prds.length && prds.sessions.length);
+  assert.ok((await (await fetch(`${base}/api/sessions/status`)).json()).sessions.length);
+
+  const { port } = new URL(base);
+  const status = await new Promise((resolve, reject) => {
+    require('node:http').get({ host: '127.0.0.1', port, path: '/api/prds', headers: { Host: 'evil.example' } }, res => {
+      res.resume();
+      resolve(res.statusCode);
+    }).on('error', reject);
+  });
+  assert.equal(status, 403);
+});

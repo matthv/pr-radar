@@ -55,8 +55,8 @@ function shape(issue) {
 }
 
 // Your started tickets, then the extra ones by identifier in one aliased query. An extra one
-// Linear does not know, or cannot show you, is left out rather than failing the rest; so is the
-// whole extra query when it fails (a rate limit, a 5xx), said through `warn`.
+// Linear does not know, or cannot show you, is left out rather than failing the rest; when none
+// can be read (a rate limit, a 5xx), `warn` says so.
 async function fetchPrds({ apiKey, extra = [], fetch, warn = () => {} } = {}) {
   const mine = await query(apiKey, `{ viewer { assignedIssues(first: 100, filter: { state: { type: { eq: "started" } } }) { nodes { ${FIELDS} } } } }`, { fetch });
   if (!mine.data?.viewer) throw new Error(`Linear answered ${mine.errors?.[0]?.message ?? 'no viewer'}`);
@@ -64,15 +64,24 @@ async function fetchPrds({ apiKey, extra = [], fetch, warn = () => {} } = {}) {
   const known = new Set(prds.map(prd => prd.ticket));
   const wanted = [...new Set(extra)].filter(key => IDENTIFIER.test(key) && !known.has(key)).slice(0, 30);
   if (wanted.length) {
-    const aliases = wanted.map((key, index) => `t${index}: issue(id: "${key}") { ${FIELDS} }`).join('\n');
     try {
-      const others = await query(apiKey, `{ ${aliases} }`, { fetch });
-      for (const issue of Object.values(others.data ?? {})) if (issue) prds.push(shape(issue));
+      for (const issue of await readIssues(apiKey, wanted, fetch)) prds.push(shape(issue));
     } catch (error) {
-      warn(`The tickets your sessions work on could not be read: ${error.message}`);
+      // `issue` is non-null in Linear's schema: one key it cannot resolve nulls the whole answer.
+      // Asked alone, each key it knows still comes back.
+      const alone = wanted.length > 1 ? await Promise.allSettled(wanted.map(key => readIssues(apiKey, [key], fetch))) : [];
+      for (const read of alone) if (read.status === 'fulfilled') for (const issue of read.value) prds.push(shape(issue));
+      if (!alone.some(read => read.status === 'fulfilled')) warn(`The tickets your sessions work on could not be read: ${error.message}`);
     }
   }
   return prds;
+}
+
+async function readIssues(apiKey, keys, fetch) {
+  const aliases = keys.map((key, index) => `t${index}: issue(id: "${key}") { ${FIELDS} }`).join('\n');
+  const answer = await query(apiKey, `{ ${aliases} }`, { fetch });
+  if (!answer.data) throw new Error(`Linear answered ${answer.errors?.[0]?.message ?? 'no data'}`);
+  return Object.values(answer.data).filter(Boolean);
 }
 
 module.exports = { fetchPrds, shape };

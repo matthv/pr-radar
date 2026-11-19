@@ -883,6 +883,7 @@
   }
   .prd-star:hover, .prd-star:focus-visible { color: var(--amber); transform: scale(1.15); }
   .prd-star.on { color: var(--amber); }
+  .prd-star svg { display: block; width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.3; stroke-linejoin: round; }
   .prd-session .claude-link { margin-top: 0; }
   .prd-session .prd-meta { margin-top: 0; }
   .prd-session-name { font-weight: 600; }
@@ -2127,10 +2128,10 @@ const I18N = {
     sessOrder_folder: 'dossier',
     sessOrder_prd: 'PRD',
     sessOrder_skill: 'skill',
-    sessStarred: '★ favoris',
+    sessStarred: 'favoris',
     sessStar: 'mettre en favori : en tête de liste',
     sessUnstar: 'retirer des favoris',
-    sessCalls: '⚑ {n}',
+    sessCalls: '{n} en attente',
     prdPrUnfold: 'déplier la carte de cette PR',
     prdPrFold: 'replier la carte de cette PR',
     prdPrAway: 'pas sur le tableau : fusionnée il y a longtemps, ou celle de quelqu’un d’autre',
@@ -2529,10 +2530,10 @@ const I18N = {
     sessOrder_folder: 'folder',
     sessOrder_prd: 'PRD',
     sessOrder_skill: 'skill',
-    sessStarred: '★ starred',
+    sessStarred: 'starred',
     sessStar: 'star: keep it in the list at the top',
     sessUnstar: 'unstar',
-    sessCalls: '⚑ {n}',
+    sessCalls: '{n} waiting',
     prdPrUnfold: 'unfold this PR’s card',
     prdPrFold: 'fold this PR’s card',
     prdPrAway: 'not on the board: merged long ago, or someone else’s',
@@ -4812,7 +4813,7 @@ function prdSessionRow(session, ticket) {
   const id = escapeHtml(session.sessionId);
   const { status, open, name, pills, question, at } = prdSessionParts(session, { titled: true });
   const main = `<button type="button" class="prd-star${session.main ? ' on' : ''}" data-prd-main="${id}" data-prd-ticket="${escapeHtml(ticket)}"`
-    + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${session.main ? '★' : '☆'}</button>`
+    + ` aria-pressed="${session.main}" title="${escapeHtml(t(session.main ? 'prdMainTitle' : 'prdMakeMain'))}">${STAR(session.main)}</button>`
     + (session.main ? `<span class="prd-main">${escapeHtml(t('prdMain'))}</span>` : '');
   return `<div class="prd-session ${status}">${open}${name}${main}${pills}${question}${at}</div>`;
 }
@@ -4922,6 +4923,7 @@ function pruneHides(scopes) {
   if (gone.length) store.set('prdHidden', JSON.stringify(prdHides));
 }
 const prdOpenHidden = new Set();
+const STAR = lit => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.9l1.85 3.75 4.15.6-3 2.92.71 4.13L8 11.35l-3.71 1.95.71-4.13-3-2.92 4.15-.6z" fill="${lit ? 'currentColor' : 'none'}"/></svg>`;
 const EYE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>';
 
@@ -5064,7 +5066,7 @@ function sessionCard(session) {
   const open = sessOpen.has(session.sessionId);
   const starred = sessStars.has(session.sessionId);
   const star = `<button type="button" class="prd-star sess-star${starred ? ' on' : ''}" data-sess-star="${id}" aria-pressed="${starred}"`
-    + ` title="${escapeHtml(t(starred ? 'sessUnstar' : 'sessStar'))}">${starred ? '★' : '☆'}</button>`;
+    + ` title="${escapeHtml(t(starred ? 'sessUnstar' : 'sessStar'))}">${STAR(starred)}</button>`;
   const line = `<div class="sess-line">${parts.open}`
     + (opens
       ? `<button type="button" class="prd-title session-title" data-prd-open="${id}" title="${escapeHtml(t(session.running ? 'prdFocusTitle' : 'prdResumeTitle'))}">${title}</button>`

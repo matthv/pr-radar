@@ -318,3 +318,13 @@ test('a session badge says why it waits on you', () => {
   assert.deepEqual(stateBadge({ status: 'busy' }, 'busy'), { kind: 'todo running', key: 'prdSessionBusy' });
   assert.deepEqual(stateBadge({}, 'unknown'), { kind: '', key: 'sessNoStatus' });
 });
+
+test('a closed session the ticket already weighs is counted once, and leaves both closed slots to others', () => {
+  const mention = (sessionId, at, weight = 1) => ({ sessionId, at, weight, cwd: '/x' });
+  const [built] = buildPrds({
+    prds: [prd('PRD-1')],
+    stageSessions: [stage('staged', { tickets: ['PRD-1'], current: { skill: 'implement', state: 'done', at: '2026-11-01T00:00:00Z' } })],
+    sessionsOf: () => [mention('staged', '2026-11-01T00:00:00Z', 3), mention('m2', '2026-11-02T00:00:00Z'), mention('m3', '2026-11-03T00:00:00Z'), mention('m4', '2026-11-04T00:00:00Z')],
+  });
+  assert.deepEqual(built.sessions.map(session => [session.sessionId, session.weight]), [['staged', 13], ['m4', 1], ['m3', 1]]);
+});

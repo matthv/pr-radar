@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume, liveSessions } = require('../claude-sessions');
+const { scan, sessionFor, sessionsForTicket, sessionDetails, resumeCommand, openInTerminal, refusal, localOnly, runningPids, parseProcesses, hostsOf, focusRunning, resume, liveSessions } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -174,6 +174,28 @@ test('only a JSON request from this machine, to localhost, is let through', () =
   assert.equal(refusal({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
   assert.equal(refusal({ ...ok, host: undefined }), 'only on localhost');
   assert.equal(refusal({ ...ok, contentType: 'text/plain' }), 'JSON body expected');
+  // The read-only routes take no body, but the same address and host.
+  assert.equal(localOnly(ok), null);
+  assert.equal(localOnly({ ...ok, remoteAddress: '192.168.1.20' }), 'only from this machine');
+  assert.equal(localOnly({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
+});
+
+test('a bot branch, a parent folder or a transcript that is not a session never ties a ticket', async () => {
+  const dir = await projectsDir();
+  const commit = (cwd, gitBranch) => line({ type: 'assistant', cwd, gitBranch, message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'git commit -m "chore: bump"' } }] } });
+  await writeSession(dir, OLDER, [
+    commit('/Users/me/dev', 'renovate/prd-18-deps'),
+    line({ type: 'user', cwd: '/Users/me/prd-3-repo/sub', message: { role: 'user', content: 'go' } }),
+  ].join(''));
+  const skillRun = line({ type: 'user', cwd: '/Users/me/dev', message: { role: 'user', content: '<command-name>/forest:implement</command-name>\n<command-args>PRD-1</command-args>' } });
+  await fs.writeFile(path.join(dir, '-Users-me-Projects', 'agent-x.jsonl'), skillRun);
+  await writeSession(dir, NEWER, skillRun.replace('"cwd":"/Users/me/dev",', ''));
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  assert.deepEqual(sessionsForTicket('PRD-18'), []);
+  assert.deepEqual(sessionsForTicket('PRD-3'), []);
+  assert.deepEqual(sessionsForTicket('PRD-1'), []);
 });
 
 test('a session whose folder is gone says so instead of opening a terminal', async () => {
@@ -416,6 +438,14 @@ describe('the resume route', () => {
     // No board needed: the session names itself.
     assert.deepEqual(await resume(byId(OLDER), context({ exec, board: null })), [200, null]);
     assert.deepEqual(calls, [resumeCommand({ sessionId: OLDER, cwd: os.tmpdir() })]);
+  });
+
+  test('a registry it cannot read is said, never taken for a session with no transcript', async () => {
+    const notADir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-')), 'registry');
+    await fs.writeFile(notADir, '');
+    const [code, message] = await resume(request({ readBody: async () => ({ sessionId: '00000000-0000-4000-8000-000000000000' }) }), context({ runningDir: notADir }));
+    assert.equal(code, 502);
+    assert.match(message, /could not check/);
   });
 
   test('a session not running opens in the terminal, the command as an argument', async () => {

@@ -57,3 +57,9 @@ test('only sessions heard from within the window are read, and no folder is no s
   assert.deepEqual(sessions.map(session => session.sessionId), ['fresh']);
   assert.deepEqual(await readStages({ dir: path.join(dir, 'missing'), maxAgeMs: 1 }), []);
 });
+
+test('a stage file that cannot be read throws, so the view can say so; a vanished one is skipped', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-stages-'));
+  await fs.mkdir(path.join(dir, 'not-a-file.jsonl'));
+  await assert.rejects(readStages({ dir, maxAgeMs: 86_400_000 }), /EISDIR/);
+});

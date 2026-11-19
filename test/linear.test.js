@@ -95,3 +95,18 @@ test('a failed read of the extra tickets keeps your own, and says so', async () 
   assert.deepEqual(prds.map(prd => prd.ticket), ['PRD-1']);
   assert.match(warned[0], /Rate limit exceeded/);
 });
+
+test('a key Linear cannot resolve nulls the batch: the others are asked alone and still come back', async () => {
+  const notFound = { body: { data: null, errors: [{ message: 'Entity not found: Issue' }] } };
+  const { fetch, asked } = fakeLinear(
+    { body: { data: { viewer: { assignedIssues: { nodes: [issue('PRD-1')] } } } } },
+    notFound,
+    { body: { data: { t0: issue('PRD-2') } } },
+    notFound,
+  );
+  const warned = [];
+  const prds = await fetchPrds({ apiKey: 'k', extra: ['PRD-2', 'FOLDER-3'], fetch, warn: message => warned.push(message) });
+  assert.deepEqual(prds.map(prd => prd.ticket), ['PRD-1', 'PRD-2']);
+  assert.equal(asked.length, 4);
+  assert.deepEqual(warned, []);
+});
