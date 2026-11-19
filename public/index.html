@@ -270,7 +270,7 @@
      sliding the header under it. */
   html:has(body[data-hub-open]) { overscroll-behavior-y: none; }
   @media (min-width: 1100px) {
-    body[data-hub-open]:not(:has(> #kanban:not([hidden]))) :is(main, .summary, .notes-panel, #orbits) { margin-right: 300px; }
+    body[data-hub-open]:not(:has(> #kanban:not([hidden]))) :is(main, .summary:not(#prd.tickets .summary), .notes-panel, #orbits, #prd.tickets) { margin-right: 300px; }
     body[data-hub-open]:not(:has(> #kanban:not([hidden]))) :is(.error, .warning, .update, .orphans) { margin-right: 328px; }
   }
   .hub-head { display: flex; align-items: center; justify-content: space-between; }
@@ -737,6 +737,10 @@
 
   /* PRDs: your tickets, each with its PRs and the Claude sessions working on it. */
   #prd { padding: 4px 28px 70px; max-width: 1180px; }
+  #prd.tickets { max-width: none; }
+  #prd.tickets .group-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(620px, calc((100% - 10px) / 2))), 1fr)); gap: 10px; align-items: start; }
+  #prd.tickets .prd { margin-bottom: 0; }
+  #prd.tickets .prd:not(.waiting) { background: var(--surface); }
   /* The PRDs view's own band, in the board's shape: its pickers, then counters that filter. */
   .summary.prd-off { display: none; }
   .prd-summary { padding: 20px 0 4px; }
@@ -886,6 +890,7 @@
   button.prd-session-name { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   button.prd-session-name:hover, button.prd-session-name:focus-visible { text-decoration: underline; }
   .prd-question { color: var(--amber); }
+  .prd-session .prd-question { order: 1; flex-basis: 100%; line-height: 1.4; }
 
   #kanban {
     --kb-col: 236px; --kb-rail: 44px;
@@ -1569,7 +1574,7 @@
       <span data-view="board" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="5.5" height="4.5" rx="1"/><rect x="9" y="9" width="5.5" height="4.5" rx="1"/></svg></span>
       <span data-view="orbits" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="8" cy="1.9" r="1.5"/><circle cx="13.3" cy="11" r="1.5"/><circle cx="2.7" cy="11" r="1.5"/></svg></span>
       <span data-view="kanban" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="3.6" height="12" rx="1"/><rect x="6.2" y="2" width="3.6" height="8.5" rx="1"/><rect x="10.9" y="2" width="3.6" height="5.5" rx="1"/></svg></span>
-      <span data-view="prd" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="3" rx="1"/><rect x="4" y="7" width="10.5" height="2.6" rx="1"/><rect x="4" y="11.4" width="10.5" height="2.6" rx="1"/></svg></span>
+      <span data-view="prd" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v2.4a1.6 1.6 0 0 0 0 3.2V12a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 12V9.6a1.6 1.6 0 0 0 0-3.2V4A1.5 1.5 0 0 1 3 2.5zM10 4.2h1.2v1.6H10zm0 3h1.2v1.6H10zm0 3h1.2v1.6H10z"/></svg></span>
       <span data-view="sessions" title=""><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 6.5 6.8 8.5 4.5 10.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="8.2" y="9.8" width="3.6" height="1.5" rx=".6"/></svg></span>
     </button>
     <button class="seg" id="lang"><span data-lang="fr">FR</span><span data-lang="en">EN</span></button>
@@ -4850,7 +4855,7 @@ function prdPrItem(pr, eye = '') {
 }
 
 function prdCard(prd) {
-  const status = prd.status
+  const status = prd.status && prdGroup !== 'status'
     ? `<span class="pill prd-status"><span class="prd-dot" style="--dot: ${safeColor(prd.status.color)}"></span>${escapeHtml(prd.status.name)}</span>`
     : '';
   const project = prd.project
@@ -4963,6 +4968,7 @@ function prdBand(prds) {
 }
 
 function renderPrd() {
+  el('prd').classList.toggle('tickets', view === 'prd');
   if (view === 'sessions') return renderSessions();
   if (view !== 'prd') return;
   const bar = prdBand(prdData?.prds ?? []);
@@ -4984,7 +4990,7 @@ function renderPrd() {
   const shown = prdFocus ? prds.filter(PRD_FOCUS[prdFocus].test) : prds;
   el('prd').innerHTML = bar + notices + PRRadarPrd.group(shown, { by: prdGroup, order: prdOrder }).map(entry => {
     const cards = entry.prds.map(prdCard).join('');
-    if (prdGroup === 'none') return cards;
+    if (prdGroup === 'none') return `<div class="group-cards">${cards}</div>`;
     const key = `prd:${prdGroup}:${entry.key ?? ''}`;
     const collapsed = collapsedGroups.has(key);
     const tone = prdGroupTone(entry);
