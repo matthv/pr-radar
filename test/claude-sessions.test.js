@@ -7,7 +7,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
-const { scan, sessionFor, resumeCommand, openInTerminal, refusal, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
+const { scan, sessionFor, resumeCommand, openInTerminal, refusal, localOnly, runningPids, parseProcesses, hostsOf, focusRunning, resume } = require('../claude-sessions');
 
 const PR = 'https://github.com/ForestAdmin/agent-nodejs/pull/1927';
 const OLDER = '3c55fd04-f8b5-4508-8990-e3bac3f67cc7';
@@ -106,6 +106,9 @@ test('only a JSON request from this machine, to localhost, is let through', () =
   assert.equal(refusal({ ...ok, remoteAddress: '::1', host: '[::1]:4321' }), null);
   assert.equal(refusal({ ...ok, remoteAddress: '192.168.1.20' }), 'only from this machine');
   assert.equal(refusal({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
+  assert.equal(localOnly(ok), null);
+  assert.equal(localOnly({ ...ok, remoteAddress: '192.168.1.20' }), 'only from this machine');
+  assert.equal(localOnly({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
   assert.equal(refusal({ ...ok, host: undefined }), 'only on localhost');
   assert.equal(refusal({ ...ok, contentType: 'text/plain' }), 'JSON body expected');
 });

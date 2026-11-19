@@ -159,11 +159,13 @@ const TERMINALS = {
 // this server answers without granting. The address stops the rest of the network, the
 // server listening on every interface, and the host a DNS rebinding.
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-function refusal({ contentType, remoteAddress, host }) {
+function localOnly({ remoteAddress, host }) {
   if (!LOOPBACK.has(remoteAddress)) return 'only from this machine';
   if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host ?? '')) return 'only on localhost';
-  if (!contentType?.startsWith('application/json')) return 'JSON body expected';
   return null;
+}
+function refusal({ contentType, remoteAddress, host }) {
+  return localOnly({ remoteAddress, host }) ?? (contentType?.startsWith('application/json') ? null : 'JSON body expected');
 }
 
 // execFile's own message spells out the whole command line, the AppleScript included.
@@ -443,6 +445,7 @@ module.exports = {
   hostsOf,
   ancestorsOf,
   refusal,
+  localOnly,
   resume,
   TERMINALS,
 };

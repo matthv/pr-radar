@@ -5833,8 +5833,22 @@ function scheduleHubBeat() {
 scheduleHubBeat();
 hubBeat();
 // One stream per browser, not per tab: each one holds a connection out of the six a browser allows per host.
-if (navigator.locks) navigator.locks.request('pr-radar:tabs', () => new Promise(() => new EventSource('/api/tabs')));
-else new EventSource('/api/tabs');
+// The reference and the error listener keep it from being garbage-collected, which would drop it.
+let browserStream = null;
+function holdBrowserStream() {
+  const hold = () => new Promise(release => {
+    const stream = new EventSource('/api/tabs');
+    browserStream = stream;
+    stream.onerror = () => {
+      if (stream.readyState !== EventSource.CLOSED) return;
+      release();
+      setTimeout(holdBrowserStream, 60_000);
+    };
+  });
+  if (navigator.locks) navigator.locks.request('pr-radar:tabs', hold);
+  else hold();
+}
+holdBrowserStream();
 
 applyLang(lang);
 renderSkeleton();
