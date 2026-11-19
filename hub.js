@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const { roomLink } = require('./room');
+
 const PROTOCOL = 1;
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'pr-radar');
 // The hub closes a connection past 30 messages a minute, of any kind: status changes grouped to
@@ -137,6 +139,8 @@ function createHub({
   let tabs = 0;
   let version = { commit: null, behind: null, tag: null };
   let availability = AVAILABILITIES.has(files.read(AVAILABILITY)) ? files.read(AVAILABILITY) : null;
+  // Belongs to this radar, not to the login: the room's window is open on one machine only.
+  let room = null;
   let wizzSeen = 0;
   let wizzes = [];
   let wizzSent = [];
@@ -189,12 +193,13 @@ function createHub({
     socket = ws;
     ws.addEventListener('open', () => {
       if (socket !== ws) return;
-      inHello = { tabs, version, availability, acceptsWizz: acceptsWizz() };
+      inHello = { tabs, version, availability, acceptsWizz: acceptsWizz(), room };
       // Availability and the acceptsWizz derived from it belong to the login on the hub: sent
       // before anything was chosen, they would undo a focus set from another of the person's radars.
       send({
         type: 'hello', protocol: PROTOCOL, hubToken: token ?? undefined, instanceId, version, tabs,
         ...(availability ? { availability, acceptsWizz: acceptsWizz() } : {}),
+        ...(room ? { room } : {}),
       });
     });
     ws.addEventListener('message', event => {
@@ -241,7 +246,7 @@ function createHub({
         break;
       case 'presence': {
         view.presence = {
-          online: Array.isArray(message.online) ? message.online : [],
+          online: Array.isArray(message.online) ? message.online.map(person => ({ ...person, room: roomLink(person?.room) })) : [],
           recent: Array.isArray(message.recent) ? message.recent : [],
           at: now(),
         };
@@ -329,9 +334,10 @@ function createHub({
     if (['commit', 'behind', 'tag'].some(field => version[field] !== known.version[field])) message.version = version;
     if (availability !== known.availability) message.availability = availability;
     if (acceptsWizz() !== known.acceptsWizz) message.acceptsWizz = acceptsWizz();
+    if (room !== known.room) message.room = room;
     if (Object.keys(message).length === 1) return;
     send(message);
-    known = { tabs, version, availability, acceptsWizz: acceptsWizz() };
+    known = { tabs, version, availability, acceptsWizz: acceptsWizz(), room };
   }
 
   function start() {
@@ -384,6 +390,13 @@ function createHub({
     attempt = 0;
     retriedWithoutToken = false;
     connect();
+  }
+
+  function setRoom(url) {
+    const next = roomLink(url);
+    if (next === room) return;
+    room = next;
+    scheduleStatus();
   }
 
   function setTabs(count) {
@@ -471,6 +484,7 @@ function createHub({
     declined,
     availability,
     acceptsWizz: acceptsWizz(),
+    room,
     kudos,
     wizzes,
     wizzSent: recentWizzSent(),
@@ -481,7 +495,7 @@ function createHub({
     })),
   });
 
-  return { start, stop, decline, signIn, setTabs, setVersion, setAvailability, sendKudos, sendWizz, offerTheme, peekOffer, takeOffer, state };
+  return { start, stop, decline, signIn, setTabs, setRoom, setVersion, setAvailability, sendKudos, sendWizz, offerTheme, peekOffer, takeOffer, state };
 }
 
 const TAB_ID = /^[A-Za-z0-9_-]{8,64}$/;

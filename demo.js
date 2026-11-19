@@ -13,6 +13,7 @@ const { businessDaysSince } = require('./orphans');
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
 const LINEAR_URL = 'https://linear.app/forestadmin';
+const ROOM_URL = 'https://meet.google.com/abc-defg-hij';
 const MIN = 60 * 1000;
 // Fixed when the demo starts: dates recomputed on every poll would make every card look
 // changed to the "since you looked" line.
@@ -251,13 +252,24 @@ function reviewPrs() {
       author: 'christophebrun-forest', createdMin: 3 * 24 * 60, commitMin: 30,
       reviews: [[ME, 'CHANGES_REQUESTED', 20 * 60]],
       threads: [{ path: 'src/services/inbox/automation-check.ts', line: 42, resolved: true, messages: [[ME, 20 * 60, 'The check must also run when the workflow is edited, not only when the inbox is saved.'], ['christophebrun-forest', 40, 'Done, the workflow update route runs it too.']] }],
-    }), false],
+    // A plugin's label button: the demo answers the click and adds nothing.
+    }), false, false, { pills: [], labels: [{ name: 'validate', text: 'validate', title: 'add the validate label: starts the validator' }], review: null }],
     [node({
       repo: 'ForestAdmin/agent-ruby', number: 404,
       title: 'feat(search): extended search on related string fields',
       author: 'PMerlet', createdMin: 2 * 24 * 60, commitMin: 30 * 60,
       threads: [{ path: 'lib/forest_admin_agent/utils/search.rb', line: 57, messages: [[ME, 4 * 60, 'Should this skip polymorphic relations? They have no target table to join.']] }],
     }), false],
+    // Claimed by the validate label, through a plugin like claudine's forest-validator: the bot has the turn.
+    [node({
+      repo: 'ForestAdmin/forestadmin-server', number: 8560,
+      title: 'feat(audit): record who changed a workflow trigger',
+      author: 'bexchauveto', createdMin: 3 * 60, commitMin: 2 * 60, additions: 54, deletions: 3, changedFiles: 3,
+    }), false, false, {
+      pills: [{ text: 'validator running', kind: 'pending', title: 'started 6 min ago', url: null, running: true }],
+      labels: [],
+      review: { claimedBy: ME, since: ago(8), turn: 'bot', why: null },
+    }],
     // Taken from Slack: a :pr-radar: reaction on its announcement, no review request.
     [node({
       repo: 'ForestAdmin/agent-ruby', number: 409,
@@ -368,7 +380,7 @@ function payload(force) {
 
   const mine = minePrs().map(pr => decorateMine(baseShape(pr, ME))).sort(byActionThenFreshness);
   const reviews = [...(surpriseShown ? [surprise()] : []), ...reviewPrs()]
-    .map(([pr, owed, claimed = false]) => ({ ...decorateReview(baseShape(pr, ME), ME, owed), claimed }))
+    .map(([pr, owed, claimed = false, plugins]) => ({ ...decorateReview({ ...baseShape(pr, ME), ...(plugins && { plugins }) }, ME, owed), claimed }))
     .sort(byActionThenFreshness);
 
   // Not every PR gets announced: a draft, a review requested a minute ago, a few others.
@@ -428,10 +440,11 @@ const update = {
 const HEAD = '9ad5e5a0c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6';
 const OLD = '129a21f8756b7fdce29b6ef8cffad921c0ae64cb';
 const radar = (commit, behind, tabs, minutes, tag = null) => ({ commit, behind, tag, tabs, since: ago(minutes) });
-const online = (login, radars, availability = null, acceptsWizz = true) => ({
+const online = (login, radars, availability = null, acceptsWizz = true, room = null) => ({
   login,
   availability,
   acceptsWizz,
+  room,
   avatarUrl: avatarOf(login),
   since: radars[0].since,
   tabs: radars.reduce((sum, r) => sum + r.tabs, 0),
@@ -445,9 +458,9 @@ const hub = {
   avatarUrl: avatarOf(ME),
   presence: {
     online: [
-      online('bexchauveto', [radar(HEAD, 0, 1, 95, 'v1.4.0')], 'available'),
+      online('bexchauveto', [radar(HEAD, 0, 1, 95, 'v1.4.0')], 'available', true, 'https://meet.google.com/kqz-wdtp-rmb'),
       online('christophebrun-forest', [radar(OLD, 3, 2, 40, 'v1.2.0')], 'focus', false),
-      online(ME, [radar(HEAD, 0, 2, 180, 'v1.4.0'), radar(null, null, 0, 25)], 'available'),
+      online(ME, [radar(HEAD, 0, 2, 180, 'v1.4.0'), radar(null, null, 0, 25)], 'available', true, ROOM_URL),
     ],
     recent: [
       { login: 'hercemer42', avatarUrl: avatarOf('hercemer42'), lastSeen: ago(60 * 5) },
@@ -461,6 +474,7 @@ const hub = {
   declined: false,
   availability: 'available',
   acceptsWizz: true,
+  room: ROOM_URL,
   wizzes: [],
   wizzSent: [],
   kudos: [{ id: 1, from: 'bexchauveto', avatarUrl: avatarOf('bexchauveto'), at: ago(0) }],
@@ -549,6 +563,8 @@ const SUMMARIES = {
     'The leaderboard is built from the parent collection. Waiting on a fix for the columns lost in the join.'],
   8528: ['Les connecteurs OAuth sans jeton sont ignorés en silence. Fusionnée, publiée en v2.214.0.',
     'Token-less OAuth connectors are dropped silently. Merged, released in v2.214.0.'],
+  8560: ['Les changements de déclencheur d’un workflow sont tracés dans l’audit, avec leur auteur. Prise via le validateur, qui la relit en ce moment.',
+    'A workflow trigger change is recorded in the audit, with who made it. Claimed through the validator, which is reviewing it now.'],
   409: ['Le cache de schéma est partagé entre les workers. Prise sur Slack, à reviewer aujourd\'hui.',
     'The schema cache is shared across workers. Claimed on Slack, to review today.'],
   1955: ['Un run en pause reprend depuis la boîte de réception. Revue demandée à l\'instant.',
@@ -586,4 +602,4 @@ async function notes(body) {
   };
 }
 
-module.exports = { payload, update, hub, setAvailability, kudosBack, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };
+module.exports = { payload, update, hub, setAvailability, kudosBack, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL, ROOM_URL };

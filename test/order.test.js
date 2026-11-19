@@ -26,11 +26,12 @@ test('order: unknown and duplicate buckets drop', () => {
 
 test('order: a missing bucket slots in after its default predecessor', () => {
   assert.deepEqual(normalize(['merged', 'action', 'waiting', 'idle'], DEFAULTS.mine), ['merged', 'action', 'ready', 'waiting', 'idle']);
-  assert.deepEqual(normalize(['idle', 'merged'], DEFAULTS.reviews), ['action', 'waiting', 'idle', 'merged']);
+  assert.deepEqual(normalize(['idle', 'merged'], DEFAULTS.reviews), ['action', 'waiting', 'bot', 'idle', 'merged']);
+  assert.deepEqual(normalize(['merged', 'waiting', 'action', 'idle'], DEFAULTS.reviews), ['merged', 'waiting', 'bot', 'action', 'idle'], 'a saved order from before the bot group keeps it under waiting');
 });
 
 test('order: a bucket of the other column is ignored', () => {
-  assert.deepEqual(normalize(['ready', 'merged', 'action', 'waiting', 'idle'], DEFAULTS.reviews), ['merged', 'action', 'waiting', 'idle']);
+  assert.deepEqual(normalize(['ready', 'merged', 'action', 'waiting', 'idle'], DEFAULTS.reviews), ['merged', 'action', 'waiting', 'bot', 'idle']);
 });
 
 test('order: move before or after a target', () => {

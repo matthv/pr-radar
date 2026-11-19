@@ -128,6 +128,7 @@ copy). A variable already exported in your shell wins over the file.
 | `PR_RADAR_WEBHOOK_STATUSES` | — | Statuses the webhook sends, comma-separated (`mine.action,reviews.action`); empty sends them all |
 | `PR_RADAR_SOUND` | — | Path to a local audio file played instead of the chime, in full; `~` allowed |
 | `PR_RADAR_GITDECK_URL` | `http://localhost:4567` | Link to [gitdeck](https://github.com/matthv/gitdeck), a separate personal tool, in the header; empty hides it — `.env.example` ships it empty |
+| `PR_RADAR_ROOM_URL` | — | Your Google Meet room (`https://meet.google.com/xxx-xxxx-xxx`): a **Room** button in the header opens it, and while its Chrome window is open your teammates can join you from the hub panel — see [Your room](#your-room). Empty, no button |
 | `PR_RADAR_LINEAR_URL` | — | Linear workspace (`https://linear.app/forestadmin`); a ticket key in a PR's title or branch becomes a link to it, beside the Slack one — see [The Linear ticket](#the-linear-ticket). Empty, no link |
 | `PR_RADAR_SLACK_CHANNEL` | — | Channel where the team announces its PRs; each announced card gets a link to its message, read through Claude — see [The Slack announcement link](#the-slack-announcement-link) |
 | `PR_RADAR_SLACK_TOKEN` | — | Optional bot token: reads that channel through the Slack API instead of Claude |
@@ -373,8 +374,8 @@ goes to the server's console, and the next tick tries again.
 node --test         # or: npm test
 ```
 
-Node's built-in runner, no dependency. One file per module, each testing the pure functions
-that module exports and none of its network calls:
+Node's built-in runner, no dependency. One file per topic, each testing the pure functions
+a module exports and none of its network calls:
 
 - `test/classification.test.js` — the board's rules, where most bugs have lived:
   `updated_at` overstating freshness, bot comments faking activity, feedback left in the
@@ -418,7 +419,7 @@ that module exports and none of its network calls:
 - `test/since.test.js` — what a card says moved since you looked: others' comments, reviews and
   commits but never yours or a bot's, a CI reaching an outcome, a conflict, a merge, a release.
 
-Every real case named in this file has its fixture there, under its PR number.
+Every real case named in this file has its fixture there, with a comment citing its PR.
 
 ## Watching a merge
 
@@ -705,6 +706,100 @@ ticket or a doc. Brackets and backslashes in the title are escaped so they canno
 the link early. Like the note button it shows on hover, and turns into a check for a
 moment once the copy lands.
 
+## Plugins
+
+A team can add to the cards without a change to this repo: a plugin is a CommonJS module kept
+anywhere on disk, listed in `PR_RADAR_PLUGINS` (comma-separated paths, `~` for your home folder).
+The radar loads them at start and refuses to start on one it cannot load.
+
+A plugin exports any of three hooks, `decorate` here, `focus` and `open` [below](#bringing-a-session-forward-from-an-app-the-radar-does-not-know), and
+an optional `name`, its file name when left out:
+
+```js
+module.exports = {
+  name: 'my-plugin',
+  // node: the PR as GitHub answered the board's query (PR_QUERY in github.js: its last 30
+  //       comments with their bodies, its labels and who added them when, its reviews and the
+  //       commit each was on, its threads and who resolved them, its head commit's oid…)
+  // pr:   the PR as the board shaped it, before sorting (repo, number, author, isDraft,
+  //       merged, labels, threads…: no side or group yet, the plugin can decide those)
+  decorate(node, pr) {
+    return {
+      // Read-only pills, after the board's own. kind: '' | 'todo' | 'pending' | 'good' | 'alert';
+      // url (https only) makes it a link; running makes it breathe like a running pipeline.
+      pills: [{ text: 'deployed', kind: 'good', title: 'on staging', url: 'https://…', running: false }],
+      // Buttons, beside Linear's, that add this GitHub label to the PR.
+      labels: [{ name: 'deploy-preview', text: 'preview', title: 'add the deploy-preview label' }],
+      // Optional: someone claimed this PR's review (claimedBy, a GitHub login, at `since`), and
+      // whose turn it is. turn: 'me' (the claimer's; `why` says what to do, "to review" when
+      // left out) | 'author' | 'bot'.
+      review: { claimedBy: 'octocat', since: '2026-11-02T10:00:00Z', turn: 'bot', why: null },
+    };
+  },
+};
+```
+
+- **It runs on every board the server builds**, a full search or a few PRs reloaded, before the
+  board sorts the cards, so it reads what is already loaded and asks GitHub nothing itself. It reads its own settings from the
+  environment, `.env` included.
+- **`decorate` must be synchronous.** The board is sorted as soon as it returns, so one that
+  returns a promise, an `async` function included, counts as a failure on that PR.
+- **`node` holds part of each list, not all of it**: the last 30 comments, the first 10 labels
+  and the last 10 label-added events.
+- **A plugin that throws loses its pills on that PR, never the board.** The banner names it and
+  the first PR it failed on.
+- **A label button only ever adds the label.** The server adds only a label a plugin offers on
+  that PR, as the board last showed it, and never takes one off: removing it and putting it back
+  would start the workflow it triggers again. The card reloads once GitHub has the label, and it
+  is up to the plugin to stop offering a label the PR already carries: the radar does not hide
+  the button for it.
+- **A click on a label button writes to GitHub at once, with no confirmation.**
+  - It is added as you: your `gh` token, your name on the PR's timeline.
+  - GitHub creates a label the repo does not have, so a typo in a plugin's `name` adds a new
+    label to the repo.
+  - The radar cannot take it off again: that is done on GitHub.
+  - It may start whatever the repo runs on that label, a CI or a deploy workflow included.
+- **A claim holds the card on someone else's PR until your first review after it.** It applies
+  only to an open PR already on your reviews side, never to a merged one or one of your own, and
+  one dated more than a minute ahead of your clock is ignored. When the
+  claim is yours (`claimedBy` is you), the plugin's turn picks the group: yours is **On my plate**
+  with `why` as its pill, the author's is **Waiting on the author**, a bot's is **Waiting on a
+  bot**, a group of its own, after the author's. Once you review or comment after `since`, the
+  usual rules take over. Someone else's claim changes nothing on your board. The webhook calls the
+  bot's group `reviews.bot`.
+- **What a plugin returns is checked before it reaches the page.** Its text is escaped, a kind
+  it invents becomes neutral, a URL that is not `https://` is dropped, and a claim missing who,
+  when or a known turn is ignored.
+
+### Bringing a session forward from an app the radar does not know
+
+A plugin can also, or only, export `focus(session)`. When a card's [Claude session](#the-claude-session)
+is running somewhere the radar cannot reach itself, neither herdr, Terminal, iTerm nor Ghostty,
+the click asks each plugin in turn:
+
+```js
+module.exports = {
+  name: 'my-terminal',
+  // session: { sessionId, pid, tty, ancestors }, ancestors being the commands above the
+  // session, nearest first. Answer true once it is in front; false or a throw passes it on.
+  async focus(session) {
+    if (!session.ancestors.some(command => /\/MyTerminal\.app\//.test(command))) return false;
+    // …ask the app to show the tab holding session.sessionId…
+    return true;
+  },
+};
+```
+
+The first `true` wins. A plugin that throws, or has not answered after 5 seconds, is passed over,
+and its message joins the error the click shows when none could. It runs only for a session
+already running.
+
+**A session that is not running** is offered to `open(session)` the same way, with
+`{ sessionId, cwd }`, before the radar opens it in `PR_RADAR_TERMINAL`. A plugin opening it in the
+app its user runs Claude in answers true; one that declines or throws leaves it to the terminal,
+and a throw is written to the server's log. One that has not answered after 5 seconds may still
+be opening the session, so the click reports it and nothing else opens a second copy.
+
 ## The Slack announcement link
 
 When the team announces its PRs in a Slack channel — one message, a handful of
@@ -911,12 +1006,38 @@ in "My themes" under its own name, or with the sender's login added when the nam
 and **Wear it** puts it on. An offer left alone expires after an hour.
 
 **What leaves your machine:** your GitHub login, the commit and release PR Radar runs, how far
-behind `main` it is, how many board tabs are open, and whether you are available or in focus.
-Nothing about pull requests, repositories or titles, and never your `gh` token, which this
-feature does not even read. A nudge carries only a SHA-256 of the PR's URL, which the
+behind `main` it is, how many board tabs are open, whether you are available or in focus, and
+your Meet room's link while its window is open ([Your room](#your-room)). Nothing about pull
+requests, repositories or titles, and never your `gh` token, which this feature does not even
+read. A nudge carries only a SHA-256 of the PR's URL, which the
 recipient's radar matches against its own board; the hub cannot read it back, though anyone
 who already knows the URL could recompute it. A theme you share travels whole, its CSS and its
 JavaScript, relayed by the hub and kept nowhere.
+
+### Your room
+
+`PR_RADAR_ROOM_URL`, your Google Meet room (`https://meet.google.com/xxx-xxxx-xxx`), puts a
+cyan **Room** button in the header that opens it. Anything but a Meet room link stops the
+start, the message naming the host only, since a room's code is enough to walk into it.
+
+On macOS with the hub on, the radar asks Chrome every 20 seconds whether a tab or a window,
+the Meet app installed from Chrome included, is on your room. While one is and the hub is
+connected, a dot shows on the button, and your teammates see a camera beside your name: one
+click on it opens your room. Close the window and it goes from their panel within half a
+minute or so. Hanging up is not enough, since Meet keeps the same address after you leave:
+close the window when you are done.
+
+- The first check while Chrome is open makes macOS ask whether your terminal, the app that
+  runs PR Radar, may control Google Chrome. Refused, the room is never shared, and the log
+  points to System Settings › Privacy & Security › Automation. Chrome not answering within
+  10 seconds counts as out of the room, and is logged too.
+- The match runs inside the AppleScript: the radar only gets a yes or a no, never the
+  address of any other tab. The guard on Chrome running means it never launches Chrome.
+- Off macOS, with another browser, or without the hub, the button still opens the room;
+  nobody sees you in it. With the hub declined from the page, Chrome is not even asked.
+- The hub relays your room's link only to signed-in members of the organisation, only while
+  the window is open, and keeps it in memory only. A link from the hub reaches the page only
+  as a Meet room address.
 
 The rest:
 - The hub is `PR_RADAR_HUB_URL`, a `wss://` address (`ws://` only for a hub on this machine).
@@ -1133,7 +1254,7 @@ workflow, an n8n flow or anything else that takes JSON:
 
 - **The status** is the column and the group the card sits in, `side.bucket`:
   `mine.action`, `mine.ready`, `mine.waiting`, `mine.idle`, `mine.merged`,
-  `reviews.action`, `reviews.waiting`, `reviews.idle`, `reviews.merged`. The side is
+  `reviews.action`, `reviews.waiting`, `reviews.bot`, `reviews.idle`, `reviews.merged`. The side is
   part of it: a PR to fix and a review to do are not the same news.
 - **`project`** is the repo as `owner/name`, so a repo from `PR_RADAR_EXTRA_REPOS` is
   told apart from the org's own; **`pr_number`** is the number, as an integer.
@@ -1240,6 +1361,7 @@ nothing else. Three checkboxes used to sit there and were removed rather than mo
   It is a single global link rather than one per card, because gitdeck keeps the
   selected repo in internal state rather than in the URL, so there is nothing to
   deep-link to.
+- A **Room** button, beside it, opens your Google Meet room: see [Your room](#your-room).
 - `FR` / `EN` toggles the interface language (English by default, remembered).
   State labels are rendered in the browser: the server only emits `kind` values,
   never a sentence, so no text can escape translation.
