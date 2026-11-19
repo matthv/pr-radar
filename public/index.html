@@ -2091,7 +2091,6 @@ const I18N = {
     prdNone_label: 'Sans label',
     prdSessionsOff: 'Les sessions Claude sont désactivées : mets PR_RADAR_CLAUDE_SESSIONS=true dans .env pour les voir et les ouvrir depuis chaque PRD, puis relance.',
     prdNoKey: 'La vue PRDs lit tes tickets dans Linear : renseigne PR_RADAR_LINEAR_API_KEY dans .env (une clé personnelle, Linear › Settings › Security & access), puis relance.',
-    prdDemo: 'La vue PRDs lit Linear : elle est vide dans la démo.',
     prdError: 'Impossible de lire les PRDs : {message}',
     prdEmpty: 'Aucun PRD en cours qui te soit assigné, et aucune session Claude sur un ticket.',
     prdOpened: 'ouvert il y a {v}',
@@ -2494,7 +2493,6 @@ const I18N = {
     prdNone_label: 'No label',
     prdSessionsOff: 'Claude sessions are off: set PR_RADAR_CLAUDE_SESSIONS=true in .env to see and open them from each PRD, then restart.',
     prdNoKey: 'The PRDs view reads your tickets from Linear: set PR_RADAR_LINEAR_API_KEY in .env (a personal key, Linear › Settings › Security & access), then restart.',
-    prdDemo: 'The PRDs view reads Linear: it is empty in the demo.',
     prdError: 'Could not read the PRDs: {message}',
     prdEmpty: 'No PRD in progress assigned to you, and no Claude session on a ticket.',
     prdOpened: 'opened {v} ago',
@@ -4972,8 +4970,8 @@ function renderPrd() {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
     return;
   }
-  if (prdData.enabled === false || (prdData.linear === false && !prdData.error)) {
-    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t(prdData.reason === 'demo' ? 'prdDemo' : 'prdNoKey'))}</div>`;
+  if (prdData.linear === false && !prdData.error) {
+    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t('prdNoKey'))}</div>`;
     return;
   }
   const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
@@ -5203,10 +5201,6 @@ function renderSessions() {
     + `${sessions.length ? `<span class="stale">${escapeHtml(t('sessTotal', { n: sessions.length }))}</span>` : ''}</div>`;
   if (!prdData) {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
-    return;
-  }
-  if (prdData.enabled === false) {
-    el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t('prdDemo'))}</div>`;
     return;
   }
   const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]

@@ -36,6 +36,7 @@ const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const { createPrdView } = require('./prd-view');
+const demoPrds = require('./demo-prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -245,6 +246,11 @@ function scanClaudeSessions() {
   );
 }
 
+// The demo's board is fixed: the PRDs view links it even before the page has asked for it.
+const demoBoard = () => {
+  const { mine, reviews } = demo.payload(false);
+  return [...mine, ...reviews];
+};
 const prdView = createPrdView({
   boardPrs: () => (cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : []), linearApiKey: LINEAR_API_KEY,
   claudeSessionsOn: CLAUDE_SESSIONS, sessionChime: SESSION_CHIME, maxAgeDays: MAX_AGE_DAYS, stageWindowMs: STAGE_WINDOW_MS, cacheTtlMs: CACHE_TTL_MS,
@@ -714,7 +720,9 @@ const server = http.createServer(async (req, res) => {
 
   // The PRDs view, and the Sessions view's poll: states and stages from local files only.
   if (url.pathname === '/api/prds' || url.pathname === '/api/sessions/status') {
-    if (DEMO) return json(res, 200, { enabled: false, reason: 'demo' });
+    if (DEMO) {
+      return json(res, 200, url.pathname === '/api/prds' ? demoPrds.view(demoBoard()) : demoPrds.statuses());
+    }
     try {
       return json(res, 200, url.pathname === '/api/prds' ? await prdView.view(url.searchParams.get('force') === '1') : await prdView.statuses());
     } catch (error) {
