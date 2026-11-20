@@ -99,7 +99,7 @@ function readLines(text, entry) {
     const wantsCwd = !entry.cwd && cwd !== null;
     const inPrompt = declaresInPrompt(line);
     const inTools = !inPrompt && declaresInTools(line);
-    const about = line.includes('"type":"ai-title"') || line.includes('"subtype":"away_summary"') || isTyped(line);
+    const about = line.includes('"type":"ai-title"') || line.includes('"type":"custom-title"') || line.includes('"subtype":"away_summary"') || isTyped(line);
     if (!wantsCwd && !inPrompt && !inTools && !about && !line.includes('"type":"pr-link"')) continue;
     let record;
     try {
@@ -112,6 +112,8 @@ function readLines(text, entry) {
     if (inPrompt && record.type === 'user') credit(entry, promptTickets(textOf(record.message?.content)), WEIGHT.skill);
     if (inTools && record.type === 'assistant') creditTools(entry, record);
     if (record.type === 'ai-title' && record.aiTitle) entry.title = record.aiTitle;
+    // A name you gave the session (/rename) wins over Claude Code's own title, as in Claude Code.
+    if (record.type === 'custom-title' && record.customTitle) entry.customTitle = record.customTitle;
     if (record.subtype === 'away_summary' && record.content) Object.assign(entry, { summary: String(record.content), summaryAt: record.timestamp ?? null });
     if (record.type === 'user' && !record.isMeta && !record.isCompactSummary) {
       const prompt = promptOf(textOf(record.message?.content));
@@ -125,7 +127,7 @@ async function readNewLines(file, stat) {
   if (!entry || stat.size < entry.offset) {
     entry = {
       offset: 0, mtimeMs: 0, cwd: null, sessionId: path.basename(file, '.jsonl'), prUrls: new Set(), tickets: new Map(), folders: new Set(),
-      title: null, summary: null, summaryAt: null, prompt: null, promptAt: null, branch: null,
+      title: null, customTitle: null, summary: null, summaryAt: null, prompt: null, promptAt: null, branch: null,
     };
     transcripts.set(file, entry);
   }
@@ -228,11 +230,11 @@ function sessionDetails(sessionId) {
     if (!latest || entry.mtimeMs > latest.mtimeMs) latest = entry;
   }
   if (!latest) return null;
-  const { title, summary, summaryAt, prompt, promptAt, branch, cwd } = latest;
+  const { title, customTitle, summary, summaryAt, prompt, promptAt, branch, cwd } = latest;
   // `cwd` is the folder it started in, the one `--resume` needs; `folder` the one it works in now,
   // a worktree it moved into, to show beside the branch it is on there.
   return {
-    title, summary, summaryAt, prompt, promptAt, branch, cwd, folder: latest.lastCwd ?? cwd,
+    title: customTitle ?? title, summary, summaryAt, prompt, promptAt, branch, cwd, folder: latest.lastCwd ?? cwd,
     prUrls: [...latest.prUrls], at: new Date(latest.mtimeMs).toISOString(),
   };
 }

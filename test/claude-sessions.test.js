@@ -108,6 +108,20 @@ test('a session says what it is about: its latest title, recap, typed prompt, fo
   assert.equal(sessionDetails(NEWER), null);
 });
 
+test('a name you gave a session wins over Claude Code\'s own title, even a later one', async () => {
+  const dir = await projectsDir();
+  await writeSession(dir, OLDER, [
+    line({ type: 'ai-title', aiTitle: 'First title' }),
+    line({ type: 'custom-title', customTitle: 'My name' }),
+    line({ type: 'ai-title', aiTitle: 'Later title' }),
+    line({ type: 'user', cwd: '/Users/me/dev', message: { role: 'user', content: 'hi' } }),
+  ].join(''), 0);
+
+  await scan({ dir, maxAgeDays: 60 });
+
+  assert.equal(sessionDetails(OLDER).title, 'My name');
+});
+
 test('a session past the age limit, without a cwd, or not named by a session id is never offered', async () => {
   const dir = await projectsDir();
   await writeSession(dir, OLDER, start('/Users/me/Projects') + prLink(OLDER, PR), 90);
