@@ -4599,8 +4599,9 @@ async function load(force, { check = false } = {}) {
     // A server that restarted (an update, a restart by hand, a watcher on the code) may serve a
     // newer page: this one reloads rather than run old code against it.
     const boot = response.headers.get('x-pr-radar-boot');
+    // Never mid-edit, which would drop the note being typed: the next poll asks again.
     if (bootId && boot && boot !== bootId) {
-      location.reload();
+      if (!state.editingNote && !document.activeElement?.matches('textarea')) location.reload();
       return;
     }
     bootId ??= boot;
