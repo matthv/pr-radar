@@ -119,6 +119,8 @@ const SELF_RESTART = process.env.PR_RADAR_SELF_RESTART !== '0';
 // Which process answered: the page waiting on an update reloads once it changes, even when
 // the update touched no file the asset version is made of.
 const BOOT_ID = randomUUID().slice(0, 8);
+const browserStreams = new Set();
+const MAX_BROWSER_STREAMS = 20;
 
 // Refresh fetches data, it does not reload the page: without this token a tab left
 // open keeps running the old assets after the files change.
@@ -779,7 +781,21 @@ const server = http.createServer(async (req, res) => {
     return json(res, status, error ? { error } : { ok: true });
   }
 
-  if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID });
+  if (url.pathname === '/api/tabs') {
+    const site = req.headers['sec-fetch-site'];
+    const refused = claudeSessions.localOnly({ remoteAddress: req.socket.remoteAddress, host: req.headers.host })
+      // Another site's EventSource reaches the server before the browser drops it, and would count as a browser.
+      ?? (site && site !== 'same-origin' ? 'same-origin only' : null);
+    if (refused) return json(res, 403, { error: refused });
+    if (browserStreams.size >= MAX_BROWSER_STREAMS) return json(res, 429, { error: 'too many streams' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
+    res.write('retry: 1000\n\n');
+    browserStreams.add(res);
+    res.once('close', () => browserStreams.delete(res));
+    return;
+  }
+
+  if (url.pathname === '/api/boot') return json(res, 200, { boot: BOOT_ID, browsers: browserStreams.size });
 
   if (url.pathname === '/api/hub' && req.method === 'POST') {
     const refused = claudeSessions.refusal({

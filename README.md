@@ -55,9 +55,24 @@ replying, resolving or asking for your review again leaves the PR in *Waiting* u
 
 ```bash
 cd pr-radar
-./pr-radar          # starts the server and opens the browser
+./pr-radar          # starts the server and opens the browser, unless a PR Radar tab is already open
 # or: node server.js
 ```
+
+`./pr-radar` opens a tab only when none is open, and otherwise prints the URL of the board.
+One tab per browser keeps an `EventSource` on `/api/tabs`, and `/api/boot` counts these
+streams as `browsers`: the tabs pick the one holding it with a Web Lock, since each stream
+holds one of the six connections a browser allows per host. The browser reconnects it on
+its own when the server restarts, so the launcher waits up to 3 s for one to show up, even
+when the server was already running: a tab may be reconnecting right then, after an
+**Update & restart**. A stream the server refuses for good hands the lock to another tab and
+is tried again a minute later. A tab the browser froze or discarded to save memory has no
+stream, so a new one opens. A radar started before this existed counts nothing: the
+launcher says to restart it, and opens a tab as before.
+
+Only this machine, on `localhost`, and only the board's own page can hold a stream, at most
+twenty at once: another site, another app on `localhost` or a machine on the same network
+cannot pass for an open tab.
 
 **Node 22.4 or newer**: the server refuses to start on an older one and says so.
 
@@ -405,6 +420,9 @@ a module exports and none of its network calls:
   read of a running CI, the event feed read again only when it changed;
 - `test/scope.test.js` — `PR_RADAR_EXTRA_REPOS` and the search scope it builds;
 - `test/demo.test.js` — the demo board still showing every case;
+- `test/tabs.test.js` — the open browsers the launcher counts: one per stream, forgotten once
+  it closes, read raw as the launcher greps it, none from another site, another host name or
+  past twenty streams, and the page still holding its stream;
 - `test/since.test.js` — what a card says moved since you looked: others' comments, reviews and
   commits but never yours or a bot's, a CI reaching an outcome, a conflict, a merge, a release.
 
