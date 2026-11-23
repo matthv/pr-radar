@@ -462,6 +462,20 @@ describe('the resume route', () => {
     assert.match(message, /could not check/);
   });
 
+  test('a running session with no transcript read yet resumes from the folder its running file names', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-running-'));
+    const sessionId = '11111111-2222-4333-8444-555555555555';
+    await fs.writeFile(path.join(dir, `${process.pid}.json`), JSON.stringify({ kind: 'interactive', pid: process.pid, sessionId, cwd: dir, status: 'idle' }));
+    const calls = [];
+    const exec = async (command, args) => {
+      calls.push(args.at(-1));
+      return '';
+    };
+    const [code] = await resume(request({ readBody: async () => ({ sessionId }) }), context({ runningDir: dir, exec, board: null }));
+    assert.equal(code, 200);
+    assert.ok(calls.includes(resumeCommand({ sessionId, cwd: dir })));
+  });
+
   test('a session not running opens in the terminal, the command as an argument', async () => {
     const calls = [];
     const exec = async (command, args) => {
@@ -563,4 +577,20 @@ test('a running session whose file has no status takes it from claude agents, as
   // Listed under another session id, the pid was reused: no status is taken.
   const [, kept] = await liveSessions(dir, { agents: async () => [{ pid: process.ppid, sessionId: 'other', status: 'busy' }] });
   assert.equal(kept.status, undefined);
+});
+
+test('a status taken from claude agents is dated from the first poll that saw it', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-since-'));
+  await fs.writeFile(path.join(dir, `${process.pid}.json`), JSON.stringify({ kind: 'interactive', pid: process.pid, sessionId: 'quiet', updatedAt: 1 }));
+  let status = 'idle';
+  const agents = async () => [{ pid: process.pid, sessionId: 'quiet', status }];
+  const [first] = await liveSessions(dir, { agents });
+  assert.ok(first.statusUpdatedAt > 0);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const [same] = await liveSessions(dir, { agents });
+  assert.equal(same.statusUpdatedAt, first.statusUpdatedAt);
+  status = 'busy';
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const [moved] = await liveSessions(dir, { agents });
+  assert.ok(moved.statusUpdatedAt > first.statusUpdatedAt);
 });

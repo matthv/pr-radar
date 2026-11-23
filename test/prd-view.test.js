@@ -66,3 +66,45 @@ test('transcripts that cannot be read are a warning, not an empty view that look
   scan.mock.mockImplementation(async () => { throw new Error('EACCES: permission denied'); });
   assert.match((await prdView.view(false)).warnings[0].message, /Claude transcripts: EACCES/);
 });
+
+test('one unreadable stage file is a warning, in the poll as in the full read, never a 502', async t => {
+  t.mock.method(skillStages, 'readStages', async () => { throw new Error('EISDIR: illegal operation on a directory'); });
+  t.mock.method(claudeSessions, 'liveSessions', async () => [{ sessionId: SESSION, pid: 1, status: 'busy' }]);
+  t.mock.method(claudeSessions, 'agentsProblem', () => '`claude agents --json` failed: boom');
+  const prdView = createPrdView({ boardPrs: () => [], linearApiKey: '', claudeSessionsOn: false, maxAgeDays: 60, cacheTtlMs: 0 });
+
+  const poll = await prdView.statuses();
+  assert.deepEqual(poll.sessions.map(session => [session.sessionId, session.status]), [[SESSION, 'busy']]);
+  assert.deepEqual(poll.warnings.map(warning => warning.source), ['stages', 'claude']);
+  const full = await prdView.view(false);
+  assert.deepEqual(full.warnings.map(warning => warning.source), ['stages', 'claude']);
+  assert.match(full.warnings[0].message, /EISDIR/);
+  assert.match(full.warnings[1].message, /claude agents/);
+});
+
+test('the PRs a view scan met reach the board\'s change check once, with the board\'s own', async t => {
+  t.mock.method(skillStages, 'readStages', async () => []);
+  t.mock.method(claudeSessions, 'liveSessions', async () => []);
+  t.mock.method(claudeSessions, 'scan', async () => ({ unreadable: 0, touched: ['https://github.com/o/r/pull/1'] }));
+  const prdView = createPrdView({ boardPrs: () => [], linearApiKey: '', claudeSessionsOn: true, maxAgeDays: 60, cacheTtlMs: 0 });
+
+  await prdView.view(false);
+  assert.deepEqual(prdView.takeTouched(['https://github.com/o/r/pull/2', 'https://github.com/o/r/pull/1']),
+    ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2']);
+  assert.deepEqual(prdView.takeTouched(['https://github.com/o/r/pull/2']), ['https://github.com/o/r/pull/2']);
+});
+
+test('the routes answer this machine only, and the demo never reads the real sessions or Linear', async t => {
+  const readStages = t.mock.method(skillStages, 'readStages', async () => []);
+  const prdView = createPrdView({ boardPrs: () => [], isDemo: true, linearApiKey: 'k', claudeSessionsOn: true, maxAgeDays: 60, cacheTtlMs: 0 });
+  const local = { remoteAddress: '127.0.0.1', host: 'localhost:4321' };
+
+  assert.deepEqual(await prdView.answer({ pathname: '/api/prds', ...local, remoteAddress: '192.168.1.20' }), [403, { error: 'only from this machine' }]);
+  assert.deepEqual(await prdView.answer({ pathname: '/api/sessions/status', ...local, host: 'evil.example:4321' }), [403, { error: 'only on localhost' }]);
+  const [code, body] = await prdView.answer({ pathname: '/api/prds', ...local });
+  assert.equal(code, 200);
+  assert.ok(body.prds.length > 0);
+  assert.equal(readStages.mock.callCount(), 0);
+  assert.ok(prdView.serves('/api/sessions/status'));
+  assert.ok(!prdView.serves('/api/prs'));
+});

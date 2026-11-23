@@ -29,6 +29,13 @@ function prEntry(url, title, board) {
 
 // One row per session: what its skill is doing from the stage lines, whether it runs and what
 // to call it from the session registry, and the folder `--resume` needs from its transcript.
+// `live` holds every running copy of a session, most recently active first: the first one speaks for it.
+const byId = live => {
+  const first = new Map();
+  for (const record of live) if (!first.has(record.sessionId)) first.set(record.sessionId, record);
+  return first;
+};
+
 function sessionEntry(sessionId, { stage, record, cwd, seen }) {
   const run = stage?.current ?? null;
   return {
@@ -66,7 +73,7 @@ const PR_WEIGHT = 2;
 // comes first, the main one when it outweighs the next, then running before closed, newest first.
 function buildPrds({ prds, boardPrs = [], stageSessions = [], live = [], sessionFor = () => null, sessionsOf = () => [], cwdOf = () => null }) {
   const board = new Map(boardPrs.map(pr => [pr.url, pr]));
-  const liveById = new Map(live.map(record => [record.sessionId, record]));
+  const liveById = byId(live);
   const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
   return prds.map(prd => {
     const prs = new Map(prd.prs.map(pr => [pr.url, prEntry(pr.url, pr.title, board)]));
@@ -143,7 +150,7 @@ function rankLinks({ branch, links, prs, opened }) {
 // itself, and what its transcript says it is about. Running first, then the most recent.
 function buildSessions({ prds, boardPrs = [], stageSessions = [], live = [], detailsOf = () => null, cwdOf = () => null }) {
   const board = new Map(boardPrs.map(pr => [pr.url, pr]));
-  const liveById = new Map(live.map(record => [record.sessionId, record]));
+  const liveById = byId(live);
   const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
   const cards = new Map();
   const cardOf = id => {
@@ -177,7 +184,7 @@ function buildSessions({ prds, boardPrs = [], stageSessions = [], live = [], det
 // Only what moves by the second, for the Sessions view's poll: each running session's state and
 // each reporting skill's stage. The PRDs and PRs a session works on stay with the full read.
 function sessionStatuses({ stageSessions = [], live = [] }) {
-  const liveById = new Map(live.map(record => [record.sessionId, record]));
+  const liveById = byId(live);
   const stageById = new Map(stageSessions.map(session => [session.sessionId, session]));
   return [...new Set([...liveById.keys(), ...stageById.keys()])]
     .map(id => sessionEntry(id, { stage: stageById.get(id), record: liveById.get(id) }));

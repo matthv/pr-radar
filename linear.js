@@ -8,6 +8,7 @@ const IDENTIFIER = /^[A-Z][A-Z0-9]{1,9}-\d{1,7}$/;
 const GITHUB_PR = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
 // A Linear that hangs would hold the PRDs view, and the Sessions poll waiting on it, for minutes.
 const TIMEOUT_MS = 15_000;
+const NOT_FOUND = /Entity not found/;
 
 const FIELDS = `identifier title url createdAt updatedAt
   state { name type color position }
@@ -56,7 +57,7 @@ function shape(issue) {
 
 // Your started tickets, then the extra ones by identifier in one aliased query. An extra one
 // Linear does not know, or cannot show you, is left out rather than failing the rest; when none
-// can be read (a rate limit, a 5xx), `warn` says so.
+// can be read for another reason (a rate limit, a 5xx), `warn` says so.
 async function fetchPrds({ apiKey, extra = [], fetch, warn = () => {} } = {}) {
   const mine = await query(apiKey, `{ viewer { assignedIssues(first: 100, filter: { state: { type: { eq: "started" } } }) { nodes { ${FIELDS} } } } }`, { fetch });
   if (!mine.data?.viewer) throw new Error(`Linear answered ${mine.errors?.[0]?.message ?? 'no viewer'}`);
@@ -69,9 +70,11 @@ async function fetchPrds({ apiKey, extra = [], fetch, warn = () => {} } = {}) {
     } catch (error) {
       // `issue` is non-null in Linear's schema: one key it cannot resolve nulls the whole answer.
       // Asked alone, each key it knows still comes back.
-      const alone = wanted.length > 1 ? await Promise.allSettled(wanted.map(key => readIssues(apiKey, [key], fetch))) : [];
-      for (const read of alone) if (read.status === 'fulfilled') for (const issue of read.value) prds.push(shape(issue));
-      if (!alone.some(read => read.status === 'fulfilled')) warn(`The tickets your sessions work on could not be read: ${error.message}`);
+      const reads = wanted.length > 1 ? await Promise.allSettled(wanted.map(key => readIssues(apiKey, [key], fetch))) : [{ status: 'rejected', reason: error }];
+      for (const read of reads) if (read.status === 'fulfilled') for (const issue of read.value) prds.push(shape(issue));
+      // A key Linear does not know is an answer, nothing there, not a failure to read.
+      const failed = reads.filter(read => read.status === 'rejected' && !NOT_FOUND.test(read.reason.message));
+      if (failed.length && failed.length === reads.length) warn(`The tickets your sessions work on could not be read: ${failed[0].reason.message}`);
     }
   }
   return prds;

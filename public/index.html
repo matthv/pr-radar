@@ -4710,11 +4710,22 @@ let prdOrder = PRRadarPrd.ORDERS.includes(store.get('prdOrder', 'updated')) ? st
 // A colour from Linear goes into a style attribute: only a hex one is let through.
 const safeColor = color => (/^#[0-9a-f]{3,8}$/i.test(color ?? '') ? color : 'var(--border)');
 
+// What both views say above their cards: errors, then the server's warnings.
+function prdNotices() {
+  return [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
+    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+}
+
 // A request the server never answers (a restart mid-request, a laptop waking) would otherwise hold
-// every later load, Refresh included, until the page is reloaded. Linear alone may take 15 s.
-const PRD_FETCH_TIMEOUT_MS = 30_000;
+// every later load, Refresh included, until the page is reloaded. Above the server's worst case:
+// three Linear reads of 15 s each.
+const PRD_FETCH_TIMEOUT_MS = 60_000;
+let prdLoadingForced = false;
 function loadPrds(force = false) {
+  // A Refresh pressed during an ordinary load would ride on it and lose its force: it goes after.
+  if (prdLoading && force && !prdLoadingForced) return prdLoading.then(() => loadPrds(true));
   let changed = true;
+  if (!prdLoading) prdLoadingForced = force;
   prdLoading ??= fetch(`/api/prds${force ? '?force=1' : ''}`, { signal: AbortSignal.timeout(PRD_FETCH_TIMEOUT_MS) })
     .then(async response => {
       const payload = await response.json();
@@ -4722,15 +4733,17 @@ function loadPrds(force = false) {
       changed = JSON.stringify(payload) !== JSON.stringify(prdData);
       prdData = payload;
       noteSessionChanges(payload.sessions ?? []);
+      // Marks are pruned only on a complete answer: any warning may mean sessions or tickets left out.
+      const complete = payload.enabled !== false && !(payload.warnings ?? []).length;
       // Stars go with sessions that left the view, Linear key or not.
-      if (payload.enabled !== false && payload.claudeSessions !== false) {
+      if (complete && payload.claudeSessions !== false) {
         const ids = new Set((payload.sessions ?? []).map(session => session.sessionId));
         const before = sessStars.size;
         for (const id of sessStars) if (!ids.has(id)) sessStars.delete(id);
         if (sessStars.size !== before) saveStars();
       }
-      // A Linear that failed returned no PRDs: their hidden marks wait for one that answers.
-      if (payload.enabled !== false && payload.linear !== false && !(payload.warnings ?? []).some(warning => warning.failed)) {
+      // Hidden marks wait for a Linear that answers in full.
+      if (complete && payload.linear !== false) {
         pruneHides(new Set([...(payload.sessions ?? []).map(session => session.sessionId), ...(payload.prds ?? []).map(prd => `prd:${prd.ticket}`)]));
       }
     })
@@ -4986,8 +4999,7 @@ function renderPrd() {
     el('prd').innerHTML = `<div class="prd-notice">${escapeHtml(t('prdNoKey'))}</div>`;
     return;
   }
-  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
-    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+  const notices = prdNotices();
   const prds = prdData.prds ?? [];
   if (!prds.length) {
     el('prd').innerHTML = `${bar}${notices}${prdData.prds ? `<div class="empty">${escapeHtml(t('prdEmpty'))}</div>` : ''}`;
@@ -5217,8 +5229,7 @@ function renderSessions() {
     el('prd').innerHTML = bar + '<div class="card skeleton"></div>'.repeat(3);
     return;
   }
-  const notices = [prdData.error && t('prdError', { message: prdData.error }), prdData.pollError && t('prdError', { message: prdData.pollError }), prdData.claudeSessions === false && t('prdSessionsOff'), ...(prdData.warnings ?? []).map(warning => warning.message)]
-    .filter(Boolean).map(text => `<div class="prd-notice">${escapeHtml(text)}</div>`).join('');
+  const notices = prdNotices();
   const shown = prdFocus ? sessions.filter(session => sessStatus(session) === prdFocus) : sessions;
   if (!shown.length) {
     el('prd').innerHTML = `${bar}${notices}${prdData.sessions ? `<div class="empty">${escapeHtml(t('sessEmpty'))}</div>` : ''}`;

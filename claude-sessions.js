@@ -355,6 +355,8 @@ const agentsProblem = () => agentsFailure;
 // The Sessions view polls every second: one listing serves the polls of the next few seconds.
 const AGENTS_TTL_MS = 5000;
 let agentsListing = null;
+// The listing says no time: a status taken from it is dated from the first poll that saw it.
+const agentsSince = new Map();
 function claudeAgents() {
   if (agentsListing && Date.now() - agentsListing.at < AGENTS_TTL_MS) return agentsListing.list;
   agentsListing = { at: Date.now(), list: listAgents() };
@@ -398,7 +400,10 @@ async function liveSessions(dir = RUNNING_DIR, { agents = claudeAgents } = {}) {
     for (const [index, record] of running.entries()) {
       const agent = listed.get(record.pid);
       if (!record.status && agent?.sessionId === record.sessionId && agent.status) {
-        running[index] = { ...record, status: agent.status, waitingFor: agent.waitingFor ?? null };
+        const seen = agentsSince.get(record.pid);
+        const at = seen?.status === agent.status ? seen.at : Date.now();
+        agentsSince.set(record.pid, { status: agent.status, at });
+        running[index] = { ...record, status: agent.status, waitingFor: agent.waitingFor ?? null, statusUpdatedAt: record.statusUpdatedAt ?? at };
       }
     }
   }

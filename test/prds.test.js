@@ -328,3 +328,13 @@ test('a closed session the ticket already weighs is counted once, and leaves bot
   });
   assert.deepEqual(built.sessions.map(session => [session.sessionId, session.weight]), [['staged', 13], ['m4', 1], ['m3', 1]]);
 });
+
+test('a session resumed in two terminals shows its most recently active copy', () => {
+  // liveSessions lists copies most recently active first.
+  const live = [
+    { sessionId: 's1', pid: 2, status: 'busy', updatedAt: 2, statusUpdatedAt: 2 },
+    { sessionId: 's1', pid: 1, status: 'idle', updatedAt: 1, statusUpdatedAt: 1 },
+  ];
+  assert.deepEqual(sessionStatuses({ live }).map(session => session.status), ['busy']);
+  assert.deepEqual(buildSessions({ prds: [], boardPrs: [], live, detailsOf: () => null, cwdOf: () => null }).map(session => session.status), ['busy']);
+});

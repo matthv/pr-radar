@@ -110,3 +110,14 @@ test('a key Linear cannot resolve nulls the batch: the others are asked alone an
   assert.equal(asked.length, 4);
   assert.deepEqual(warned, []);
 });
+
+test('a single key Linear does not know is no failure: nothing comes back, and nothing is said', async () => {
+  const { fetch } = fakeLinear(
+    { body: { data: { viewer: { assignedIssues: { nodes: [issue('PRD-1')] } } } } },
+    { ok: false, status: 400, body: { data: null, errors: [{ message: 'Entity not found: Issue' }] } },
+  );
+  const warned = [];
+  const prds = await fetchPrds({ apiKey: 'k', extra: ['FOLDER-3'], fetch, warn: message => warned.push(message) });
+  assert.deepEqual(prds.map(prd => prd.ticket), ['PRD-1']);
+  assert.deepEqual(warned, []);
+});

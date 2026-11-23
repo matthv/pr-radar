@@ -58,8 +58,18 @@ test('only sessions heard from within the window are read, and no folder is no s
   assert.deepEqual(await readStages({ dir: path.join(dir, 'missing'), maxAgeMs: 1 }), []);
 });
 
-test('a stage file that cannot be read throws, so the view can say so; a vanished one is skipped', async () => {
+test('a stage file that cannot be read throws, so the view can say so; a vanished one is skipped', async t => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-radar-stages-'));
   await fs.mkdir(path.join(dir, 'not-a-file.jsonl'));
   await assert.rejects(readStages({ dir, maxAgeMs: 86_400_000 }), /EISDIR/);
+
+  await fs.rmdir(path.join(dir, 'not-a-file.jsonl'));
+  await fs.writeFile(path.join(dir, 'kept.jsonl'), `${line({ at: 'a', skill: 'adr', run: 'r', stage: 'gate', state: 'running' })}\n`);
+  await fs.writeFile(path.join(dir, 'gone.jsonl'), `${line({ at: 'a', skill: 'adr', run: 'r', stage: 'gate', state: 'running' })}\n`);
+  // Removed between the listing and the read: the session ended meanwhile.
+  const { readFile } = fs;
+  t.mock.method(fs, 'readFile', (file, ...rest) => (String(file).endsWith('gone.jsonl')
+    ? Promise.reject(Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' }))
+    : readFile.call(fs, file, ...rest)));
+  assert.deepEqual((await readStages({ dir, maxAgeMs: 86_400_000 })).map(session => session.sessionId), ['kept']);
 });

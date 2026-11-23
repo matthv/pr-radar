@@ -36,7 +36,6 @@ const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
 const { createPrdView } = require('./prd-view');
-const demoPrds = require('./demo-prds');
 const webhook = require('./webhook');
 const logger = require('./log');
 const { boardTwins } = require('./ticket');
@@ -72,10 +71,6 @@ const PAGE_REFRESH_SECONDS = 20;
 const FIRST_SEARCH_RETRY_MS = 60_000;
 const GITDECK_URL = process.env.PR_RADAR_GITDECK_URL ?? 'http://localhost:4567';
 const LINEAR_URL = (process.env.PR_RADAR_LINEAR_URL ?? '').trim().replace(/\/+$/, '');
-// The PRDs view reads your tickets from Linear's API; without a key the view says how to set one.
-const LINEAR_API_KEY = (process.env.PR_RADAR_LINEAR_API_KEY ?? '').trim();
-// A session that has written no stage for a day is not working on anything any more.
-const STAGE_WINDOW_MS = 86_400_000;
 // A standing policy, not a per-session toggle: whether drafts belong on the board is
 // decided once, so it lives with the other settings rather than in the toolbar.
 const HIDE_DRAFTS = process.env.PR_RADAR_HIDE_DRAFTS === 'true';
@@ -101,8 +96,6 @@ const CLAUDE_SESSIONS_OFF = process.env.PR_RADAR_CLAUDE_SESSIONS !== 'true'
       ? `off (PR_RADAR_TERMINAL "${TERMINAL}" unknown: ${Object.keys(claudeSessions.TERMINALS).join(', ')})`
       : null;
 const CLAUDE_SESSIONS = !CLAUDE_SESSIONS_OFF;
-// The Sessions view chimes when a session turns to you only when asked to.
-const SESSION_CHIME = process.env.PR_RADAR_SESSION_CHIME === 'true';
 // The board waits this long for the transcripts on a refresh; a longer scan, the first one
 // on a big ~/.claude, marks its cards once done.
 const CLAUDE_SCAN_WAIT_MS = 2000;
@@ -237,7 +230,7 @@ function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
     ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
-      return [...new Set([...prdView.takeTouched(), ...touched])];
+      return prdView.takeTouched(touched);
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
@@ -246,14 +239,9 @@ function scanClaudeSessions() {
   );
 }
 
-// The demo's board is fixed: the PRDs view links it even before the page has asked for it.
-const demoBoard = () => {
-  const { mine, reviews } = demo.payload(false);
-  return [...mine, ...reviews];
-};
 const prdView = createPrdView({
-  boardPrs: () => (cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : []), linearApiKey: LINEAR_API_KEY,
-  claudeSessionsOn: CLAUDE_SESSIONS, sessionChime: SESSION_CHIME, maxAgeDays: MAX_AGE_DAYS, stageWindowMs: STAGE_WINDOW_MS, cacheTtlMs: CACHE_TTL_MS,
+  boardPrs: () => (cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : []),
+  isDemo: DEMO, claudeSessionsOn: CLAUDE_SESSIONS, maxAgeDays: MAX_AGE_DAYS, cacheTtlMs: CACHE_TTL_MS,
 });
 
 // Twins come with the board, Slack link on or off: the ticket and the title still find them.
@@ -718,19 +706,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // The PRDs view, and the Sessions view's poll: states and stages from local files only.
-  // They read your prompts and recaps: never for another machine, nor a page rebinding a hostname.
-  if (url.pathname === '/api/prds' || url.pathname === '/api/sessions/status') {
-    const refused = claudeSessions.localOnly({ remoteAddress: req.socket.remoteAddress, host: req.headers.host });
-    if (refused) return json(res, 403, { error: refused });
-    if (DEMO) {
-      return json(res, 200, url.pathname === '/api/prds' ? demoPrds.view(demoBoard()) : demoPrds.statuses());
-    }
-    try {
-      return json(res, 200, url.pathname === '/api/prds' ? await prdView.view(url.searchParams.get('force') === '1') : await prdView.statuses());
-    } catch (error) {
-      return json(res, 502, { error: error.message });
-    }
+  // The PRDs view, and the Sessions view's poll: see prd-view.js.
+  if (prdView.serves(url.pathname)) {
+    const force = url.searchParams.get('force') === '1';
+    return json(res, ...(await prdView.answer({ pathname: url.pathname, force, remoteAddress: req.socket.remoteAddress, host: req.headers.host })));
   }
 
   if (url.pathname === '/api/themes' && req.method === 'POST') {
