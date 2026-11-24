@@ -10,10 +10,11 @@ section you need.
 - **Node 22.4+, no dependencies.** Plain CommonJS on Node's standard library; don't add an npm
   package. Run with `node`, not `yarn` (see README, Running it). CI runs Node 22 and `engines`
   says `>=22.4`: an API from a newer Node passes locally and breaks the release.
-- One module per concern at the root (`github.js` fetches and classifies, `server.js` serves and
+- One module per concern at the root (`github.js` fetches and shapes, `classify.js` says what each PR asks, `server.js` serves and
   routes, `plugins.js`, `slack.js`, `hub.js`, `update.js`…). The page is `public/index.html`, one
-  file with its own CSS, script and `I18N`; small shared helpers in `public/*.js` load both in
-  the page and in the tests.
+  file with its own CSS, script and `I18N`; the cards are drawn in `public/cards.js`, which
+  shares the page's globals; small shared helpers in `public/*.js` load both in the page and in
+  the tests.
 - `npm run demo` (port 4322) serves a fake board from `demo.js`, nothing fetched. Show and check
   UI changes there, in the **board** view, and add a demo case for any new card state
   (`test/demo.test.js` checks they all appear).
