@@ -186,6 +186,9 @@ test('only a JSON request from this machine, to localhost, is let through', () =
   assert.equal(refusal({ ...ok, remoteAddress: '::1', host: '[::1]:4321' }), null);
   assert.equal(refusal({ ...ok, remoteAddress: '192.168.1.20' }), 'only from this machine');
   assert.equal(refusal({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
+  assert.equal(localOnly(ok), null);
+  assert.equal(localOnly({ ...ok, remoteAddress: '192.168.1.20' }), 'only from this machine');
+  assert.equal(localOnly({ ...ok, host: 'evil.example:4321' }), 'only on localhost');
   assert.equal(refusal({ ...ok, host: undefined }), 'only on localhost');
   assert.equal(refusal({ ...ok, contentType: 'text/plain' }), 'JSON body expected');
   // The read-only routes take no body, but the same address and host.

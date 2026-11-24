@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const demo = require('../demo');
+const { parseRoomUrl, roomLink } = require('../room');
 const { changesSince } = require('../public/since');
 const { DEFAULTS } = require('../public/order');
 
@@ -151,4 +152,12 @@ test('demo: a wizz comes straight back, plain or on the same PR, and a refused o
   assert.equal(hub.wizzes.length, before + 1);
   assert.equal(hub.wizzes.at(-1).from, 'bexchauveto');
   assert.match(hub.wizzes.at(-1).ref, /^[0-9a-f]{64}$/);
+});
+
+test('demo: my room and a teammate\'s are Meet links the page will show', () => {
+  assert.equal(parseRoomUrl(demo.ROOM_URL).url, demo.ROOM_URL);
+  assert.equal(demo.hub.room, demo.ROOM_URL);
+  const rooms = demo.hub.presence.online.filter(person => person.room);
+  assert.ok(rooms.length >= 2);
+  for (const person of rooms) assert.equal(roomLink(person.room), person.room);
 });

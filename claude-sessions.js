@@ -621,6 +621,7 @@ async function resume({ headers, remoteAddress, readBody }, { enabled, terminal,
 
 module.exports = {
   scan,
+  osascriptArgs,
   sessionFor,
   sessionsForTicket,
   sessionDetails,

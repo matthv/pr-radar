@@ -13,6 +13,7 @@ const { businessDaysSince } = require('./orphans');
 const ME = 'matthv';
 const ORG = 'ForestAdmin';
 const LINEAR_URL = 'https://linear.app/forestadmin';
+const ROOM_URL = 'https://meet.google.com/abc-defg-hij';
 const MIN = 60 * 1000;
 // Fixed when the demo starts: dates recomputed on every poll would make every card look
 // changed to the "since you looked" line.
@@ -439,10 +440,11 @@ const update = {
 const HEAD = '9ad5e5a0c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6';
 const OLD = '129a21f8756b7fdce29b6ef8cffad921c0ae64cb';
 const radar = (commit, behind, tabs, minutes, tag = null) => ({ commit, behind, tag, tabs, since: ago(minutes) });
-const online = (login, radars, availability = null, acceptsWizz = true) => ({
+const online = (login, radars, availability = null, acceptsWizz = true, room = null) => ({
   login,
   availability,
   acceptsWizz,
+  room,
   avatarUrl: avatarOf(login),
   since: radars[0].since,
   tabs: radars.reduce((sum, r) => sum + r.tabs, 0),
@@ -456,9 +458,9 @@ const hub = {
   avatarUrl: avatarOf(ME),
   presence: {
     online: [
-      online('bexchauveto', [radar(HEAD, 0, 1, 95, 'v1.4.0')], 'available'),
+      online('bexchauveto', [radar(HEAD, 0, 1, 95, 'v1.4.0')], 'available', true, 'https://meet.google.com/kqz-wdtp-rmb'),
       online('christophebrun-forest', [radar(OLD, 3, 2, 40, 'v1.2.0')], 'focus', false),
-      online(ME, [radar(HEAD, 0, 2, 180, 'v1.4.0'), radar(null, null, 0, 25)], 'available'),
+      online(ME, [radar(HEAD, 0, 2, 180, 'v1.4.0'), radar(null, null, 0, 25)], 'available', true, ROOM_URL),
     ],
     recent: [
       { login: 'hercemer42', avatarUrl: avatarOf('hercemer42'), lastSeen: ago(60 * 5) },
@@ -472,6 +474,7 @@ const hub = {
   declined: false,
   availability: 'available',
   acceptsWizz: true,
+  room: ROOM_URL,
   wizzes: [],
   wizzSent: [],
   kudos: [{ id: 1, from: 'bexchauveto', avatarUrl: avatarOf('bexchauveto'), at: ago(0) }],
@@ -599,4 +602,4 @@ async function notes(body) {
   };
 }
 
-module.exports = { payload, update, hub, setAvailability, kudosBack, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL };
+module.exports = { payload, update, hub, setAvailability, kudosBack, wizzBack, takeOffer, themeBack, WIZZ_LIMITS, notes, ORG, LINEAR_URL, ROOM_URL };

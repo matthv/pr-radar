@@ -5,6 +5,8 @@ cd "$(dirname "$0")"
 PORT="${PORT:-4321}"
 # /api/boot answers at once and only a PR Radar answers it, unlike / on a port taken by another app.
 radar_up() { curl -sf "http://localhost:$PORT/api/boot" 2>/dev/null | grep -q '"boot"'; }
+boot() { curl -sf "http://localhost:$PORT/api/boot" 2>/dev/null; }
+browser_open() { boot | grep -q '"browsers":[1-9]'; }
 if radar_up; then
   echo "PR Radar tourne déjà sur le port $PORT."
 else
@@ -15,5 +17,19 @@ else
     sleep 0.3
   done
 fi
-open "http://localhost:$PORT/"
+FOUND=false
+if boot | grep -q '"browsers"'; then
+  # A tab left open reconnects to a fresh server within a second: give it the time before opening another.
+  for TRY in 0 1 2 3 4 5 6; do
+    [ "$TRY" -gt 0 ] && sleep 0.5
+    if browser_open; then FOUND=true; break; fi
+  done
+else
+  echo "Ce PR Radar ne sait pas repérer un onglet déjà ouvert : relance-le pour éviter un onglet en double."
+fi
+if $FOUND; then
+  echo "Un onglet PR Radar est déjà ouvert : http://localhost:$PORT/"
+else
+  open "http://localhost:$PORT/"
+fi
 wait
