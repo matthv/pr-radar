@@ -35,6 +35,7 @@ const slack = require('./slack');
 const update = require('./update');
 const demo = require('./demo');
 const claudeSessions = require('./claude-sessions');
+const { createPrdView } = require('./prd-view');
 const webhook = require('./webhook');
 const { parseRoomUrl, roomWatchOff, watchRoom } = require('./room');
 const logger = require('./log');
@@ -234,7 +235,7 @@ function scanClaudeSessions() {
   return claudeSessions.scan({ maxAgeDays: MAX_AGE_DAYS }).then(
     ({ unreadable, touched }) => {
       claudeWarning = unreadable ? { source: 'claude', kind: 'unreadable', message: `${unreadable} transcript(s) could not be read` } : null;
-      return touched;
+      return prdView.takeTouched(touched);
     },
     error => {
       claudeWarning = { source: 'claude', kind: 'failed', message: error.message };
@@ -242,6 +243,11 @@ function scanClaudeSessions() {
     },
   );
 }
+
+const prdView = createPrdView({
+  boardPrs: () => (cache.payload ? [...cache.payload.mine, ...cache.payload.reviews] : []),
+  isDemo: DEMO, claudeSessionsOn: CLAUDE_SESSIONS, maxAgeDays: MAX_AGE_DAYS, cacheTtlMs: CACHE_TTL_MS,
+});
 
 // Twins come with the board, Slack link on or off: the ticket and the title still find them.
 async function withLinksAndTwins(payload) {
@@ -712,6 +718,12 @@ const server = http.createServer(async (req, res) => {
       json(res, 502, { error: error.message }, version);
     }
     return;
+  }
+
+  // The PRDs view, and the Sessions view's poll: see prd-view.js.
+  if (prdView.serves(url.pathname)) {
+    const force = url.searchParams.get('force') === '1';
+    return json(res, ...(await prdView.answer({ pathname: url.pathname, force, remoteAddress: req.socket.remoteAddress, host: req.headers.host })));
   }
 
   if (url.pathname === '/api/themes' && req.method === 'POST') {

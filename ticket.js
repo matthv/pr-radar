@@ -14,6 +14,7 @@ const NOT_TICKETS = new Set([
 const BOT_BRANCH_RE = /^(dependabot|renovate)\//i;
 
 const isTicket = key => !NOT_TICKETS.has(key.split('-')[0].toUpperCase());
+const isBotBranch = branch => BOT_BRANCH_RE.test(branch ?? '');
 
 function firstTicket(text) {
   for (const [, key] of String(text ?? '').matchAll(TICKET_RE)) if (isTicket(key)) return key;
@@ -21,7 +22,7 @@ function firstTicket(text) {
 }
 
 function branchTicket(branch) {
-  if (!branch || BOT_BRANCH_RE.test(branch)) return null;
+  if (!branch || isBotBranch(branch)) return null;
   for (const [, key] of branch.matchAll(BRANCH_TICKET_RE)) if (isTicket(key)) return key.toUpperCase();
   return null;
 }
@@ -100,4 +101,4 @@ function boardTwins(payload, slackLinks = null) {
   return { ...payload, mine: cards.slice(0, payload.mine.length), reviews: cards.slice(payload.mine.length) };
 }
 
-module.exports = { ticketKey, workKey, withTwins, boardTwins };
+module.exports = { ticketKey, workKey, withTwins, boardTwins, isTicket, isBotBranch };
